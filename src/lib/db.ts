@@ -104,6 +104,11 @@ export type OrgRow = {
   subdomain: string | null;
   setup_complete: boolean;
   invite_token: string | null;
+  institution_type: string | null;
+  contact_phone: string | null;
+  service_hours: string | null;
+  emergency_note: string | null;
+  emergency_number: string | null;
 };
 
 export type MyProfile = {
@@ -120,7 +125,9 @@ export type MyProfile = {
 export async function getMyOrg(): Promise<OrgRow | null> {
   const { data, error } = await supabase
     .from("centres")
-    .select("id, name, display_name, logo_url, subdomain, setup_complete, invite_token")
+    .select(
+      "id, name, display_name, logo_url, subdomain, setup_complete, invite_token, institution_type, contact_phone, service_hours, emergency_note, emergency_number",
+    )
     .limit(1);
   if (error) throw error;
   return (data?.[0] as OrgRow) ?? null;
@@ -190,13 +197,108 @@ export async function clearMustReset(): Promise<void> {
   if (error) throw error;
 }
 
-/** Admin: set the org's platform name / logo and mark setup complete. */
+/** Admin: set the org's identity/branding + institution profile fields. */
 export async function updateOrgBranding(
   orgId: string,
-  fields: { display_name?: string; logo_url?: string | null; setup_complete?: boolean },
+  fields: {
+    display_name?: string;
+    logo_url?: string | null;
+    setup_complete?: boolean;
+    contact_phone?: string | null;
+    service_hours?: string | null;
+    emergency_note?: string | null;
+    emergency_number?: string | null;
+  },
 ): Promise<void> {
   const { error } = await supabase.from("centres").update(fields).eq("id", orgId);
   if (error) throw error;
+}
+
+/* -------------------------- Pathway packs (catalogue) --------------------- */
+
+export type PathwayPackRow = {
+  id: string;
+  key: "spine" | "joint" | "neuro";
+  name: string;
+  specialty: string;
+  description: string | null;
+  status: "draft" | "clinically_review_required" | "approved" | "retired";
+};
+
+/** The governed pathway catalogue (read-only to any authenticated user). */
+export async function listPathwayPacks(): Promise<PathwayPackRow[]> {
+  const { data, error } = await supabase
+    .from("pathway_packs")
+    .select("id, key, name, specialty, description, status")
+    .order("key");
+  if (error) throw error;
+  return (data ?? []) as PathwayPackRow[];
+}
+
+export type InstitutionPathway = {
+  pack_id: string;
+  pack_key: "spine" | "joint" | "neuro";
+  pack_name: string;
+  specialty: string;
+  description: string | null;
+  price: number | null;
+  trial_days: number;
+  duration_days: number | null;
+  included: string | null;
+  platform_fee_pct: number;
+};
+
+/** The packs enabled for the signed-in user's institution + their commercial
+ *  config (admin-facing). RLS returns only the caller's own centre. */
+export async function getMyInstitutionPathways(): Promise<InstitutionPathway[]> {
+  const me = await getMyProfile();
+  if (!me?.centre_id) return [];
+  const { data: enabled, error: e1 } = await supabase
+    .from("institution_pathways")
+    .select("pack_id")
+    .eq("centre_id", me.centre_id)
+    .eq("enabled", true);
+  if (e1) throw e1;
+  const packIds = (enabled ?? []).map((r) => (r as { pack_id: string }).pack_id);
+  if (!packIds.length) return [];
+
+  const [{ data: packs }, { data: cfgs }] = await Promise.all([
+    supabase.from("pathway_packs").select("id, key, name, specialty, description").in("id", packIds),
+    supabase.from("institution_pathway_config").select("*").eq("centre_id", me.centre_id).in("pack_id", packIds),
+  ]);
+  const cfgByPack = new Map((cfgs ?? []).map((c) => [(c as { pack_id: string }).pack_id, c as Record<string, unknown>]));
+  return (packs ?? []).map((p) => {
+    const pk = p as { id: string; key: InstitutionPathway["pack_key"]; name: string; specialty: string; description: string | null };
+    const c = cfgByPack.get(pk.id) ?? {};
+    return {
+      pack_id: pk.id,
+      pack_key: pk.key,
+      pack_name: pk.name,
+      specialty: pk.specialty,
+      description: pk.description,
+      price: (c.price as number | null) ?? null,
+      trial_days: (c.trial_days as number) ?? 0,
+      duration_days: (c.duration_days as number | null) ?? null,
+      included: (c.included as string | null) ?? null,
+      platform_fee_pct: (c.platform_fee_pct as number) ?? 30,
+    };
+  });
+}
+
+/** Admin: update the editable commercial fields for one enabled pack. RLS +
+ *  the DB trigger enforce admin/centre/enabled; platform_fee_pct is server-held. */
+export async function updatePathwayConfig(
+  packId: string,
+  patch: { price?: number | null; trial_days?: number; duration_days?: number | null; included?: string | null },
+): Promise<void> {
+  const me = await getMyProfile();
+  if (!me?.centre_id) throw new Error("No institution for this account.");
+  const { error } = await supabase
+    .from("institution_pathway_config")
+    .update(patch)
+    .eq("centre_id", me.centre_id)
+    .eq("pack_id", packId);
+  if (error) throw new Error(pgErr(error, "Could not save the programme."));
 }
 
 /* --------------------- Storefront (packages) + subscription ---------------- */
@@ -375,13 +477,20 @@ export type OrgSummary = {
   setup_complete: boolean;
   admin_name: string | null;
   admin_email: string | null;
+  institution_type: string | null;
+  pathways: string[];
+  patient_count: number | null;
 };
+
+export type InstitutionType = "hospital" | "rehab_centre" | "doctor_practice" | "clinical_group";
 
 export type NewOrg = {
   org_name: string;
   admin_name: string;
   admin_email: string;
   admin_password: string;
+  institution_type: InstitutionType | "";
+  pathway_keys: string[];
 };
 
 /** Super admin: list all organisations + their admins. */

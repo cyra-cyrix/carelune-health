@@ -58,18 +58,35 @@ Deno.serve(async (req) => {
     if (action === "list-orgs") {
       const { data: centres } = await admin
         .from("centres")
-        .select("id, name, display_name, setup_complete, created_at")
+        .select("id, name, display_name, setup_complete, institution_type, created_at")
         .order("created_at", { ascending: false });
       const { data: admins } = await admin
         .from("profiles")
         .select("id, full_name, centre_id, email")
         .eq("is_admin", true);
+      const { data: ipRows } = await admin
+        .from("institution_pathways")
+        .select("centre_id, pathway_packs(key)")
+        .eq("enabled", true);
+      const { data: patientRows } = await admin.from("patients").select("centre_id");
 
       const adminByCentre = new Map<string, { full_name: string | null; email: string | null }>();
       for (const a of admins ?? []) {
         if (a.centre_id && !adminByCentre.has(a.centre_id)) {
           adminByCentre.set(a.centre_id, { full_name: a.full_name, email: a.email ?? null });
         }
+      }
+      const pathwaysByCentre = new Map<string, string[]>();
+      for (const r of ipRows ?? []) {
+        const key = (r as { pathway_packs?: { key?: string } }).pathway_packs?.key;
+        const cid = (r as { centre_id: string }).centre_id;
+        if (!key) continue;
+        pathwaysByCentre.set(cid, [...(pathwaysByCentre.get(cid) ?? []), key]);
+      }
+      const countByCentre = new Map<string, number>();
+      for (const r of patientRows ?? []) {
+        const cid = (r as { centre_id: string }).centre_id;
+        countByCentre.set(cid, (countByCentre.get(cid) ?? 0) + 1);
       }
 
       const orgs = (centres ?? []).map((c) => {
@@ -79,8 +96,11 @@ Deno.serve(async (req) => {
           name: c.name,
           display_name: c.display_name,
           setup_complete: c.setup_complete,
+          institution_type: c.institution_type ?? null,
           admin_name: a?.full_name ?? null,
           admin_email: a?.email ?? null,
+          pathways: pathwaysByCentre.get(c.id) ?? [],
+          patient_count: countByCentre.get(c.id) ?? 0,
         };
       });
       return json({ orgs });
@@ -96,9 +116,15 @@ Deno.serve(async (req) => {
       if (!admin_email || !admin_password) return json({ error: "Admin email and password are required." }, 400);
       if (admin_password.length < 6) return json({ error: "Password must be at least 6 characters." }, 400);
 
+      const validTypes = ["hospital", "rehab_centre", "doctor_practice", "clinical_group"];
+      const institution_type = validTypes.includes(String(body.institution_type)) ? String(body.institution_type) : null;
+      const pathway_keys = Array.isArray(body.pathway_keys)
+        ? body.pathway_keys.filter((k: unknown) => ["spine", "joint", "neuro"].includes(String(k)))
+        : [];
+
       const { data: centre, error: cErr } = await admin
         .from("centres")
-        .insert({ name: org_name })
+        .insert({ name: org_name, institution_type })
         .select("id")
         .single();
       if (cErr || !centre) return json({ error: cErr?.message ?? "Could not create org." }, 400);
@@ -126,7 +152,20 @@ Deno.serve(async (req) => {
       });
       if (pErr) return json({ error: pErr.message }, 400);
 
-      return json({ org: { id: centre.id, name: org_name }, admin: { email: admin_email, full_name: admin_name } });
+      // Assign the Super Admin's selected pathway packs (service_role RPC).
+      if (pathway_keys.length) {
+        const { error: aErr } = await admin.rpc("set_institution_pathways", {
+          p_centre: centre.id,
+          p_pack_keys: pathway_keys,
+        });
+        if (aErr) return json({ error: `Organisation created, but pathway assignment failed: ${aErr.message}` }, 400);
+      }
+
+      return json({
+        org: { id: centre.id, name: org_name },
+        admin: { email: admin_email, full_name: admin_name },
+        pathways: pathway_keys,
+      });
     }
 
     return json({ error: "Unknown action" }, 400);

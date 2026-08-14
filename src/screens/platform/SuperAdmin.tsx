@@ -1,22 +1,43 @@
 import { useEffect, useState } from "react";
 import { LoopMark, Icon } from "../../components/ui";
 import { useAuth } from "../../auth/AuthProvider";
-import { listOrgs, createOrg, type OrgSummary, type NewOrg } from "../../lib/db";
+import {
+  listOrgs,
+  createOrg,
+  listPathwayPacks,
+  type OrgSummary,
+  type NewOrg,
+  type InstitutionType,
+  type PathwayPackRow,
+} from "../../lib/db";
 import { credentialsText, shareOnWhatsApp, generatePassword } from "../../lib/share";
+import {
+  Card, Field, inputCls, PrimaryButton, PackCard, PathwayStatusBadge, Chip,
+  EmptyState, Skeleton, ErrorNote, Kpi, SectionHeader,
+} from "../../components/system";
 
-const FIELD =
-  "w-full rounded-xl bg-white px-3 py-2 text-[14px] text-ink ring-1 ring-line focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400";
+const TYPES: { key: InstitutionType; label: string }[] = [
+  { key: "hospital", label: "Hospital" },
+  { key: "rehab_centre", label: "Rehab centre" },
+  { key: "doctor_practice", label: "Doctor practice" },
+  { key: "clinical_group", label: "Clinical group" },
+];
+const TYPE_LABEL: Record<string, string> = Object.fromEntries(TYPES.map((t) => [t.key, t.label]));
 
-const freshDraft = (): NewOrg => ({ org_name: "", admin_name: "", admin_email: "", admin_password: generatePassword() });
+const freshDraft = (): NewOrg => ({
+  org_name: "", admin_name: "", admin_email: "", admin_password: generatePassword(),
+  institution_type: "", pathway_keys: [],
+});
 
 /**
- * Carelune platform console (super admin). Create an organisation and its admin
- * account in one step; the admin gets a temporary password to reset on first
- * login, shareable over WhatsApp. Lists all organisations on the platform.
+ * Carelune platform console (Super Admin). Create an institution — its type, its
+ * admin (HOD) account, and the Continuum Care pathway packs it may run — in one
+ * elegant flow. Assignment of packs is service_role-only (the HOD cannot self-enable).
  */
 export default function SuperAdmin() {
   const { signOut } = useAuth();
   const [orgs, setOrgs] = useState<OrgSummary[]>([]);
+  const [packs, setPacks] = useState<PathwayPackRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,18 +48,25 @@ export default function SuperAdmin() {
 
   const load = async () => {
     try {
-      setOrgs(await listOrgs());
+      const [o, p] = await Promise.all([listOrgs(), listPathwayPacks().catch(() => [] as PathwayPackRow[])]);
+      setOrgs(o);
+      setPacks(p);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load organisations.");
+      setError(e instanceof Error ? e.message : "Could not load the console.");
     } finally {
       setLoading(false);
     }
   };
+  useEffect(() => { void load(); }, []);
 
-  useEffect(() => {
-    void load();
-  }, []);
+  const togglePack = (key: string) =>
+    setDraft((d) => ({
+      ...d,
+      pathway_keys: d.pathway_keys.includes(key) ? d.pathway_keys.filter((k) => k !== key) : [...d.pathway_keys, key],
+    }));
+
+  const canCreate = draft.org_name.trim() && draft.admin_email.trim() && draft.admin_password && draft.institution_type;
 
   const submit = async () => {
     setBusy(true);
@@ -49,7 +77,7 @@ export default function SuperAdmin() {
       setDraft(freshDraft());
       await load();
     } catch (e) {
-      setFormError(e instanceof Error ? e.message : "Could not create the organisation.");
+      setFormError(e instanceof Error ? e.message : "Could not create the institution.");
     } finally {
       setBusy(false);
     }
@@ -59,144 +87,169 @@ export default function SuperAdmin() {
     if (!created) return;
     shareOnWhatsApp(
       credentialsText({
-        platformName: created.org_name,
-        loginUrl: window.location.origin,
-        email: created.admin_email,
-        password: created.admin_password,
-        roleLabel: "Admin",
+        platformName: created.org_name, loginUrl: window.location.origin,
+        email: created.admin_email, password: created.admin_password, roleLabel: "Admin",
       }),
     );
   };
 
+  const activeCount = orgs.filter((o) => o.setup_complete).length;
+
   return (
     <div className="min-h-screen bg-mist">
-      <header className="sticky top-0 z-50 flex min-h-[3rem] items-center justify-between gap-3 border-b border-line bg-white px-4 py-2 sm:px-6">
-        <div className="flex items-center gap-2 text-brand-600">
+      <header className="sticky top-0 z-50 flex min-h-[3.25rem] items-center justify-between gap-3 border-b border-line bg-white/90 px-4 py-2 backdrop-blur sm:px-6">
+        <div className="flex items-center gap-2 text-sky-700">
           <LoopMark size={20} />
           <span className="flex flex-col leading-none">
             <span className="text-[14px] font-semibold tracking-tight text-ink">Carelune</span>
-            <span className="mt-[3px] text-[9.5px] font-medium uppercase tracking-[0.12em] text-sage-500">Platform</span>
+            <span className="mt-[3px] text-[9.5px] font-semibold uppercase tracking-[0.14em] text-sage-500">Platform console</span>
           </span>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-[12px] text-sage-600">Super Admin</span>
-          <button
-            type="button"
-            onClick={() => void signOut()}
-            className="tap rounded-md border border-line px-2.5 py-1 text-[12px] font-medium text-sage-600 hover:bg-mist-100 hover:text-ink"
-          >
+          <span className="text-[12px] font-medium text-sage-600">Super Admin</span>
+          <button type="button" onClick={() => void signOut()} className="tap rounded-lg border border-line px-2.5 py-1 text-[12px] font-medium text-sage-600 hover:bg-mist-100 hover:text-ink">
             Sign out
           </button>
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1100px] px-5 py-6 lg:px-8">
-        <h1 className="font-display text-2xl font-semibold text-ink">Organisations</h1>
-        <p className="mt-0.5 text-[14px] text-sage-500">
-          Create an organisation and its admin. The admin names their platform and builds their team.
+      <main className="mx-auto max-w-[1140px] px-5 py-7 lg:px-8">
+        <h1 className="font-display text-[26px] font-semibold tracking-tight text-ink">Institutions</h1>
+        <p className="mt-1 text-[14px] text-sage-500">
+          Create an institution, assign its Continuum Care programmes, and hand the admin a secure first-login.
         </p>
 
-        <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_1.1fr]">
-          {/* Create org */}
-          <section className="rounded-2xl bg-white p-5 shadow-lift ring-1 ring-ink/[0.05]">
-            <h2 className="font-display text-[15px] font-semibold text-ink">New organisation</h2>
-            <div className="mt-3 space-y-3">
-              <label className="block">
-                <span className="mb-1 block text-[12px] font-semibold text-sage-600">Organisation name</span>
-                <input value={draft.org_name} onChange={(e) => setDraft({ ...draft, org_name: e.target.value })} placeholder="e.g. Punarvaas Rehabilitation" className={FIELD} />
-              </label>
-              <div className="h-px bg-line" />
-              <p className="text-[12px] font-semibold text-sage-600">Admin account</p>
-              <label className="block">
-                <span className="mb-1 block text-[12px] font-semibold text-sage-600">Admin full name</span>
-                <input value={draft.admin_name} onChange={(e) => setDraft({ ...draft, admin_name: e.target.value })} placeholder="e.g. Dr. Vivek" className={FIELD} />
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="block">
-                  <span className="mb-1 block text-[12px] font-semibold text-sage-600">Admin email</span>
-                  <input value={draft.admin_email} onChange={(e) => setDraft({ ...draft, admin_email: e.target.value })} type="email" placeholder="vivek@org.in" className={FIELD} />
-                </label>
-                <label className="block">
-                  <span className="mb-1 block text-[12px] font-semibold text-sage-600">Temporary password</span>
-                  <div className="flex items-center gap-1.5">
-                    <input value={draft.admin_password} readOnly className={`${FIELD} font-mono`} />
+        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <Kpi label="Institutions" value={loading ? "—" : orgs.length} />
+          <Kpi label="Active" value={loading ? "—" : activeCount} hint="setup complete" />
+          <Kpi label="Programmes" value={loading ? "—" : packs.length} hint="governed packs" />
+        </div>
+
+        <div className="mt-6 grid gap-6 lg:grid-cols-[1.05fr_1fr]">
+          {/* Create */}
+          <Card>
+            <SectionHeader title="New institution" sub="Type, admin account, and enabled programmes." />
+            <div className="mt-4 space-y-4">
+              <Field label="Institution name">
+                <input value={draft.org_name} onChange={(e) => setDraft({ ...draft, org_name: e.target.value })} placeholder="e.g. Sunrise Spine & Rehab" className={inputCls} />
+              </Field>
+
+              <div>
+                <span className="mb-1.5 block text-[12.5px] font-semibold text-sage-600">Institution type</span>
+                <div className="grid grid-cols-2 gap-2">
+                  {TYPES.map((t) => (
                     <button
+                      key={t.key}
                       type="button"
-                      onClick={() => setDraft({ ...draft, admin_password: generatePassword() })}
-                      title="Generate a new password"
-                      className="tap shrink-0 rounded-lg border border-line px-2.5 py-2 text-[13px] font-semibold text-sage-600 hover:bg-mist-100 hover:text-ink"
+                      onClick={() => setDraft({ ...draft, institution_type: t.key })}
+                      aria-pressed={draft.institution_type === t.key}
+                      className={`tap rounded-xl border px-3 py-2 text-[13px] font-semibold transition-colors ${
+                        draft.institution_type === t.key ? "border-sky-500 bg-sky-50 text-sky-700 ring-1 ring-sky-500/30" : "border-line bg-white text-ink hover:bg-mist-100"
+                      }`}
                     >
-                      ↻
+                      {t.label}
                     </button>
-                  </div>
-                </label>
+                  ))}
+                </div>
               </div>
 
-              {formError && <p className="text-[13px] text-coral-600">{formError}</p>}
-
-              <button
-                type="button"
-                onClick={submit}
-                disabled={busy || !draft.org_name || !draft.admin_email || !draft.admin_password}
-                className="tap w-full rounded-xl bg-brand-600 py-2.5 text-[15px] font-semibold text-white hover:bg-brand-500 disabled:opacity-60"
-              >
-                {busy ? "Creating…" : "Create organisation"}
-              </button>
-            </div>
-
-            {created && (
-              <div className="mt-4 rounded-2xl bg-good-100 p-4 ring-1 ring-good-500/20">
-                <p className="text-[13px] font-semibold text-ink">{created.org_name} created.</p>
-                <p className="mt-1 text-[12px] text-sage-600">
-                  Admin: {created.admin_email} · temporary password{" "}
-                  <span className="font-semibold text-ink">{created.admin_password}</span>
+              <div>
+                <span className="mb-1.5 block text-[12.5px] font-semibold text-sage-600">Continuum Care programmes</span>
+                <div className="space-y-2">
+                  {packs.length === 0 ? (
+                    <p className="text-[12.5px] text-sage-500">No pathway packs found (run migration 0013).</p>
+                  ) : (
+                    packs.map((p) => (
+                      <div key={p.id} className="relative">
+                        <PackCard
+                          name={p.name} specialty={p.specialty} description={p.description}
+                          selected={draft.pathway_keys.includes(p.key)} onToggle={() => togglePack(p.key)}
+                        />
+                        <span className="pointer-events-none absolute right-11 top-4"><PathwayStatusBadge status={p.status} /></span>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <p className="mt-1.5 text-[11.5px] leading-relaxed text-sage-500">
+                  Programmes are draft pathways and require institutional clinical approval before any patient plan is activated.
                 </p>
-                <button
-                  type="button"
-                  onClick={shareCreated}
-                  className="tap mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-brand-600 px-3.5 py-1.5 text-[13px] font-semibold text-white hover:bg-brand-500"
-                >
-                  <Icon.Phone width={14} height={14} /> Share on WhatsApp
-                </button>
               </div>
-            )}
-          </section>
+
+              <div className="h-px bg-line" />
+              <p className="text-[12.5px] font-semibold text-sage-600">Admin (HOD) account</p>
+              <Field label="Admin full name">
+                <input value={draft.admin_name} onChange={(e) => setDraft({ ...draft, admin_name: e.target.value })} placeholder="e.g. Dr. Meera Nair" className={inputCls} />
+              </Field>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Admin email">
+                  <input value={draft.admin_email} onChange={(e) => setDraft({ ...draft, admin_email: e.target.value })} type="email" placeholder="admin@institution.in" className={inputCls} />
+                </Field>
+                <Field label="Temporary password" hint="They reset it on first sign-in.">
+                  <div className="flex items-center gap-1.5">
+                    <input value={draft.admin_password} readOnly className={`${inputCls} font-mono`} />
+                    <button type="button" onClick={() => setDraft({ ...draft, admin_password: generatePassword() })} title="Regenerate" className="tap shrink-0 rounded-lg border border-line px-2.5 py-2 text-[13px] font-semibold text-sage-600 hover:bg-mist-100 hover:text-ink">↻</button>
+                  </div>
+                </Field>
+              </div>
+
+              {formError && <ErrorNote>{formError}</ErrorNote>}
+              <PrimaryButton onClick={submit} disabled={busy || !canCreate} className="w-full">
+                {busy ? "Creating…" : "Create institution"}
+              </PrimaryButton>
+
+              {created && (
+                <div className="rounded-2xl bg-good-100 p-4 ring-1 ring-good-500/20">
+                  <p className="text-[13px] font-semibold text-ink">{created.org_name} created.</p>
+                  <p className="mt-1 text-[12px] text-sage-600">
+                    {created.admin_email} · temporary password <span className="font-semibold text-ink">{created.admin_password}</span>
+                    {created.pathway_keys.length ? ` · ${created.pathway_keys.length} programme${created.pathway_keys.length > 1 ? "s" : ""}` : ""}
+                  </p>
+                  <button type="button" onClick={shareCreated} className="tap mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-sky-600 px-3.5 py-1.5 text-[13px] font-semibold text-white hover:bg-sky-700">
+                    <Icon.Phone width={14} height={14} /> Share on WhatsApp
+                  </button>
+                </div>
+              )}
+            </div>
+          </Card>
 
           {/* List */}
-          <section className="rounded-2xl bg-white p-5 shadow-lift ring-1 ring-ink/[0.05]">
-            <h2 className="font-display text-[15px] font-semibold text-ink">All organisations</h2>
-            {loading ? (
-              <div className="mt-3 space-y-2">
-                {[0, 1].map((i) => (
-                  <div key={i} className="h-14 animate-pulse rounded-xl bg-mist" />
-                ))}
-              </div>
-            ) : error ? (
-              <div className="mt-3 rounded-xl bg-mist p-3 text-[13px] text-sage-600">
-                {error}
-                <p className="mt-1 text-[12px] text-sage-500">If this is the first time, deploy the platform-admin function first.</p>
-              </div>
-            ) : orgs.length === 0 ? (
-              <p className="mt-3 text-[13px] text-sage-500">No organisations yet.</p>
-            ) : (
-              <ul className="mt-3 divide-y divide-ink/[0.05]">
-                {orgs.map((o) => (
-                  <li key={o.id} className="py-2.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[14px] font-semibold text-ink">{o.display_name || o.name}</span>
-                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${o.setup_complete ? "bg-good-100 text-good-600" : "bg-warn-100 text-warn-600"}`}>
-                        {o.setup_complete ? "Active" : "Setup pending"}
-                      </span>
-                    </div>
-                    <div className="mt-0.5 text-[12px] text-sage-500">
-                      {o.admin_name ? `${o.admin_name} · ` : ""}
-                      {o.admin_email || "no admin"}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+          <Card>
+            <SectionHeader title="All institutions" sub="No patient data is shown here." />
+            <div className="mt-4">
+              {loading ? (
+                <div className="space-y-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-16" />)}</div>
+              ) : error ? (
+                <ErrorNote>{error}</ErrorNote>
+              ) : orgs.length === 0 ? (
+                <EmptyState title="No institutions yet" body="Create the first institution with the form on the left." />
+              ) : (
+                <ul className="divide-y divide-ink/[0.06]">
+                  {orgs.map((o) => (
+                    <li key={o.id} className="py-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[14.5px] font-semibold text-ink">{o.display_name || o.name}</span>
+                        {o.institution_type && <Chip tone="grey">{TYPE_LABEL[o.institution_type] ?? o.institution_type}</Chip>}
+                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${o.setup_complete ? "bg-good-100 text-good-600" : "bg-warn-100 text-warn-600"}`}>
+                          {o.setup_complete ? "Active" : "Setup pending"}
+                        </span>
+                        {o.patient_count != null && o.patient_count > 0 && (
+                          <span className="text-[11.5px] font-medium text-sage-500">{o.patient_count} patient{o.patient_count > 1 ? "s" : ""}</span>
+                        )}
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                        {o.pathways.length === 0 ? (
+                          <span className="text-[11.5px] text-sage-400">No programmes assigned</span>
+                        ) : (
+                          o.pathways.map((k) => <Chip key={k} tone="sky">{k === "spine" ? "Spine" : k === "joint" ? "Joint" : "Neuro"}</Chip>)
+                        )}
+                      </div>
+                      <div className="mt-1 text-[12px] text-sage-500">{o.admin_name ? `${o.admin_name} · ` : ""}{o.admin_email || "no admin"}</div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </Card>
         </div>
       </main>
     </div>

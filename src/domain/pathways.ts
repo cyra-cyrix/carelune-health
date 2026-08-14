@@ -111,6 +111,27 @@ export const PACK_META: Record<PathwayPackKey, { name: string; specialty: string
   neuro: { name: "Neuro-Rehabilitation Continuity", specialty: "Neuro-rehabilitation" },
 };
 
+/** Stable display order for the three governed packs. */
+export const PACK_ORDER: PathwayPackKey[] = ["spine", "joint", "neuro"];
+
+/**
+ * App roles that actually have a login today (no dedicated "therapist" login yet).
+ * A module's clinical `recorded_by: "therapist"` therefore maps to the NURSE /
+ * coordinator, who records therapy observations from the physiotherapist's visit
+ * note. A dedicated therapist role is a planned addition; until then this mapping
+ * is the single place that resolves it.
+ */
+export type AppRoleForRecording = "caregiver" | "family" | "nurse" | "pmr";
+export function recorderAppRole(r: Recorder): AppRoleForRecording {
+  switch (r) {
+    case "caregiver": return "caregiver";
+    case "family": return "family";
+    case "doctor": return "pmr";
+    case "nurse": return "nurse";
+    case "therapist": return "nurse"; // no therapist login yet — coordinator records
+  }
+}
+
 /* ------------------------------ config shapes ----------------------------- */
 
 export interface PathwayPhase {

@@ -31,6 +31,19 @@ export default {
         good: { 100: "#DDEDE4", 300: "#8CC7AC", 500: "#2C8761", 600: "#216E4E" }, // success / normal
         warn: { 100: "#F5ECD9", 300: "#DEC489", 500: "#A66E08", 600: "#8A5A00" }, // caution
         coral: { 100: "#FBEAE8", 200: "#F3CDC8", 500: "#C4392C", 600: "#B42318" }, // critical
+        // Phase-2 premium clinical system — calm sky blue on white/soft-grey/near-black.
+        sky: {
+          50: "#F0F6FE",
+          100: "#DDEBFB",
+          200: "#BFD9F7",
+          300: "#93BFF0",
+          400: "#5E9DE6",
+          500: "#3B82D9",
+          600: "#2A6FC7", // primary action
+          700: "#215AA6",
+          800: "#1C4A85",
+          900: "#183C6B",
+        },
       },
       borderRadius: {
         // Soft rounded "sheets" — friendly but not oversized (reference-inspired).

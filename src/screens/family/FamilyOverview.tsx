@@ -13,12 +13,14 @@ import {
   getSubscription,
   startTrial,
   addCaregiver,
+  getPatientPlan,
   type PatientRow,
   type ReadingRow,
   type UpdateRow,
   type CareTaskRow,
   type Storefront,
   type SubscriptionRow,
+  type PatientPlanRow,
 } from "../../lib/db";
 
 /**
@@ -36,6 +38,7 @@ export default function FamilyOverview() {
   const [doneCount, setDoneCount] = useState(0);
   const [storefront, setStorefront] = useState<Storefront | null>(null);
   const [subscription, setSubscription] = useState<SubscriptionRow | null>(null);
+  const [plan, setPlan] = useState<PatientPlanRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -58,13 +61,14 @@ export default function FamilyOverview() {
         if (!active) return;
         setPatient(p);
         if (p) {
-          const [readings, updates, careTasks, logs, sf, sub] = await Promise.all([
+          const [readings, updates, careTasks, logs, sf, sub, pl] = await Promise.all([
             getReadingHistory(p.id, 1).catch(() => [] as ReadingRow[]),
             getDailyUpdates(p.id, 8).catch(() => [] as UpdateRow[]),
             getCareTasks(p.id).catch(() => [] as CareTaskRow[]),
             getTodayTaskLogs(p.id).catch(() => new Set<string>()),
             getStorefront().catch(() => null),
             getSubscription(p.id).catch(() => null),
+            getPatientPlan(p.id).catch(() => null),
           ]);
           if (!active) return;
           setReading(readings[readings.length - 1] ?? null);
@@ -73,6 +77,7 @@ export default function FamilyOverview() {
           setDoneCount(careTasks.filter((t) => logs.has(t.id)).length);
           setStorefront(sf);
           setSubscription(sub);
+          setPlan(pl);
         }
       } catch (e) {
         if (active) setError(e instanceof Error ? e.message : "Could not load the overview.");
@@ -150,6 +155,9 @@ export default function FamilyOverview() {
             </div>
           </section>
         )}
+
+        {/* The recovery plan (family-readable once the doctor approves it) */}
+        <RecoveryPlanCard plan={plan} name={first} />
 
         {/* How they are today */}
         <section className="rounded-2xl bg-white p-4 shadow-lift ring-1 ring-ink/[0.05]">
@@ -339,6 +347,47 @@ function PackageCard({
             : "Fees are settled at your centre — nothing is charged here."}
         </p>
       </div>
+    </section>
+  );
+}
+
+/** The recovery plan, in plain language for the family — shown once the doctor
+ *  has approved it (RLS returns approved plans to the household, never drafts). */
+function RecoveryPlanCard({ plan, name }: { plan: PatientPlanRow | null; name: string }) {
+  if (!plan || plan.status !== "approved") return null;
+  const c = plan.content;
+  const milestones = (c.milestones ?? []).slice(0, 4);
+  const warnings = (c.warning_signs ?? []).slice(0, 4);
+  return (
+    <section className="rounded-2xl bg-white p-4 shadow-lift ring-1 ring-ink/[0.05]">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="font-display text-[16px] font-semibold text-ink">{name}&rsquo;s recovery plan</h2>
+        <span className="shrink-0 rounded-full bg-good-100 px-2.5 py-0.5 text-[11px] font-semibold text-good-600">Approved by the doctor</span>
+      </div>
+      {c.clinical_summary && <p className="mt-1.5 text-[13.5px] leading-relaxed text-sage-700">{c.clinical_summary}</p>}
+
+      {milestones.length > 0 && (
+        <div className="mt-3">
+          <h3 className="text-[12px] font-semibold uppercase tracking-wide text-sage-500">Goals</h3>
+          <ul className="mt-1.5 space-y-1">
+            {milestones.map((m, i) => (
+              <li key={i} className="flex items-start gap-2 text-[13.5px] text-ink">
+                <span className="mt-[3px] grid h-4 w-4 shrink-0 place-items-center rounded-full bg-good-100 text-[10px] font-bold text-good-600">✓</span>
+                {m.name}{m.by_day != null ? ` · by day ${m.by_day}` : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {warnings.length > 0 && (
+        <div className="mt-3 rounded-xl bg-coral-100/50 p-3 ring-1 ring-coral-500/15">
+          <h3 className="text-[12px] font-semibold text-coral-700">Call the team if you notice</h3>
+          <ul className="mt-1 space-y-0.5">
+            {warnings.map((w, i) => <li key={i} className="text-[13px] leading-relaxed text-sage-700">• {w.text}</li>)}
+          </ul>
+        </div>
+      )}
     </section>
   );
 }

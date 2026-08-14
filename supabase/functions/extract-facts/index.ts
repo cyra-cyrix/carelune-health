@@ -1,22 +1,27 @@
 // Supabase Edge Function: extract-facts  (Stage A of governed plan generation)
 // ---------------------------------------------------------------------------
-// Extracts PATIENT-SPECIFIC facts from a discharge summary (free text) into a
-// compact JSON structure, and caches them in patient_document_facts. This is run
-// ONCE per patient's documents; generate-plan then combines these facts with the
-// already-stored pathway structure — so the pathway is never resent to the model
-// and each generation stays token-efficient.
+// Extracts PATIENT-SPECIFIC facts from the governing discharge document into a
+// compact JSON structure, and caches them in patient_document_facts. Primary
+// input is a document the DOCTOR selected from the private patient-docs bucket:
+//   * digital PDF  -> text extracted server-side (unpdf),
+//   * JPG / PNG    -> read by the vision model.
+// Pasted text is only a fallback. Only the selected document is ever sent to the
+// model — never the whole document set. The pathway is not sent here at all; the
+// pathway is combined later, in generate-plan, keeping generation token-efficient.
 //
-// The model may ONLY copy what the documents state (every fact is provenance
+// The model may ONLY copy what the document states (every fact is provenance
 // "document"); it must never invent diagnoses, medicines, doses or restrictions.
 //
 // Auth: caller must be clinical staff (verified via their own RLS self-read).
 // Writes: uses service_role to upsert the cache after verifying the caller.
 //
-// Secret: OPENAI_API_KEY (already set). Optional OPENAI_MODEL.
+// Secret: OPENAI_API_KEY (already set). Optional OPENAI_MODEL (needs vision, e.g. gpt-4o).
 // Deploy:  supabase functions deploy extract-facts --project-ref <ref>
 // ---------------------------------------------------------------------------
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { encodeBase64 } from "jsr:@std/encoding@1/base64";
+import { extractText, getDocumentProxy } from "npm:unpdf@0.12.1";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -54,6 +59,12 @@ const asStr = (v: unknown) => (typeof v === "string" ? v : v == null ? "" : Stri
 const arr = (v: unknown) => (Array.isArray(v) ? v : []);
 const fact = (t: unknown) => ({ text: asStr((t as Record<string, unknown>)?.text ?? t), provenance: "document" as const });
 
+async function pdfToText(bytes: Uint8Array): Promise<string> {
+  const pdf = await getDocumentProxy(bytes);
+  const { text } = await extractText(pdf, { mergePages: true });
+  return (Array.isArray(text) ? text.join("\n") : text).trim();
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   try {
@@ -68,7 +79,6 @@ Deno.serve(async (req) => {
     const caller = createClient(url, anon, { global: { headers: { Authorization: authHeader } } });
     const { data: { user }, error: uErr } = await caller.auth.getUser();
     if (uErr || !user) return json({ error: "Not authenticated" }, 401);
-
     const { data: prof } = await caller.from("profiles").select("role, centre_id").eq("id", user.id).maybeSingle();
     if (!prof || !["nurse", "duty_doctor", "pmr"].includes(prof.role)) {
       return json({ error: "Only clinical staff can extract facts." }, 403);
@@ -76,28 +86,67 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const patientId = String(body.patient_id ?? "");
+    const documentId = body.document_id ? String(body.document_id) : "";
     const dischargeText = String(body.discharge_text ?? "").trim();
     if (!patientId) return json({ error: "patient_id is required." }, 400);
-    if (dischargeText.length < 20) return json({ error: "Paste the discharge summary text first." }, 400);
 
     const admin = createClient(url, service, { auth: { persistSession: false } });
-    // Confirm the caller can see this patient (same institution) before doing anything.
     const { data: pat } = await admin.from("patients").select("id, centre_id").eq("id", patientId).maybeSingle();
     if (!pat || pat.centre_id !== prof.centre_id) return json({ error: "Patient not found for your institution." }, 404);
 
-    // NOTE: discharge TEXT still contains PHI — not de-identified. Real-patient use
-    // needs an OpenAI DPA / zero-retention endpoint + upstream redaction. See 0011 notes.
+    // Resolve the input: the selected document (primary) OR pasted text (fallback).
+    let textInput = "";
+    let imageDataUrl = "";
+    let sourceDocumentId: string | null = null;
+
+    if (documentId) {
+      const { data: doc } = await admin.from("patient_documents")
+        .select("id, patient_id, centre_id, storage_path, mime, file_name").eq("id", documentId).maybeSingle();
+      // Tenant isolation: the document must belong to THIS patient + institution.
+      if (!doc || doc.patient_id !== patientId || doc.centre_id !== pat.centre_id) {
+        return json({ error: "Document not found for this patient." }, 404);
+      }
+      sourceDocumentId = doc.id;
+      const dl = await admin.storage.from("patient-docs").download(doc.storage_path);
+      if (dl.error || !dl.data) return json({ error: `Could not read the document: ${dl.error?.message ?? "unavailable"}` }, 502);
+      const bytes = new Uint8Array(await dl.data.arrayBuffer());
+      const mime = doc.mime ?? "";
+      if (mime === "application/pdf" || doc.file_name?.toLowerCase().endsWith(".pdf")) {
+        const text = await pdfToText(bytes).catch(() => "");
+        if (text.length < 20) {
+          return json({ error: "This looks like a scanned PDF with no selectable text. Upload it as an image (JPG/PNG), or paste the text." }, 422);
+        }
+        textInput = text;
+      } else if (mime.startsWith("image/")) {
+        imageDataUrl = `data:${mime};base64,${encodeBase64(bytes)}`;
+      } else {
+        return json({ error: "Unsupported document type. Use a digital PDF or a JPG/PNG image." }, 415);
+      }
+    } else if (dischargeText.length >= 20) {
+      textInput = dischargeText;
+    } else {
+      return json({ error: "Select a discharge document, or paste the summary text." }, 400);
+    }
+
+    // NOTE: document content still contains PHI — not de-identified. Real-patient
+    // use needs an OpenAI DPA / zero-retention endpoint + redaction. See 0011 notes.
+    const messages = imageDataUrl
+      ? [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: [
+            { type: "text", text: "Extract the facts from this discharge summary image." },
+            { type: "image_url", image_url: { url: imageDataUrl } },
+          ] },
+        ]
+      : [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: `DISCHARGE SUMMARY:\n${textInput}` },
+        ];
+
     const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${openaiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model, temperature: 0,
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: `DISCHARGE SUMMARY:\n${dischargeText}` },
-        ],
-      }),
+      body: JSON.stringify({ model, temperature: 0, response_format: { type: "json_object" }, messages }),
     });
     if (!aiRes.ok) return json({ error: `OpenAI error (${aiRes.status}): ${(await aiRes.text()).slice(0, 400)}` }, 502);
     const content = (await aiRes.json())?.choices?.[0]?.message?.content ?? "{}";
@@ -128,12 +177,12 @@ Deno.serve(async (req) => {
     };
 
     const { error: upErr } = await admin.from("patient_document_facts").upsert(
-      { patient_id: patientId, centre_id: pat.centre_id, facts, model, created_by: user.id, created_at: new Date().toISOString() },
+      { patient_id: patientId, centre_id: pat.centre_id, source_document_id: sourceDocumentId, facts, model, created_by: user.id, created_at: new Date().toISOString() },
       { onConflict: "patient_id" },
     );
     if (upErr) return json({ error: `Could not cache facts: ${upErr.message}` }, 500);
 
-    return json({ facts });
+    return json({ facts, source_document_id: sourceDocumentId });
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : String(e) }, 500);
   }

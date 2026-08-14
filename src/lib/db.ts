@@ -692,14 +692,59 @@ export async function assignGoverningVersion(patientId: string, versionId: strin
   if (error) throw new Error(pgErr(error, "Could not set the governing pathway version."));
 }
 
-/** Stage A: extract patient facts from the discharge text (cached server-side). */
-export async function extractFacts(patientId: string, dischargeText: string): Promise<Record<string, unknown>> {
+export type FactItem = { text: string; provenance: string };
+export type FactMedicine = { name: string; dose: string; freq: string; timing: string; note: string; provenance: string };
+export type DocumentFacts = {
+  diagnoses: FactItem[];
+  procedure: FactItem | null;
+  medicines: FactMedicine[];
+  investigations: FactItem[];
+  precautions: FactItem[];
+  diet: FactItem[];
+  baseline_function: string;
+  dates: { discharged_on: string; surgery_on: string };
+  missing: string[];
+  conflicts: string[];
+};
+
+const emptyFacts = (): DocumentFacts => ({
+  diagnoses: [], procedure: null, medicines: [], investigations: [], precautions: [], diet: [],
+  baseline_function: "", dates: { discharged_on: "", surgery_on: "" }, missing: [], conflicts: [],
+});
+
+/** Stage A: extract patient facts from a selected discharge DOCUMENT (primary) or
+ *  pasted text (fallback). Cached server-side with its source document id. */
+export async function extractFacts(
+  patientId: string,
+  input: { documentId?: string; dischargeText?: string },
+): Promise<DocumentFacts> {
   const { data, error } = await supabase.functions.invoke("extract-facts", {
-    body: { patient_id: patientId, discharge_text: dischargeText },
+    body: { patient_id: patientId, document_id: input.documentId, discharge_text: input.dischargeText },
   });
   if (error) throw new Error(await edgeError(error));
   if (data?.error) throw new Error(data.error);
-  return (data?.facts ?? {}) as Record<string, unknown>;
+  return { ...emptyFacts(), ...(data?.facts ?? {}) } as DocumentFacts;
+}
+
+export type StoredFacts = { facts: DocumentFacts; source_document_id: string | null } | null;
+
+/** The cached, possibly doctor-corrected facts for a patient. */
+export async function getDocumentFacts(patientId: string): Promise<StoredFacts> {
+  const { data, error } = await supabase
+    .from("patient_document_facts")
+    .select("facts, source_document_id")
+    .eq("patient_id", patientId)
+    .maybeSingle();
+  if (error) throw new Error(pgErr(error, "Could not load facts."));
+  if (!data) return null;
+  const row = data as { facts: DocumentFacts; source_document_id: string | null };
+  return { facts: { ...emptyFacts(), ...row.facts }, source_document_id: row.source_document_id };
+}
+
+/** Doctor: save corrected facts (RLS: admin/doctor of the patient's institution). */
+export async function saveDocumentFacts(patientId: string, facts: DocumentFacts): Promise<void> {
+  const { error } = await supabase.from("patient_document_facts").update({ facts }).eq("patient_id", patientId);
+  if (error) throw new Error(pgErr(error, "Could not save the facts."));
 }
 
 /** Whether Stage-A facts have been extracted for this patient. */
@@ -729,13 +774,14 @@ export type PatientPlanRow = {
   content: PlanDraft;
   pathway_version_id: string | null;
   updated_at: string;
+  activated_at: string | null;
 };
 
 /** The latest generated plan draft for a patient, if any. */
 export async function getPatientPlan(patientId: string): Promise<PatientPlanRow | null> {
   const { data, error } = await supabase
     .from("patient_plans")
-    .select("id, version, status, content, pathway_version_id, updated_at")
+    .select("id, version, status, content, pathway_version_id, updated_at, activated_at")
     .eq("patient_id", patientId)
     .order("version", { ascending: false })
     .limit(1)
@@ -751,6 +797,15 @@ export async function savePlan(planId: string, content: PlanDraft, approve: bool
   if (approve) patch.status = "approved";
   const { error } = await supabase.from("patient_plans").update(patch).eq("id", planId);
   if (error) throw new Error(pgErr(error, "Could not save the plan."));
+}
+
+/** Doctor: ATOMICALLY activate an APPROVED plan into the runtime records the app
+ *  reads (medications + care_tasks). Idempotent; returns counts. Never partial. */
+export async function activateCarePlan(planId: string): Promise<{ medicines: number; tasks: number }> {
+  const { data, error } = await supabase.rpc("activate_patient_plan", { p_plan: planId });
+  if (error) throw new Error(pgErr(error, "Could not activate the care plan."));
+  const d = (data ?? {}) as { medicines?: number; tasks?: number };
+  return { medicines: d.medicines ?? 0, tasks: d.tasks ?? 0 };
 }
 
 /* ----------------------------- Team (admin) ------------------------------- */

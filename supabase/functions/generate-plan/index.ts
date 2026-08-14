@@ -207,9 +207,15 @@ Deno.serve(async (req) => {
     const errors = validatePlan(plan as Record<string, unknown>, enabled);
     if (errors.length) return json({ error: "Generated plan failed validation.", validation: { ok: false, errors } }, 422);
 
+    // Versioning: overwrite the current editable draft, but preserve any already
+    // approved/activated version by creating a NEW draft version above it.
+    const { data: latest } = await admin.from("patient_plans")
+      .select("version, status").eq("patient_id", patientId).order("version", { ascending: false }).limit(1).maybeSingle();
+    const nextVersion = latest ? (latest.status === "draft" ? latest.version : latest.version + 1) : 1;
+
     const { data: saved, error: sErr } = await admin.from("patient_plans").upsert(
       {
-        patient_id: patientId, centre_id: pat.centre_id, version: 1,
+        patient_id: patientId, centre_id: pat.centre_id, version: nextVersion,
         pathway_version_id: pat.pathway_version_id, content: plan, status: "draft", generated_by: user.id,
       },
       { onConflict: "patient_id,version" },

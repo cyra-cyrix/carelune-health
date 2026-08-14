@@ -105,12 +105,14 @@ export interface PlanDraft {
   education: { title: string; status: string }[];
   review_dates: { date: string; purpose: string }[];
   missing: string[];
+  conflicts?: string[];
 }
 
 const ALLOWED_KEYS = new Set([
   "clinical_summary", "diagnosis", "procedure", "medicines", "investigations",
   "daily_tasks", "therapy_tasks", "diet", "observations", "milestones",
-  "precautions", "warning_signs", "escalation", "education", "review_dates", "missing",
+  "precautions", "warning_signs", "escalation", "education", "review_dates",
+  "missing", "conflicts",
 ]);
 
 /**
@@ -176,6 +178,8 @@ export function validatePlanOutput(raw: unknown, enabledModules?: string[]): Val
   checkTasks("daily_tasks");
   checkTasks("therapy_tasks");
 
+  // Observations are driven by the governed pathway — module must be known, enabled
+  // (when provided) and carry a valid recorder + frequency.
   if (raw.observations !== undefined) {
     if (!Array.isArray(raw.observations)) e.push("observations must be an array");
     else
@@ -184,10 +188,46 @@ export function validatePlanOutput(raw: unknown, enabledModules?: string[]): Val
         if (!MODULE_REGISTRY[String(o.module)]) e.push(`observations[${i}].module "${String(o.module)}" is not a known module`);
         else if (enabledModules && !enabledModules.includes(String(o.module)))
           e.push(`observations[${i}].module "${String(o.module)}" is not enabled for this pathway`);
+        if (!RECORDERS.includes(o.recorded_by as never)) e.push(`observations[${i}].recorded_by "${String(o.recorded_by)}" is invalid`);
+        if (!FREQUENCIES.includes(o.frequency as never)) e.push(`observations[${i}].frequency "${String(o.frequency)}" is invalid`);
+      });
+  }
+
+  // Milestones — structure only (names are pathway/doctor sourced, never invented facts).
+  if (raw.milestones !== undefined) {
+    if (!Array.isArray(raw.milestones)) e.push("milestones must be an array");
+    else
+      raw.milestones.forEach((m, i) => {
+        if (!isObj(m) || !nonEmpty(m.name)) e.push(`milestones[${i}] needs a name`);
+        if (isObj(m) && m.by_day !== null && m.by_day !== undefined && !isNum(m.by_day))
+          e.push(`milestones[${i}].by_day must be a number or null`);
+      });
+  }
+
+  // Warning signs + escalation — required for a safe home plan.
+  if (raw.warning_signs !== undefined) {
+    if (!Array.isArray(raw.warning_signs)) e.push("warning_signs must be an array");
+    else
+      raw.warning_signs.forEach((w, i) => {
+        if (!isObj(w) || !nonEmpty(w.text)) e.push(`warning_signs[${i}] needs text`);
+        if (isObj(w) && !["attention", "urgent"].includes(String(w.severity)))
+          e.push(`warning_signs[${i}].severity must be attention/urgent`);
+      });
+  }
+  const esc = raw.escalation;
+  if (!isObj(esc) || !nonEmpty(esc.routine) || !nonEmpty(esc.urgent) || !nonEmpty(esc.emergency))
+    e.push("escalation must have routine, urgent and emergency");
+
+  if (raw.review_dates !== undefined) {
+    if (!Array.isArray(raw.review_dates)) e.push("review_dates must be an array");
+    else
+      raw.review_dates.forEach((r, i) => {
+        if (!isObj(r) || !nonEmpty(r.purpose)) e.push(`review_dates[${i}] needs a purpose`);
       });
   }
 
   if (raw.missing !== undefined && !Array.isArray(raw.missing)) e.push("missing must be an array of strings");
+  if (raw.conflicts !== undefined && !Array.isArray(raw.conflicts)) e.push("conflicts must be an array of strings");
 
   return e.length ? { ok: false, errors: e } : { ok: true, errors: [], value: raw as unknown as PlanDraft };
 }

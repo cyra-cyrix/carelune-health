@@ -20,6 +20,7 @@ import Caseload from "./screens/pmr/Caseload";
 import PatientProgress from "./screens/pmr/PatientProgress";
 import Onboard from "./screens/intake/Onboard";
 import PatientSetup from "./screens/intake/PatientSetup";
+import PlanStudio from "./screens/intake/PlanStudio";
 
 /**
  * v2 role router. The signed-in account's role (from Supabase user_metadata)
@@ -96,14 +97,14 @@ function RoleSurface({ role }: { role: AppRole }) {
 
 /* ---------------- PMR workspace (caseload → patient → weekly review · governance) ---------------- */
 
-type PmrScreen = "caseload" | "patient" | "setup" | "onboard" | "team" | "reglink" | "programme";
+type PmrScreen = "caseload" | "patient" | "setup" | "planstudio" | "onboard" | "team" | "reglink" | "programme";
 
 function PmrWorkspace() {
   const [screen, setScreen] = useState<PmrScreen>("caseload");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const { profile } = useBranding();
   const isAdmin = profile?.is_admin ?? false;
-  const inCaseload = screen === "caseload" || screen === "patient" || screen === "setup" || screen === "onboard";
+  const inCaseload = screen === "caseload" || screen === "patient" || screen === "setup" || screen === "planstudio" || screen === "onboard";
 
   const open = (id: string, status?: string) => {
     setSelectedId(id);
@@ -139,8 +140,11 @@ function PmrWorkspace() {
         <PatientSetup
           patientId={selectedId}
           onExit={() => setScreen("caseload")}
-          onContinue={() => setScreen("onboard")}
+          onContinue={() => setScreen("planstudio")}
         />
+      )}
+      {screen === "planstudio" && selectedId && (
+        <PlanStudio patientId={selectedId} onExit={() => setScreen("caseload")} />
       )}
       {screen === "onboard" && selectedId && (
         <Onboard patientId={selectedId} onExit={() => setScreen("caseload")} />

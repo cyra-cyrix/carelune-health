@@ -83,4 +83,28 @@ describe("validatePlanOutput (Stage B)", () => {
     expect(r.ok).toBe(false);
     expect(r.errors.join(" ")).toMatch(/not enabled/);
   });
+  it("rejects an observation with an invalid recorder or frequency", () => {
+    const bad = { ...goodPlan, observations: [{ module: "pain", frequency: "hourly", recorded_by: "robot" }] };
+    const r = validatePlanOutput(bad, ["pain", "medicines"]);
+    expect(r.ok).toBe(false);
+    expect(r.errors.join(" ")).toMatch(/recorded_by|frequency/);
+  });
+  it("rejects a warning sign with a bad severity", () => {
+    const bad = { ...goodPlan, warning_signs: [{ text: "Fever", severity: "mild" }] };
+    expect(validatePlanOutput(bad, ["pain", "medicines"]).ok).toBe(false);
+  });
+  it("rejects a missing escalation block", () => {
+    const bad = { ...goodPlan, escalation: { routine: "nurse" } };
+    const r = validatePlanOutput(bad, ["pain", "medicines"]);
+    expect(r.ok).toBe(false);
+    expect(r.errors.join(" ")).toMatch(/escalation/);
+  });
+  it("rejects a milestone with no name", () => {
+    const bad = { ...goodPlan, milestones: [{ key: "x", name: "", by_day: 7 }] };
+    expect(validatePlanOutput(bad, ["pain", "medicines"]).ok).toBe(false);
+  });
+  it("accepts a conflicts array but rejects a non-array conflicts", () => {
+    expect(validatePlanOutput({ ...goodPlan, conflicts: ["Two different wound-care instructions"] }, ["pain", "medicines"]).ok).toBe(true);
+    expect(validatePlanOutput({ ...goodPlan, conflicts: "nope" }, ["pain", "medicines"]).ok).toBe(false);
+  });
 });

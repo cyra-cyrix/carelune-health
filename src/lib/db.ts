@@ -3,6 +3,7 @@
 // each signed-in user may read/write — these helpers never bypass it.
 
 import { supabase } from "./supabase";
+import type { PlanDraft } from "./pathwayValidation";
 
 /* ------------------------------- Row types ------------------------------- */
 
@@ -583,6 +584,173 @@ export async function deletePatientDocument(doc: { id: string; storage_path: str
   const { error } = await supabase.from("patient_documents").delete().eq("id", doc.id);
   if (error) throw new Error(pgErr(error, "Could not delete the document."));
   await supabase.storage.from("patient-docs").remove([doc.storage_path]).catch(() => undefined);
+}
+
+/* ---------- Phase 5: doctor 3-questions + governed AI plan generation ------- */
+
+export type PlanIntake = {
+  milestone_goal: string;
+  milestone_by: string;
+  monitor_focus: string;
+  non_negotiables: string;
+};
+
+/** The doctor's three answers for a patient, if saved. */
+export async function getPlanIntake(patientId: string): Promise<PlanIntake | null> {
+  const { data, error } = await supabase
+    .from("patient_plan_intake")
+    .select("milestone_goal, milestone_by, monitor_focus, non_negotiables")
+    .eq("patient_id", patientId)
+    .maybeSingle();
+  if (error) throw new Error(pgErr(error, "Could not load the intake."));
+  if (!data) return null;
+  const d = data as Partial<PlanIntake>;
+  return {
+    milestone_goal: d.milestone_goal ?? "",
+    milestone_by: d.milestone_by ?? "",
+    monitor_focus: d.monitor_focus ?? "",
+    non_negotiables: d.non_negotiables ?? "",
+  };
+}
+
+/** Doctor: save the three intake answers (author stamped server-side). */
+export async function savePlanIntake(patientId: string, intake: PlanIntake): Promise<void> {
+  const { error } = await supabase
+    .from("patient_plan_intake")
+    .upsert({ patient_id: patientId, ...intake }, { onConflict: "patient_id" });
+  if (error) throw new Error(pgErr(error, "Could not save your answers."));
+}
+
+export type PackPathway = {
+  pathway_id: string;
+  key: string;
+  name: string;
+  status: PathwayPackRow["status"];
+  version_id: string | null;
+  version_status: PathwayPackRow["status"] | null;
+  institution_approved: boolean;
+};
+
+/** The pathways within a pack + their latest version + this institution's approval
+ *  state — used to pick and clinically-approve the governing version for a patient. */
+export async function getPackPathways(packId: string): Promise<PackPathway[]> {
+  const me = await getMyProfile();
+  const { data: pws, error } = await supabase
+    .from("pathways")
+    .select("id, key, name, status")
+    .eq("pack_id", packId)
+    .order("key");
+  if (error) throw new Error(pgErr(error, "Could not load pathways."));
+  const pathways = (pws ?? []) as { id: string; key: string; name: string; status: PackPathway["status"] }[];
+  if (!pathways.length) return [];
+
+  const { data: vers } = await supabase
+    .from("pathway_versions")
+    .select("id, pathway_id, version, status")
+    .in("pathway_id", pathways.map((p) => p.id))
+    .order("version", { ascending: false });
+  const latestByPathway = new Map<string, { id: string; status: PackPathway["status"] }>();
+  for (const v of (vers ?? []) as { id: string; pathway_id: string; status: PackPathway["status"] }[]) {
+    if (!latestByPathway.has(v.pathway_id)) latestByPathway.set(v.pathway_id, { id: v.id, status: v.status });
+  }
+
+  const versionIds = [...latestByPathway.values()].map((v) => v.id);
+  const approved = new Set<string>();
+  if (me?.centre_id && versionIds.length) {
+    const { data: ipv } = await supabase
+      .from("institution_pathway_versions")
+      .select("version_id")
+      .eq("centre_id", me.centre_id)
+      .in("version_id", versionIds);
+    for (const r of (ipv ?? []) as { version_id: string }[]) approved.add(r.version_id);
+  }
+
+  return pathways.map((p) => {
+    const v = latestByPathway.get(p.id) ?? null;
+    return {
+      pathway_id: p.id,
+      key: p.key,
+      name: p.name,
+      status: p.status,
+      version_id: v?.id ?? null,
+      version_status: v?.status ?? null,
+      institution_approved: v ? approved.has(v.id) : false,
+    };
+  });
+}
+
+/** Doctor/admin: record this institution's clinical approval of a pathway version. */
+export async function approvePathwayVersion(versionId: string): Promise<void> {
+  const { error } = await supabase.rpc("approve_pathway_version_for_institution", { p_version: versionId });
+  if (error) throw new Error(pgErr(error, "Could not approve the pathway version."));
+}
+
+/** Staff: set the patient's governing pathway version (must be institution-approved
+ *  or platform-approved — the DB trigger enforces it). */
+export async function assignGoverningVersion(patientId: string, versionId: string): Promise<void> {
+  const { error } = await supabase.from("patients").update({ pathway_version_id: versionId }).eq("id", patientId);
+  if (error) throw new Error(pgErr(error, "Could not set the governing pathway version."));
+}
+
+/** Stage A: extract patient facts from the discharge text (cached server-side). */
+export async function extractFacts(patientId: string, dischargeText: string): Promise<Record<string, unknown>> {
+  const { data, error } = await supabase.functions.invoke("extract-facts", {
+    body: { patient_id: patientId, discharge_text: dischargeText },
+  });
+  if (error) throw new Error(await edgeError(error));
+  if (data?.error) throw new Error(data.error);
+  return (data?.facts ?? {}) as Record<string, unknown>;
+}
+
+/** Whether Stage-A facts have been extracted for this patient. */
+export async function hasDocumentFacts(patientId: string): Promise<boolean> {
+  const { data } = await supabase.from("patient_document_facts").select("patient_id").eq("patient_id", patientId).maybeSingle();
+  return !!data;
+}
+
+export type GeneratedPlan = {
+  plan: PlanDraft;
+  saved?: { id: string; version: number; status: string };
+  validation: { ok: boolean; errors: string[] };
+};
+
+/** Stage B: generate + server-validate a DRAFT plan (never activates care). */
+export async function generatePlan(patientId: string): Promise<GeneratedPlan> {
+  const { data, error } = await supabase.functions.invoke("generate-plan", { body: { patient_id: patientId } });
+  if (error) throw new Error(await edgeError(error));
+  if (data?.error) throw new Error(data.validation ? `${data.error} (${(data.validation.errors ?? []).join("; ")})` : data.error);
+  return data as GeneratedPlan;
+}
+
+export type PatientPlanRow = {
+  id: string;
+  version: number;
+  status: "draft" | "approved";
+  content: PlanDraft;
+  pathway_version_id: string | null;
+  updated_at: string;
+};
+
+/** The latest generated plan draft for a patient, if any. */
+export async function getPatientPlan(patientId: string): Promise<PatientPlanRow | null> {
+  const { data, error } = await supabase
+    .from("patient_plans")
+    .select("id, version, status, content, pathway_version_id, updated_at")
+    .eq("patient_id", patientId)
+    .order("version", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(pgErr(error, "Could not load the plan."));
+  return (data as PatientPlanRow) ?? null;
+}
+
+/** Doctor: save the edited draft (status stays draft) or approve it (status
+ *  approved; approved_by/at stamped server-side). Approval does NOT activate care. */
+export async function savePlan(planId: string, content: PlanDraft, approve: boolean): Promise<void> {
+  const patch: Record<string, unknown> = { content };
+  if (approve) patch.status = "approved";
+  const { error } = await supabase.from("patient_plans").update(patch).eq("id", planId);
+  if (error) throw new Error(pgErr(error, "Could not save the plan."));
 }
 
 /* ----------------------------- Team (admin) ------------------------------- */

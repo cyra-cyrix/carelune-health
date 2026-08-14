@@ -54,7 +54,7 @@ Return ONLY a JSON object with exactly this shape:
     { "name": "exact name", "dose": "e.g. 5 mg", "freq": "e.g. 1-0-1", "timing": "e.g. After food", "note": "from summary or empty" }
   ],
   "targets": [
-    { "goal": "recovery goal stated or implied in the summary", "window": "e.g. By week 4 (only if stated), else empty" }
+    { "goal": "recovery goal EXPLICITLY stated in the summary (never inferred)", "window": "e.g. By week 4 (only if stated), else empty" }
   ]
 }
 Use time_label in 24h HH:MM. Order tasks by time. Keep titles short. Output valid JSON only, no prose.`;
@@ -97,7 +97,11 @@ Deno.serve(async (req) => {
       return json({ error: "Paste the discharge summary text (at least a few lines) first." }, 400);
     }
 
-    // PHI minimisation: send only the summary text to OpenAI, never the patient's name.
+    // NOTE: the structured patient-name field is not sent, but the discharge
+    // summary TEXT itself typically still contains PHI (name, MRN, dates, clinician
+    // names, contact details). This is NOT de-identified. Before real-patient use
+    // this requires an OpenAI DPA / zero-retention endpoint and/or upstream
+    // redaction, plus consent that names AI processing. See 0011 gate notes.
     const userContent = `DISCHARGE SUMMARY:\n${summaryText}`;
 
     const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {

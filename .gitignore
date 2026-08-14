@@ -1,0 +1,47 @@
+# Carelune Neuro Continuum — demonstration prototype.
+#
+# This folder is the Carelune app root, but it ALSO contains three unrelated
+# projects and some large binaries. Everything below is excluded so a GitHub
+# repo for Carelune stays Carelune-only.
+#
+# Before your first push, sanity-check with:  git status --short
+# If anything below appears in that list, stop and fix this file first.
+
+# --- Dependencies and build output (Netlify builds these itself) ---
+node_modules/
+dist/
+
+# --- Unrelated projects that happen to live in this folder (~2.2 GB) ---
+# NOTE: this is a blacklist, so a NEW unrelated folder dropped in here will not
+# be ignored automatically. Re-check `git status --short` before every push.
+cyrix-discovery/
+airliquide-ocr/
+why-continuum-care/
+joy/
+CYRIX_LIVE_DISCOVERY/
+CYRIX_LIVE_DISCOVERY_FROZEN_SPEC.zip
+*.zip
+
+# --- Source attachments / pitch material — not part of the demo ---
+Continuum-Pitch.pdf
+Continuum-Pitch.pptx
+*.pptx
+*.key
+
+# --- Local environment and secrets — must never be committed ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key.json
+.netlify/
+
+# --- OS and editor noise ---
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# --- Local session/scratch state ---
+.claude/settings.local.json

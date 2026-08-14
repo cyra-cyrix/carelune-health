@@ -1,0 +1,50 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "punarvaas-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "port": 5173
+    },
+    {
+      "name": "cyrix-discovery",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "cyrix-discovery"
+      ],
+      "port": 5174
+    },
+    {
+      "name": "cyra-demo",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "/Users/sujith/Documents/Claude/CYRA discovery"
+      ],
+      "port": 3001
+    },
+    {
+      "name": "joy-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "joy",
+        "--",
+        "--port",
+        "3100"
+      ],
+      "port": 3100
+    }
+  ]
+}

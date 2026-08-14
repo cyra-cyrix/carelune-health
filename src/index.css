@@ -1,0 +1,71 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-mist text-ink font-sans antialiased;
+    font-feature-settings: "cv02", "cv11", "ss01";
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-display;
+    letter-spacing: -0.015em;
+  }
+  /* Visible, brand-tinted keyboard focus everywhere. */
+  :where(a, button, [tabindex], input, select, textarea):focus-visible {
+    @apply outline-none ring-2 ring-brand-600 ring-offset-2 ring-offset-mist;
+  }
+}
+
+@layer components {
+  /* Card: soft rounded surface — gentle elevation, calm. */
+  .card {
+    @apply rounded-2xl bg-white shadow-card;
+  }
+  /* Eyebrow: encodes a real grouping (time-of-day, category) — not decoration. */
+  .eyebrow {
+    @apply text-[11px] font-semibold uppercase tracking-[0.14em] text-sage-500;
+  }
+  .tap {
+    @apply transition-transform duration-100 active:scale-[0.98];
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* Respect the device safe area (mobile bottom navigation). */
+.pb-safe {
+  padding-bottom: calc(env(safe-area-inset-bottom));
+}
+.pt-safe {
+  padding-top: calc(env(safe-area-inset-top));
+}
+
+/* Thin, unobtrusive scrollbars inside the day column */
+.soft-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.soft-scroll::-webkit-scrollbar-thumb {
+  background: rgba(27, 43, 38, 0.14);
+  border-radius: 9999px;
+}

@@ -3,6 +3,7 @@ import {
   getPatientQueries,
   getQueryReplies,
   postQueryReply,
+  markPatientQueriesRead,
   type ApprovalRow,
   type QueryMessageRow,
 } from "../lib/db";
@@ -27,6 +28,11 @@ export default function ConcernInbox({ patientId }: { patientId: string }) {
     setQueries(qs);
     setReplies(rs);
     setLoading(false);
+    // The care team is now looking — stamp unread family messages as read so the
+    // family sees "Seen …". Best-effort; never blocks the thread.
+    if (qs.some((q) => q.type === "patient_query" && !q.read_at)) {
+      void markPatientQueriesRead(patientId).catch(() => {});
+    }
   };
 
   useEffect(() => {

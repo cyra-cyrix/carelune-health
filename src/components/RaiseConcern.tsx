@@ -251,8 +251,15 @@ const REPLY_ROLE: Record<string, string> = {
 
 function queryStatus(q: ApprovalRow, replied: boolean): { label: string; cls: string } {
   if (replied) return { label: "Replied", cls: "text-good-600" };
+  if (q.read_at) return { label: `Seen by the care team · ${seenTime(q.read_at)}`, cls: "text-sky-700" };
   if (q.status === "pending") return { label: "Awaiting the care team", cls: "text-warn-600" };
   return { label: "Reviewed by the care team", cls: "text-good-600" };
+}
+
+function seenTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 }
 
 function niceDate(iso: string): string {

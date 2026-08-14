@@ -73,6 +73,9 @@ export type ApprovalRow = {
   urgency: "routine" | "urgent";
   status: "pending" | "approved" | "declined" | "suggested";
   created_at: string;
+  /** Read receipt (0020): when + who first read a family message. */
+  read_at?: string | null;
+  read_by?: string | null;
 };
 
 export type UpdateRow = {
@@ -1238,6 +1241,13 @@ export async function getPatientQueries(patientId: string): Promise<ApprovalRow[
     .limit(20);
   if (error) throw error;
   return (data ?? []) as ApprovalRow[];
+}
+
+/** Staff: stamp this patient's still-unread family messages as read (read receipt).
+ *  Server-side: staff-only + same-institution. Best-effort; safe to call on open. */
+export async function markPatientQueriesRead(patientId: string): Promise<void> {
+  const { error } = await supabase.rpc("mark_patient_query_read", { p_patient: patientId });
+  if (error) throw error;
 }
 
 /** Transcribe a short voice note to text (OpenAI, via the transcribe function).

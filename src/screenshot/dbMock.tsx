@@ -166,6 +166,7 @@ export async function getQueryReplies(patientId: string): Promise<QueryMessageRo
     : [];
 }
 export async function postQueryReply(): Promise<void> {}
+export async function raiseApproval(): Promise<void> {}
 
 /* --------------------------------- plans ---------------------------------- */
 

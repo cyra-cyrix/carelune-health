@@ -9,6 +9,7 @@ import { AuthScreen } from "../auth/AuthScreen";
 import Caseload from "../screens/pmr/Caseload";
 import PatientProgress from "../screens/pmr/PatientProgress";
 import PlanStudio from "../screens/intake/PlanStudio";
+import NursePatient from "../screens/nurse/NursePatient";
 import "../index.css";
 
 const screen = new URLSearchParams(location.search).get("screen") ?? "command";
@@ -20,6 +21,8 @@ function Harness() {
       return <AuthScreen />;
     case "cockpit":
       return <PatientProgress patientId="p1" onBack={noop} />;
+    case "nurse":
+      return <NursePatient patientId="p1" onBack={noop} />;
     case "studio-prepare":
     case "studio-review":
       return <PlanStudio patientId="p1" onExit={noop} />;

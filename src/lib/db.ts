@@ -861,6 +861,26 @@ export async function createTeamUser(input: NewTeamUser): Promise<void> {
   if (data?.error) throw new Error(data.error);
 }
 
+/** Admin: reset a teammate's password to a new temporary one (they reset on next
+ *  login). Restricted to the caller's own institution server-side. */
+export async function resetTeamUserPassword(userId: string, password: string): Promise<void> {
+  const { data, error } = await supabase.functions.invoke("admin-users", {
+    body: { action: "reset-password", user_id: userId, password },
+  });
+  if (error) throw new Error(await edgeError(error));
+  if (data?.error) throw new Error(data.error);
+}
+
+/** Admin: permanently remove a teammate account. Cannot remove yourself or an
+ *  admin; restricted to the caller's own institution server-side. */
+export async function removeTeamUser(userId: string): Promise<void> {
+  const { data, error } = await supabase.functions.invoke("admin-users", {
+    body: { action: "remove", user_id: userId },
+  });
+  if (error) throw new Error(await edgeError(error));
+  if (data?.error) throw new Error(data.error);
+}
+
 /* -------------------------- Platform (super admin) ------------------------ */
 
 export type OrgSummary = {

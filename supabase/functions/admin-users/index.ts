@@ -112,6 +112,41 @@ Deno.serve(async (req) => {
       return json({ user: { id: uid, email, full_name, role, is_admin: false } });
     }
 
+    // ---- reset a teammate's password (issues a new temporary password) ----
+    if (action === "reset-password") {
+      const target_id = String(body.user_id ?? "");
+      const password = String(body.password ?? "");
+      if (!target_id) return json({ error: "user_id is required." }, 400);
+      if (password.length < 6) return json({ error: "Password must be at least 6 characters." }, 400);
+
+      const { data: tp } = await admin.from("profiles").select("centre_id").eq("id", target_id).maybeSingle();
+      if (!tp || tp.centre_id !== centreId) return json({ error: "That teammate is not in your institution." }, 403);
+
+      const { error: upErr } = await admin.auth.admin.updateUserById(target_id, { password });
+      if (upErr) return json({ error: upErr.message }, 400);
+      await admin.from("profiles").update({ must_reset_password: true }).eq("id", target_id);
+      return json({ ok: true, user_id: target_id });
+    }
+
+    // ---- remove a teammate (permanent; guarded) ----
+    if (action === "remove") {
+      const target_id = String(body.user_id ?? "");
+      if (!target_id) return json({ error: "user_id is required." }, 400);
+      if (target_id === user.id) return json({ error: "You can't remove your own account." }, 400);
+
+      const { data: tp } = await admin
+        .from("profiles")
+        .select("centre_id, is_admin, is_super_admin")
+        .eq("id", target_id)
+        .maybeSingle();
+      if (!tp || tp.centre_id !== centreId) return json({ error: "That teammate is not in your institution." }, 403);
+      if (tp.is_admin || tp.is_super_admin) return json({ error: "You can't remove an admin account." }, 400);
+
+      const { error: dErr } = await admin.auth.admin.deleteUser(target_id);
+      if (dErr) return json({ error: dErr.message }, 400);
+      return json({ ok: true, user_id: target_id });
+    }
+
     return json({ error: "Unknown action" }, 400);
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : String(e) }, 500);

@@ -3,7 +3,7 @@ import { LoopMark } from "../components/ui";
 import { RecoveryTrajectory } from "../components/clinical";
 import { useAuth } from "./AuthProvider";
 
-type Mode = "signin" | "signup" | "reset";
+type Mode = "signin" | "reset";
 
 const FIELD =
   "w-full rounded-2xl bg-white px-4 py-3 text-[15px] text-ink ring-1 ring-line " +
@@ -112,7 +112,7 @@ function AuthShell({ children }: { children: ReactNode }) {
 }
 
 export function AuthScreen() {
-  const { signIn, signUp, sendPasswordReset } = useAuth();
+  const { signIn, sendPasswordReset } = useAuth();
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -137,11 +137,6 @@ export function AuthScreen() {
       if (mode === "signin") {
         const { error } = await signIn(addr, password);
         if (error) setError(error);
-      } else if (mode === "signup") {
-        const { error, needsEmailConfirm } = await signUp(addr, password);
-        if (error) setError(error);
-        else if (needsEmailConfirm)
-          setNotice("Account created. Check your email to confirm, then sign in.");
       } else {
         const { error } = await sendPasswordReset(addr);
         if (error) setError(error);
@@ -152,9 +147,8 @@ export function AuthScreen() {
     }
   };
 
-  const title =
-    mode === "signin" ? "Sign in" : mode === "signup" ? "Create account" : "Reset password";
-  const cta = mode === "signin" ? "Sign in" : mode === "signup" ? "Create account" : "Send reset link";
+  const title = mode === "signin" ? "Sign in" : "Reset password";
+  const cta = mode === "signin" ? "Sign in" : "Send reset link";
 
   return (
     <AuthShell>
@@ -162,7 +156,7 @@ export function AuthScreen() {
       <p className="mt-1.5 text-[13.5px] leading-relaxed text-sage-600">
         {mode === "reset"
           ? "Enter your email and we'll send a link to set a new password."
-          : "Clinicians and care teams sign in here. Families registering a patient can create an account."}
+          : "Clinicians and care teams sign in here. New patients are added by their care team through a registration link."}
       </p>
 
       <form onSubmit={submit} className="mt-7 space-y-3">
@@ -186,7 +180,7 @@ export function AuthScreen() {
             <input
               id="password"
               type="password"
-              autoComplete={mode === "signup" ? "new-password" : "current-password"}
+              autoComplete="current-password"
               required
               minLength={6}
               value={password}
@@ -212,28 +206,11 @@ export function AuthScreen() {
       </form>
 
       <div className="mt-5 space-y-1.5 text-[13px]">
-        {mode === "signin" && (
-          <>
-            <button type="button" onClick={() => reset("reset")} className="tap block font-medium text-sky-700 hover:text-sky-800">
-              Forgot your password?
-            </button>
-            <p className="text-sage-600">
-              New patient?{" "}
-              <button type="button" onClick={() => reset("signup")} className="font-semibold text-sky-700 hover:text-sky-800">
-                Create an account
-              </button>
-            </p>
-          </>
-        )}
-        {mode === "signup" && (
-          <p className="text-sage-600">
-            Already have an account?{" "}
-            <button type="button" onClick={() => reset("signin")} className="font-semibold text-sky-700 hover:text-sky-800">
-              Sign in
-            </button>
-          </p>
-        )}
-        {mode === "reset" && (
+        {mode === "signin" ? (
+          <button type="button" onClick={() => reset("reset")} className="tap block font-medium text-sky-700 hover:text-sky-800">
+            Forgot your password?
+          </button>
+        ) : (
           <button type="button" onClick={() => reset("signin")} className="tap block font-medium text-sky-700 hover:text-sky-800">
             ← Back to sign in
           </button>

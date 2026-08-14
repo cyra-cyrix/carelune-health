@@ -1,25 +1,32 @@
 import { type FormEvent, type ReactNode, useState } from "react";
 import { LoopMark } from "../components/ui";
+import { RecoveryTrajectory } from "../components/clinical";
 import { useAuth } from "./AuthProvider";
 
 type Mode = "signin" | "signup" | "reset";
 
 const FIELD =
-  "w-full rounded-2xl bg-white px-4 py-3 text-[15px] text-ink ring-1 ring-ink/10 " +
-  "placeholder:text-sage-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400";
+  "w-full rounded-2xl bg-white px-4 py-3 text-[15px] text-ink ring-1 ring-line " +
+  "placeholder:text-sage-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 transition-shadow";
+
+const SUBMIT =
+  "tap w-full rounded-2xl bg-sky-600 py-3 text-[15px] font-semibold text-white shadow-sm transition-colors " +
+  "hover:bg-sky-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:opacity-50";
 
 /**
  * The login gate. While the session is loading, shows a splash; when the user
  * arrived via a reset link, shows "set a new password"; when signed out, shows
- * the auth form; otherwise renders the app with a lightweight sign-out control.
+ * the branded auth screen; otherwise renders the app.
  */
 export function AuthGate({ children }: { children: ReactNode }) {
   const { loading, session, passwordRecovery } = useAuth();
 
   if (loading) {
     return (
-      <div className="grid min-h-screen place-items-center bg-mist text-brand-600">
-        <LoopMark size={40} />
+      <div className="grid min-h-screen place-items-center bg-midnight-900 text-brand-400">
+        <div className="motion-safe:animate-breathe">
+          <LoopMark size={44} />
+        </div>
       </div>
     );
   }
@@ -30,21 +37,76 @@ export function AuthGate({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-function Shell({ children }: { children: ReactNode }) {
+/* ------------------------------ branded shell ----------------------------- */
+
+/**
+ * A calm, institution-branded entry. Desktop is a two-column composition: a deep
+ * midnight brand panel (authority + a subtle recovery trajectory) beside a very
+ * simple sign-in form. Mobile keeps a compact brand header above the form.
+ */
+function AuthShell({ children }: { children: ReactNode }) {
   return (
-    <div className="grid min-h-screen place-items-center bg-mist px-5 py-10">
-      <div className="w-full max-w-sm">
-        <div className="flex items-center gap-2.5 text-brand-600">
-          <LoopMark size={30} />
-          <div>
-            <div className="font-display text-xl font-semibold tracking-tight text-ink">Carelune</div>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-sage-500">
-              Care continues.
+    <div className="grid min-h-screen bg-mist lg:grid-cols-[1.05fr_1fr]">
+      {/* Brand panel — authority + the promise. */}
+      <aside className="relative hidden overflow-hidden bg-midnight-900 lg:flex lg:flex-col lg:justify-between lg:p-14">
+        {/* soft luminous field, not a random gradient */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(120% 80% at 15% 0%, rgba(42,111,199,0.28), transparent 55%), radial-gradient(90% 70% at 90% 100%, rgba(23,179,161,0.20), transparent 55%)",
+          }}
+        />
+        <div className="relative flex items-center gap-2.5 text-haze-100">
+          <LoopMark size={26} />
+          <span className="font-display text-[17px] font-semibold tracking-tight">Carelune</span>
+        </div>
+
+        <div className="relative">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-haze-400">
+            Recovery intelligence
+          </div>
+          <h1 className="mt-4 max-w-md font-display text-[40px] font-semibold leading-[1.08] tracking-[-0.02em] text-haze-100">
+            Care continues after discharge.
+          </h1>
+          <p className="mt-4 max-w-sm text-[14.5px] leading-relaxed text-haze-300">
+            The recovery team stays with every patient at home — visible, governed by
+            the treating clinician, and answerable to the family.
+          </p>
+          <div className="mt-9 max-w-sm rounded-2xl bg-white/[0.05] p-4 ring-1 ring-white/10 backdrop-blur-sm">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-haze-400">
+              Enabled recovery service
+            </div>
+            <div className="mt-1 text-[14px] font-semibold text-haze-100">
+              Neuro &amp; spine recovery continuity
+            </div>
+            <div className="mt-3 opacity-90">
+              <RecoveryTrajectory values={[3, 3.4, 3.2, 3.8, 4.3, 4.1, 4.7, 5.2]} tone="recovery" height={34} animate onDark />
             </div>
           </div>
         </div>
-        {children}
-      </div>
+
+        <div className="relative text-[11.5px] leading-relaxed text-haze-400">
+          Physician-governed · caregiver-operated · family-visible.<br />
+          Fictional demonstration data — not for clinical use.
+        </div>
+      </aside>
+
+      {/* Form column. */}
+      <main className="flex flex-col justify-center px-6 py-10 sm:px-10">
+        {/* compact brand header on mobile only */}
+        <div className="mb-8 flex items-center gap-2.5 text-ink lg:hidden">
+          <span className="text-brand-600"><LoopMark size={26} /></span>
+          <div>
+            <div className="font-display text-[17px] font-semibold tracking-tight">Carelune</div>
+            <div className="text-[10.5px] font-semibold uppercase tracking-[0.16em] text-sage-500">
+              Care continues after discharge.
+            </div>
+          </div>
+        </div>
+        <div className="mx-auto w-full max-w-sm">{children}</div>
+      </main>
     </div>
   );
 }
@@ -80,7 +142,6 @@ export function AuthScreen() {
         if (error) setError(error);
         else if (needsEmailConfirm)
           setNotice("Account created. Check your email to confirm, then sign in.");
-        // If confirmation is off, the session change signs the user straight in.
       } else {
         const { error } = await sendPasswordReset(addr);
         if (error) setError(error);
@@ -96,103 +157,93 @@ export function AuthScreen() {
   const cta = mode === "signin" ? "Sign in" : mode === "signup" ? "Create account" : "Send reset link";
 
   return (
-    <Shell>
-      <div className="mt-8 rounded-3xl bg-white p-6 border border-line">
-        <h1 className="font-display text-2xl font-semibold text-ink">{title}</h1>
-        <p className="mt-1 text-[13px] text-sage-600">
-          {mode === "reset"
-            ? "Enter your email and we'll send a link to set a new password."
-            : "Carelune rehab-discharge continuity. Staff accounts are created for you; patients sign up here."}
-        </p>
+    <AuthShell>
+      <h2 className="font-display text-[26px] font-semibold tracking-[-0.01em] text-ink">{title}</h2>
+      <p className="mt-1.5 text-[13.5px] leading-relaxed text-sage-600">
+        {mode === "reset"
+          ? "Enter your email and we'll send a link to set a new password."
+          : "Clinicians and care teams sign in here. Families registering a patient can create an account."}
+      </p>
 
-        <form onSubmit={submit} className="mt-5 space-y-3">
+      <form onSubmit={submit} className="mt-7 space-y-3">
+        <div>
+          <label htmlFor="email" className="mb-1.5 block text-[12.5px] font-semibold text-sage-600">Email</label>
+          <input
+            id="email"
+            type="email"
+            autoComplete="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@clinic.in"
+            className={FIELD}
+          />
+        </div>
+
+        {mode !== "reset" && (
           <div>
-            <label htmlFor="email" className="sr-only">
-              Email
-            </label>
+            <label htmlFor="password" className="mb-1.5 block text-[12.5px] font-semibold text-sage-600">Password</label>
             <input
-              id="email"
-              type="email"
-              autoComplete="email"
+              id="password"
+              type="password"
+              autoComplete={mode === "signup" ? "new-password" : "current-password"}
               required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@clinic.in"
+              minLength={6}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
               className={FIELD}
             />
           </div>
+        )}
 
-          {mode !== "reset" && (
-            <div>
-              <label htmlFor="password" className="sr-only">
-                Password
-              </label>
-              <input
-                id="password"
-                type="password"
-                autoComplete={mode === "signup" ? "new-password" : "current-password"}
-                required
-                minLength={6}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Password"
-                className={FIELD}
-              />
-            </div>
-          )}
+        {error && (
+          <p role="alert" className="rounded-2xl bg-coral-100 px-3.5 py-2 text-[13px] text-coral-600 ring-1 ring-coral-200">
+            {error}
+          </p>
+        )}
+        {notice && (
+          <p className="rounded-2xl bg-good-100 px-3.5 py-2 text-[13px] text-good-600 ring-1 ring-good-500/20">{notice}</p>
+        )}
 
-          {error && (
-            <p role="alert" className="rounded-2xl bg-coral-100 px-3.5 py-2 text-[13px] text-coral-600">
-              {error}
-            </p>
-          )}
-          {notice && (
-            <p className="rounded-2xl bg-good-100 px-3.5 py-2 text-[13px] text-good-600">{notice}</p>
-          )}
+        <button type="submit" disabled={busy} className={`${SUBMIT} !mt-5`}>
+          {busy ? "Working…" : cta}
+        </button>
+      </form>
 
-          <button
-            type="submit"
-            disabled={busy}
-            className="tap w-full rounded-2xl bg-brand-600 py-3 text-[15px] font-semibold text-white shadow-lift transition-colors hover:bg-brand-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 disabled:opacity-50"
-          >
-            {busy ? "Working…" : cta}
-          </button>
-        </form>
-
-        <div className="mt-4 space-y-1.5 text-[13px]">
-          {mode === "signin" && (
-            <>
-              <button type="button" onClick={() => reset("reset")} className="tap block text-brand-700 hover:text-brand-600">
-                Forgot your password?
-              </button>
-              <p className="text-sage-600">
-                New patient?{" "}
-                <button type="button" onClick={() => reset("signup")} className="font-semibold text-brand-700 hover:text-brand-600">
-                  Create an account
-                </button>
-              </p>
-            </>
-          )}
-          {mode === "signup" && (
-            <p className="text-sage-600">
-              Already have an account?{" "}
-              <button type="button" onClick={() => reset("signin")} className="font-semibold text-brand-700 hover:text-brand-600">
-                Sign in
-              </button>
-            </p>
-          )}
-          {mode === "reset" && (
-            <button type="button" onClick={() => reset("signin")} className="tap block text-brand-700 hover:text-brand-600">
-              ← Back to sign in
+      <div className="mt-5 space-y-1.5 text-[13px]">
+        {mode === "signin" && (
+          <>
+            <button type="button" onClick={() => reset("reset")} className="tap block font-medium text-sky-700 hover:text-sky-800">
+              Forgot your password?
             </button>
-          )}
-        </div>
+            <p className="text-sage-600">
+              New patient?{" "}
+              <button type="button" onClick={() => reset("signup")} className="font-semibold text-sky-700 hover:text-sky-800">
+                Create an account
+              </button>
+            </p>
+          </>
+        )}
+        {mode === "signup" && (
+          <p className="text-sage-600">
+            Already have an account?{" "}
+            <button type="button" onClick={() => reset("signin")} className="font-semibold text-sky-700 hover:text-sky-800">
+              Sign in
+            </button>
+          </p>
+        )}
+        {mode === "reset" && (
+          <button type="button" onClick={() => reset("signin")} className="tap block font-medium text-sky-700 hover:text-sky-800">
+            ← Back to sign in
+          </button>
+        )}
       </div>
 
-      <p className="mt-5 px-1 text-[11px] leading-relaxed text-sage-600">
+      <p className="mt-10 text-[11px] leading-relaxed text-sage-500 lg:hidden">
         Fictional demonstration data — not approved for clinical use. No real patient information.
       </p>
-    </Shell>
+    </AuthShell>
   );
 }
 
@@ -209,46 +260,37 @@ function SetNewPassword() {
     try {
       const { error } = await updatePassword(password);
       if (error) setError(error);
-      // On success the recovery flag clears and the app renders.
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <Shell>
-      <div className="mt-8 rounded-3xl bg-white p-6 border border-line">
-        <h1 className="font-display text-2xl font-semibold text-ink">Set a new password</h1>
-        <p className="mt-1 text-[13px] text-sage-600">Choose a new password for your account.</p>
-        <form onSubmit={submit} className="mt-5 space-y-3">
-          <label htmlFor="new-password" className="sr-only">
-            New password
-          </label>
-          <input
-            id="new-password"
-            type="password"
-            autoComplete="new-password"
-            required
-            minLength={6}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="New password"
-            className={FIELD}
-          />
-          {error && (
-            <p role="alert" className="rounded-2xl bg-coral-100 px-3.5 py-2 text-[13px] text-coral-600">
-              {error}
-            </p>
-          )}
-          <button
-            type="submit"
-            disabled={busy}
-            className="tap w-full rounded-2xl bg-brand-600 py-3 text-[15px] font-semibold text-white shadow-lift transition-colors hover:bg-brand-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 disabled:opacity-50"
-          >
-            {busy ? "Saving…" : "Save new password"}
-          </button>
-        </form>
-      </div>
-    </Shell>
+    <AuthShell>
+      <h2 className="font-display text-[26px] font-semibold tracking-[-0.01em] text-ink">Set a new password</h2>
+      <p className="mt-1.5 text-[13.5px] text-sage-600">Choose a new password for your account.</p>
+      <form onSubmit={submit} className="mt-7 space-y-3">
+        <label htmlFor="new-password" className="mb-1.5 block text-[12.5px] font-semibold text-sage-600">New password</label>
+        <input
+          id="new-password"
+          type="password"
+          autoComplete="new-password"
+          required
+          minLength={6}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="••••••••"
+          className={FIELD}
+        />
+        {error && (
+          <p role="alert" className="rounded-2xl bg-coral-100 px-3.5 py-2 text-[13px] text-coral-600 ring-1 ring-coral-200">
+            {error}
+          </p>
+        )}
+        <button type="submit" disabled={busy} className={`${SUBMIT} !mt-5`}>
+          {busy ? "Saving…" : "Save new password"}
+        </button>
+      </form>
+    </AuthShell>
   );
 }

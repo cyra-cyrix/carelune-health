@@ -1,12 +1,20 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import ConcernInbox from "../../components/ConcernInbox";
+import {
+  RecoveryTrajectory, StatusTag, SignalDot, Avatar, SectionLabel, Panel, Reveal, ProvenanceTag,
+  type Tone,
+} from "../../components/clinical";
 import {
   getPatient,
   getReadingHistory,
   getMedications,
   getApprovals,
   getDailyUpdates,
+  getCareTeam,
+  getCareTasks,
+  getTodayTaskLogs,
+  getPatientPlan,
   decideApproval,
   addMedication,
   updateMedication,
@@ -18,13 +26,17 @@ import {
   type ApprovalRow,
   type UpdateRow,
   type MedicationInput,
+  type CareTeamMember,
+  type CareTaskRow,
+  type PatientPlanRow,
 } from "../../lib/db";
 
 /**
- * HOD (PMR) patient screen — the head clinician's live view of one patient.
- * Diagnostic summary, an approvals inbox (nurse/family queries + duty-doctor
- * medicine suggestions the HOD decides), the caregiver's real vitals trend,
- * and the medicine list the HOD owns. All reads/writes hit Supabase.
+ * Patient Recovery Cockpit — Carelune's signature screen. A clinical hero lets
+ * the doctor understand the patient in seconds (identity · pathway · recovery day
+ * · condition · attention state · milestone position); below, information is
+ * disclosed Now → Change → Detail. Every signal is computed from real data —
+ * there is deliberately no composite "recovery score".
  */
 export default function PatientProgress({ patientId, onBack }: { patientId: string; onBack: () => void }) {
   const [patient, setPatient] = useState<PatientRow | null>(null);
@@ -32,6 +44,10 @@ export default function PatientProgress({ patientId, onBack }: { patientId: stri
   const [meds, setMeds] = useState<MedicationRow[]>([]);
   const [approvals, setApprovals] = useState<ApprovalRow[]>([]);
   const [updates, setUpdates] = useState<UpdateRow[]>([]);
+  const [team, setTeam] = useState<CareTeamMember[]>([]);
+  const [tasks, setTasks] = useState<CareTaskRow[]>([]);
+  const [doneToday, setDoneToday] = useState<Set<string>>(new Set());
+  const [plan, setPlan] = useState<PatientPlanRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,106 +63,80 @@ export default function PatientProgress({ patientId, onBack }: { patientId: stri
           getDailyUpdates(patientId),
         ]);
         if (!active) return;
-        setPatient(p);
-        setReadings(r);
-        setMeds(m);
-        setApprovals(a);
-        setUpdates(u);
+        setPatient(p); setReadings(r); setMeds(m); setApprovals(a); setUpdates(u);
+        setLoading(false);
+        // Secondary signals load progressively — never block the hero.
+        getCareTeam(patientId).then((t) => active && setTeam(t)).catch(() => {});
+        getPatientPlan(patientId).then((pl) => active && setPlan(pl)).catch(() => {});
+        Promise.all([getCareTasks(patientId), getTodayTaskLogs(patientId)])
+          .then(([ts, done]) => { if (active) { setTasks(ts); setDoneToday(done); } })
+          .catch(() => {});
       } catch (e) {
-        if (active) setError(e instanceof Error ? e.message : "Could not load this patient.");
-      } finally {
-        if (active) setLoading(false);
+        if (active) { setError(e instanceof Error ? e.message : "Could not load this patient."); setLoading(false); }
       }
     })();
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, [patientId]);
+
+  if (loading) {
+    return (
+      <div className="min-h-full bg-mist">
+        <div className="bg-midnight-900 px-5 py-10"><div className="mx-auto h-24 max-w-[1120px] animate-pulse rounded-2xl bg-white/10" /></div>
+        <div className="mx-auto max-w-[1120px] px-5 py-6"><div className="h-64 animate-pulse rounded-3xl bg-white/70" /></div>
+      </div>
+    );
+  }
+  if (error || !patient) {
+    return (
+      <div className="min-h-full bg-mist p-6">
+        <button type="button" onClick={onBack} className="tap text-[13px] font-semibold text-sky-700">← Command centre</button>
+        <div className="mt-4 rounded-2xl bg-white p-5 shadow-panel ring-1 ring-ink/[0.05]">
+          <p className="text-[14px] font-semibold text-ink">Couldn&rsquo;t load this patient</p>
+          <p className="mt-1 text-[13px] text-sage-600">{error ?? "Not found."}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-full bg-mist">
-      <div className="border-b border-ink/10 bg-white">
-        <div className="mx-auto max-w-[1100px] px-5 py-4 lg:px-8">
-          <button type="button" onClick={onBack} className="tap text-[13px] font-semibold text-brand-700 hover:text-brand-600">
-            ← My patients
-          </button>
-          {patient && (
-            <>
-              <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
-                <div>
-                  <h1 className="font-display text-2xl font-semibold text-ink">{patient.full_name}</h1>
-                  <p className="text-[13px] text-sage-500">
-                    {patient.age ?? "—"} {patient.sex ?? ""}
-                    {patient.location ? ` · ${patient.location}` : ""} · Day {dayAtHome(patient)}
-                  </p>
-                </div>
-              </div>
-              {patient.diagnosis.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  {patient.diagnosis.map((dx) => (
-                    <span key={dx} className="rounded-full bg-mist px-2.5 py-1 text-[12px] font-medium text-ink ring-1 ring-ink/[0.06]">
-                      {dx}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </div>
+      <CockpitHero patient={patient} readings={readings} approvals={approvals} plan={plan} onBack={onBack} />
 
-      <main className="mx-auto max-w-[1100px] space-y-5 px-5 py-6 lg:px-8">
-        {loading && <div className="h-40 animate-pulse rounded-2xl bg-white/70" />}
-        {!loading && error && (
-          <div className="rounded-2xl bg-white p-5 shadow-lift ring-1 ring-ink/[0.05]">
-            <p className="text-[14px] font-semibold text-ink">Couldn&rsquo;t load this patient</p>
-            <p className="mt-1 text-[13px] text-sage-600">{error}</p>
+      <main className="mx-auto max-w-[1120px] px-5 py-6 lg:px-8">
+        <div className="grid gap-5 lg:grid-cols-[1.55fr_1fr]">
+          {/* PRIMARY column — Now → Change → Detail */}
+          <div className="space-y-5">
+            <Reveal index={0}><ChangedSinceYesterday readings={readings} approvals={approvals} updates={updates} doneToday={doneToday} tasks={tasks} /></Reveal>
+            <Reveal index={1}><VitalsPanel readings={readings} /></Reveal>
+            <Reveal index={2}><DailyCarePanel tasks={tasks} doneToday={doneToday} /></Reveal>
+            <Reveal index={3}><Medicines patientId={patientId} rows={meds} onChange={setMeds} /></Reveal>
+            {plan && <Reveal index={4}><DietDetail plan={plan} /></Reveal>}
           </div>
-        )}
-        {!loading && !error && patient && (
-          <>
-            <ConcernInbox patientId={patientId} />
-            <ApprovalsInbox patientId={patientId} rows={approvals.filter((a) => a.type !== "patient_query")} />
-            <VitalsTrend readings={readings} />
-            <div className="grid gap-5 lg:grid-cols-[1.25fr_1fr]">
-              <Medicines patientId={patientId} rows={meds} onChange={setMeds} />
-              <DailyFeed rows={updates} />
-            </div>
-          </>
-        )}
+
+          {/* SECONDARY column — decisions & context */}
+          <div className="space-y-5">
+            <Reveal index={0}><ConcernInbox patientId={patientId} /></Reveal>
+            <Reveal index={1}><ApprovalsInbox patientId={patientId} rows={approvals.filter((a) => a.type !== "patient_query")} /></Reveal>
+            {plan && <Reveal index={2}><MilestonesPanel plan={plan} day={dayAtHome(patient)} /></Reveal>}
+            <Reveal index={3}><CareTeamPanel team={team} /></Reveal>
+            <Reveal index={4}><ClinicalTimeline rows={updates} /></Reveal>
+          </div>
+        </div>
       </main>
     </div>
   );
 }
 
+/* ------------------------------- helpers ---------------------------------- */
+
 function dayAtHome(p: PatientRow): number {
   const start = new Date(p.journey_start).getTime();
   return Math.max(1, Math.floor((Date.now() - start) / 86_400_000) + 1);
 }
-
-/* ---------------- Card ---------------- */
-
-function Card({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
-  return (
-    <section className="rounded-2xl bg-white p-5 shadow-lift ring-1 ring-ink/[0.05]">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="font-display text-[15px] font-semibold text-ink">{title}</h2>
-        {action}
-      </div>
-      <div className="mt-3">{children}</div>
-    </section>
-  );
+function num(v: string | null | undefined): number {
+  const n = Number((v ?? "").toString().replace(/[^0-9.]/g, ""));
+  return Number.isFinite(n) ? n : NaN;
 }
-
-/* ---------------- Approvals inbox ---------------- */
-
-type LocalStatus = ApprovalRow["status"];
-const A_META: Record<ApprovalRow["type"], { label: string; cls: string }> = {
-  duty_med: { label: "Medicine suggestion", cls: "bg-brand-50 text-brand-700" },
-  nurse_query: { label: "Nurse query", cls: "bg-good-100 text-good-600" },
-  patient_query: { label: "Family query", cls: "bg-ink/10 text-ink" },
-};
-
 function timeAgo(iso: string): string {
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
   if (mins < 1) return "just now";
@@ -155,168 +145,169 @@ function timeAgo(iso: string): string {
   if (hrs < 24) return `${hrs} h ago`;
   return `${Math.round(hrs / 24)} d ago`;
 }
+function within24h(iso: string): boolean {
+  return Date.now() - new Date(iso).getTime() < 86_400_000;
+}
 
-function ApprovalsInbox({ patientId, rows }: { patientId: string; rows: ApprovalRow[] }) {
-  const [items, setItems] = useState(rows);
-  const [noteFor, setNoteFor] = useState<string | null>(null);
-  const [note, setNote] = useState("");
-  const [busy, setBusy] = useState<string | null>(null);
+/* --------------------------------- hero ----------------------------------- */
 
-  const setStatus = (id: string, status: LocalStatus) =>
-    setItems((xs) => xs.map((i) => (i.id === id ? { ...i, status } : i)));
+function CockpitHero({
+  patient, readings, approvals, plan, onBack,
+}: {
+  patient: PatientRow; readings: ReadingRow[]; approvals: ApprovalRow[]; plan: PatientPlanRow | null; onBack: () => void;
+}) {
+  const day = dayAtHome(patient);
+  const total = patient.journey_total_days || 30;
+  const week = Math.max(1, Math.ceil(day / 7));
+  const totalWeeks = Math.max(1, Math.ceil(total / 7));
 
-  const decide = async (id: string, status: "approved" | "declined") => {
-    setBusy(id);
-    const prev = items;
-    setStatus(id, status);
-    try {
-      await decideApproval(id, status);
-    } catch {
-      setItems(prev);
-    } finally {
-      setBusy(null);
-    }
-  };
+  const urgentOpen = approvals.filter((a) => a.status === "pending" && a.urgency === "urgent").length;
+  const pendingOpen = approvals.filter((a) => a.status === "pending").length;
 
-  const sendSuggestion = async (it: ApprovalRow) => {
-    setBusy(it.id);
-    const prev = items;
-    setStatus(it.id, "suggested");
-    setNoteFor(null);
-    const text = note.trim();
-    setNote("");
-    try {
-      await decideApproval(it.id, "suggested");
-      if (text) await addUpdate(patientId, { source: "pmr", author_name: "HOD", body: `Re: ${it.from_name ?? "query"} — ${text}` });
-    } catch {
-      setItems(prev);
-    } finally {
-      setBusy(null);
-    }
-  };
+  // salient vital trend for the hero trajectory
+  const bpSys = readings.map((r) => num((r.bp ?? "").split("/")[0])).filter(Number.isFinite);
+  const grbs = readings.map((r) => num(r.grbs)).filter(Number.isFinite);
+  const traj = bpSys.length >= 2 ? { label: "Blood pressure", values: bpSys, good: "down" as const }
+    : grbs.length >= 2 ? { label: "Blood sugar", values: grbs, good: "down" as const } : null;
+  const improving = traj ? (traj.good === "down" ? traj.values[traj.values.length - 1] < traj.values[0] : traj.values[traj.values.length - 1] > traj.values[0]) : null;
 
-  const pending = items.filter((i) => i.status === "pending").length;
-  // Urgent, still-pending items float to the top so the doctor sees them first.
-  const rank = (i: ApprovalRow) =>
-    i.status === "pending" ? (i.urgency === "urgent" ? 0 : 1) : 2;
-  const ordered = [...items].sort((a, b) => rank(a) - rank(b));
+  const attention: { tone: Tone; label: string } = urgentOpen > 0
+    ? { tone: "escalation", label: `Needs review — ${urgentOpen} urgent` }
+    : pendingOpen > 0
+      ? { tone: "attention", label: `Needs review — ${pendingOpen} pending` }
+      : improving === false
+        ? { tone: "attention", label: "A vital is trending the wrong way" }
+        : patient.status === "active"
+          ? { tone: "recovery", label: "Recovery progressing as expected" }
+          : { tone: "calm", label: "Awaiting recovery plan" };
+
+  const condition = plan?.content?.clinical_summary?.trim()
+    || (patient.diagnosis.length ? patient.diagnosis.join(", ") : "Recovery at home");
+
+  const nextMilestone = useMemo(() => {
+    const ms = (plan?.content?.milestones ?? []).filter((m) => m.by_day != null).sort((a, b) => (a.by_day! - b.by_day!));
+    const upcoming = ms.find((m) => (m.by_day as number) >= day);
+    return upcoming ?? ms[ms.length - 1] ?? null;
+  }, [plan, day]);
 
   return (
-    <Card
-      title="Approvals inbox"
-      action={
-        <span
-          className={`rounded-full px-2.5 py-1 text-[12px] font-semibold ${
-            pending > 0 ? "bg-coral-100 text-coral-600" : "bg-good-100 text-good-600"
-          }`}
-        >
-          {pending} pending
-        </span>
-      }
-    >
-      {items.length === 0 ? (
-        <p className="text-[13px] text-sage-500">Nothing awaiting your decision.</p>
+    <div className="bg-midnight-900">
+      <div className="relative mx-auto max-w-[1120px] overflow-hidden px-5 py-7 lg:px-8 lg:py-9">
+        <div aria-hidden className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(80% 120% at 100% 0%, rgba(42,111,199,0.20), transparent 60%)" }} />
+        <div className="relative">
+          <button type="button" onClick={onBack} className="tap text-[13px] font-semibold text-haze-300 hover:text-haze-100">← Command centre</button>
+
+          <div className="mt-4 flex flex-wrap items-start justify-between gap-6">
+            {/* identity + condition */}
+            <div className="flex min-w-0 gap-4">
+              <Avatar name={patient.full_name} tone={attention.tone} size={56} />
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <h1 className="font-display text-[22px] font-semibold tracking-[-0.02em] text-haze-100 sm:text-[26px]">{patient.full_name}</h1>
+                  <StatusTag tone={attention.tone}>{attention.label}</StatusTag>
+                </div>
+                <p className="mt-1 text-[13px] text-haze-400">
+                  {patient.age ?? "—"}{patient.sex ? " " + patient.sex : ""}{patient.location ? ` · ${patient.location}` : ""}
+                  {" · "}Day {day} of {total} · Week {week} of {totalWeeks}
+                </p>
+                <p className="mt-2.5 max-w-xl text-[14.5px] leading-relaxed text-haze-200">{condition}</p>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-2.5 py-1 text-[12px] font-medium text-haze-200 ring-1 ring-white/10">
+                    <span className="h-1.5 w-1.5 rounded-full bg-brand-400" />
+                    {plan ? "Spine & neuro recovery pathway" : "Pathway pending"}
+                  </span>
+                  {patient.diagnosis.slice(0, 2).map((dx) => (
+                    <span key={dx} className="rounded-full bg-white/[0.06] px-2.5 py-1 text-[12px] font-medium text-haze-200 ring-1 ring-white/10">{dx}</span>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* trajectory + milestone position */}
+            <div className="w-full max-w-[300px] rounded-2xl bg-white/[0.06] p-4 ring-1 ring-white/10 backdrop-blur-sm sm:w-[300px]">
+              <div className="flex items-center justify-between">
+                <SectionLabel onDark>{traj ? traj.label : "Recovery trajectory"}</SectionLabel>
+                {traj && improving != null && (
+                  <span className={`text-[11px] font-bold ${improving ? "text-brand-300" : "text-warn-300"}`}>{improving ? "improving" : "watch"}</span>
+                )}
+              </div>
+              <div className="mt-2">
+                {traj ? <RecoveryTrajectory values={traj.values} tone={improving === false ? "attention" : "recovery"} height={44} animate onDark />
+                  : <p className="py-3 text-[12px] text-haze-400">Trends appear here as the home team records daily readings.</p>}
+              </div>
+              {nextMilestone && (
+                <div className="mt-3 border-t border-white/10 pt-3">
+                  <SectionLabel onDark>Next milestone</SectionLabel>
+                  <p className="mt-1 text-[13.5px] font-semibold text-haze-100">{nextMilestone.name}</p>
+                  <p className="mt-0.5 text-[12px] text-haze-300">
+                    {nextMilestone.by_day != null && ((nextMilestone.by_day >= day)
+                      ? `Target day ${nextMilestone.by_day} · ${nextMilestone.by_day - day} day${nextMilestone.by_day - day === 1 ? "" : "s"} to go`
+                      : `Target day ${nextMilestone.by_day} · now day ${day}`)}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* -------------------------- changed since yesterday ----------------------- */
+
+function ChangedSinceYesterday({
+  readings, approvals, updates, doneToday, tasks,
+}: {
+  readings: ReadingRow[]; approvals: ApprovalRow[]; updates: UpdateRow[]; doneToday: Set<string>; tasks: CareTaskRow[];
+}) {
+  const changes: { tone: Tone; text: ReactNode }[] = [];
+
+  // vital deltas from the last two readings
+  const deltas: { label: string; a: number; b: number; good: "up" | "down" }[] = [];
+  const push = (label: string, series: number[], good: "up" | "down") => {
+    if (series.length >= 2) deltas.push({ label, a: series[series.length - 2], b: series[series.length - 1], good });
+  };
+  push("BP (sys)", readings.map((r) => num((r.bp ?? "").split("/")[0])).filter(Number.isFinite), "down");
+  push("Blood sugar", readings.map((r) => num(r.grbs)).filter(Number.isFinite), "down");
+  push("Urine", readings.map((r) => num(r.urine_ml)).filter(Number.isFinite), "up");
+  for (const d of deltas) {
+    if (d.a === d.b) continue;
+    const better = d.good === "down" ? d.b < d.a : d.b > d.a;
+    changes.push({ tone: better ? "recovery" : "attention", text: <><span className="font-semibold">{d.label}</span> {d.a} → {d.b}{better ? " · improving" : " · watch"}</> });
+  }
+
+  const newConcerns = approvals.filter((a) => a.type === "patient_query" && within24h(a.created_at)).length;
+  const newApprovals = approvals.filter((a) => a.type !== "patient_query" && a.status === "pending" && within24h(a.created_at)).length;
+  const newUpdates = updates.filter((u) => within24h(u.created_at)).length;
+  const doneCount = tasks.filter((t) => doneToday.has(t.id)).length;
+
+  if (newConcerns > 0) changes.push({ tone: "attention", text: <><span className="font-semibold">{newConcerns}</span> new famil{newConcerns === 1 ? "y concern" : "y concerns"} raised</> });
+  if (newApprovals > 0) changes.push({ tone: "attention", text: <><span className="font-semibold">{newApprovals}</span> new item{newApprovals === 1 ? "" : "s"} awaiting your decision</> });
+  if (tasks.length > 0) changes.push({ tone: doneCount >= tasks.length ? "recovery" : "neutral", text: <><span className="font-semibold">{doneCount}/{tasks.length}</span> care tasks completed today</> });
+  if (newUpdates > 0 && changes.length < 5) changes.push({ tone: "calm", text: <><span className="font-semibold">{newUpdates}</span> update{newUpdates === 1 ? "" : "s"} from the care team today</> });
+
+  return (
+    <Panel label="Now" title="Changed since yesterday">
+      {changes.length === 0 ? (
+        <p className="text-[13.5px] text-sage-500">No material changes recorded since yesterday. The home team is logging as usual.</p>
       ) : (
         <ul className="space-y-2.5">
-          {ordered.map((it) => (
-            <li
-              key={it.id}
-              className={`rounded-2xl p-3.5 ring-1 ${
-                it.urgency === "urgent" && it.status === "pending" ? "bg-warn-100/50 ring-warn-500/20" : "bg-mist ring-ink/[0.05]"
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <span className={`rounded-full px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-wide ${A_META[it.type].cls}`}>
-                  {A_META[it.type].label}
-                </span>
-                {it.urgency === "urgent" && (
-                  <span className="rounded-full bg-coral-100 px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-wide text-coral-600">
-                    Urgent
-                  </span>
-                )}
-                <span className="ml-auto text-[11px] text-sage-500">{timeAgo(it.created_at)}</span>
-              </div>
-              <p className="mt-1.5 text-[13px] font-semibold text-ink">{it.from_name}</p>
-              <p className="mt-0.5 text-[13px] leading-snug text-sage-600">{it.message}</p>
-              {it.suggestion && (
-                <p className="mt-1.5 rounded-xl bg-white px-3 py-1.5 text-[13px] text-ink ring-1 ring-ink/[0.06]">
-                  <span className="font-semibold text-brand-700">
-                    {it.type === "patient_query" ? "Your reply: " : "Suggests: "}
-                  </span>
-                  {it.suggestion}
-                </p>
-              )}
-
-              {it.status === "pending" ? (
-                noteFor === it.id ? (
-                  <div className="mt-2.5">
-                    <textarea
-                      value={note}
-                      onChange={(e) => setNote(e.target.value)}
-                      rows={2}
-                      placeholder={it.type === "patient_query" ? "Your reply to the family…" : "Your suggestion back to the team…"}
-                      className="w-full rounded-xl bg-white px-3 py-2 text-[13px] text-ink ring-1 ring-ink/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
-                    />
-                    <div className="mt-2 flex gap-2">
-                      <button type="button" onClick={() => sendSuggestion(it)} disabled={busy === it.id || !note.trim()} className="tap rounded-full bg-brand-600 px-3.5 py-1.5 text-[12px] font-semibold text-white disabled:opacity-60">
-                        {it.type === "patient_query" ? "Send reply" : "Send suggestion"}
-                      </button>
-                      <button type="button" onClick={() => { setNoteFor(null); setNote(""); }} className="tap rounded-full px-3 py-1.5 text-[12px] font-semibold text-sage-600">
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="mt-2.5 flex flex-wrap gap-2">
-                    {it.type === "patient_query" ? (
-                      <>
-                        <button type="button" onClick={() => setNoteFor(it.id)} className="tap rounded-full bg-brand-600 px-3.5 py-1.5 text-[12px] font-semibold text-white">
-                          Reply
-                        </button>
-                        <button type="button" onClick={() => decide(it.id, "approved")} disabled={busy === it.id} className="tap rounded-full bg-white px-3.5 py-1.5 text-[12px] font-semibold text-sage-600 ring-1 ring-ink/10 disabled:opacity-60">
-                          Mark reviewed
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button type="button" onClick={() => decide(it.id, "approved")} disabled={busy === it.id} className="tap rounded-full bg-good-500 px-3.5 py-1.5 text-[12px] font-semibold text-white disabled:opacity-60">
-                          Approve
-                        </button>
-                        <button type="button" onClick={() => setNoteFor(it.id)} className="tap rounded-full bg-brand-600 px-3.5 py-1.5 text-[12px] font-semibold text-white">
-                          Suggest
-                        </button>
-                        <button type="button" onClick={() => decide(it.id, "declined")} disabled={busy === it.id} className="tap rounded-full bg-white px-3.5 py-1.5 text-[12px] font-semibold text-coral-600 ring-1 ring-coral-200 disabled:opacity-60">
-                          Decline
-                        </button>
-                      </>
-                    )}
-                  </div>
-                )
-              ) : (
-                <p className="mt-2 text-[12px] font-semibold text-sage-600">
-                  {it.type === "patient_query"
-                    ? it.status === "suggested"
-                      ? "Replied · the family can see it"
-                      : "Reviewed"
-                    : `${it.status === "approved" ? "Approved" : it.status === "declined" ? "Declined" : "Suggestion sent"} · saved`}
-                </p>
-              )}
+          {changes.map((c, i) => (
+            <li key={i} className="flex items-center gap-2.5 text-[13.5px] text-ink">
+              <SignalDot tone={c.tone} />
+              {c.text}
             </li>
           ))}
         </ul>
       )}
-    </Card>
+    </Panel>
   );
 }
 
-/* ---------------- Vitals trend (from real caregiver readings) ---------------- */
+/* ------------------------------- vitals ----------------------------------- */
 
-function num(v: string | null): number {
-  const n = Number((v ?? "").toString().replace(/[^0-9.]/g, ""));
-  return Number.isFinite(n) ? n : NaN;
-}
-
-function VitalsTrend({ readings }: { readings: ReadingRow[] }) {
+function VitalsPanel({ readings }: { readings: ReadingRow[] }) {
   const bpSys = readings.map((r) => num((r.bp ?? "").split("/")[0])).filter(Number.isFinite);
   const bpDia = readings.map((r) => num((r.bp ?? "").split("/")[1])).filter(Number.isFinite);
   const grbs = readings.map((r) => num(r.grbs)).filter(Number.isFinite);
@@ -324,131 +315,296 @@ function VitalsTrend({ readings }: { readings: ReadingRow[] }) {
   const last = (a: number[]) => a[a.length - 1];
 
   const cards: ReactNode[] = [];
-  if (bpSys.length >= 2 && bpDia.length >= 2)
-    cards.push(<VitalCard key="bp" label="BP" values={bpSys} display={`${last(bpSys)}/${last(bpDia)}`} good="down" />);
-  if (grbs.length >= 2) cards.push(<VitalCard key="grbs" label="GRBS" values={grbs} display={`${last(grbs)}`} good="down" />);
+  if (bpSys.length >= 2 && bpDia.length >= 2) cards.push(<VitalCard key="bp" label="Blood pressure" values={bpSys} display={`${last(bpSys)}/${last(bpDia)}`} good="down" />);
+  if (grbs.length >= 2) cards.push(<VitalCard key="grbs" label="Blood sugar" values={grbs} display={`${last(grbs)}`} good="down" />);
   if (urine.length >= 2) cards.push(<VitalCard key="urine" label="Urine (mL)" values={urine} display={`${last(urine)}`} good="up" />);
 
   return (
-    <Card title={`Vitals — last ${readings.length || 0} day${readings.length === 1 ? "" : "s"}`}>
+    <Panel label="Detail" title={`Vitals · last ${readings.length || 0} day${readings.length === 1 ? "" : "s"}`}>
       {cards.length === 0 ? (
-        <p className="text-[13px] text-sage-500">No readings recorded yet. They appear here as the caregiver logs them.</p>
+        <p className="text-[13.5px] text-sage-500">No readings recorded yet. They appear here as the caregiver logs them daily.</p>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">{cards}</div>
-          <p className="mt-3 text-[12px] text-sage-500">
-            Recorded daily at home by the caregiver — the trend over {readings.length} day
-            {readings.length === 1 ? "" : "s"}, not a single reading.
-          </p>
+          <div className="grid gap-3 sm:grid-cols-3">{cards}</div>
+          <p className="mt-3 text-[12px] text-sage-500">Recorded at home by the caregiver — a {readings.length}-day trend, not a single reading.</p>
         </>
       )}
-    </Card>
+    </Panel>
   );
 }
 
 function VitalCard({ label, values, display, good }: { label: string; values: number[]; display: string; good: "up" | "down" }) {
   const improving = good === "down" ? values[values.length - 1] < values[0] : values[values.length - 1] > values[0];
+  const steady = values[values.length - 1] === values[0];
+  const tone: Tone = steady ? "neutral" : improving ? "recovery" : "attention";
   return (
-    <div className="rounded-xl bg-mist p-3">
+    <div className="rounded-2xl bg-mist p-3.5 ring-1 ring-ink/[0.04]">
       <div className="flex items-baseline justify-between">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-sage-500">{label}</span>
-        <span className={`text-[11px] font-bold ${improving ? "text-good-600" : "text-coral-500"}`}>
-          {improving ? "improving" : "watch"}
+        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-sage-500">{label}</span>
+        <span className={`text-[11px] font-bold ${tone === "recovery" ? "text-brand-700" : tone === "attention" ? "text-warn-600" : "text-sage-500"}`}>
+          {steady ? "steady" : improving ? "improving" : "watch"}
         </span>
       </div>
-      <div className="mt-0.5 text-[17px] font-semibold tabular-nums text-ink">{display}</div>
-      <div className="text-[11px] tabular-nums text-sage-500">
-        7d: {values[0]} → {values[values.length - 1]}
-      </div>
-      <div className="mt-1.5">
-        <Spark values={values} improving={improving} />
-      </div>
+      <div className="mt-1 text-[19px] font-semibold tabular-nums text-ink">{display}</div>
+      <div className="text-[11px] tabular-nums text-sage-500">{values[0]} → {values[values.length - 1]}</div>
+      <div className="mt-2"><RecoveryTrajectory values={values} tone={tone} height={30} animate={false} /></div>
     </div>
   );
 }
 
-function Spark({ values, improving }: { values: number[]; improving: boolean }) {
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const pad = (max - min) * 0.5 || 1;
-  const lo = min - pad;
-  const range = max + pad - lo;
-  const W = 120;
-  const H = 34;
-  const n = values.length;
-  const px = (i: number) => (i / (n - 1)) * (W - 4) + 2;
-  const py = (v: number) => H - 2 - ((v - lo) / range) * (H - 4);
-  const line = values.map((v, i) => `${px(i).toFixed(1)},${py(v).toFixed(1)}`).join(" ");
+/* ---------------------------- daily care & physio ------------------------- */
+
+function DailyCarePanel({ tasks, doneToday }: { tasks: CareTaskRow[]; doneToday: Set<string> }) {
+  if (tasks.length === 0) {
+    return (
+      <Panel label="Detail" title="Daily care & mobility">
+        <p className="text-[13.5px] text-sage-500">Daily care tasks appear here once the recovery plan is active.</p>
+      </Panel>
+    );
+  }
+  const done = tasks.filter((t) => doneToday.has(t.id)).length;
+  const pct = Math.round((done / tasks.length) * 100);
+  const physio = tasks.filter((t) => /physio|mobil|therap/i.test(t.discipline));
+  const tone: Tone = pct >= 80 ? "recovery" : pct >= 40 ? "attention" : "neutral";
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none" className={improving ? "text-good-500" : "text-coral-400"} aria-hidden>
-      <polyline points={`2,${H - 2} ${line} ${W - 2},${H - 2}`} fill="currentColor" opacity="0.08" stroke="none" />
-      <polyline points={line} fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-      {values.map((v, i) => (
-        <circle key={i} cx={px(i)} cy={py(v)} r={i === n - 1 ? 2.4 : 1.5} fill="currentColor" />
-      ))}
-    </svg>
+    <Panel
+      label="Detail"
+      title="Daily care & mobility"
+      aside={<span className="text-[12.5px] font-semibold text-sage-600">{done}/{tasks.length} today</span>}
+    >
+      <div className="flex h-2 w-full overflow-hidden rounded-full bg-mist-200">
+        <div className={`h-full rounded-full ${tone === "recovery" ? "bg-brand-500" : tone === "attention" ? "bg-warn-500" : "bg-sky-500"}`} style={{ width: `${pct}%` }} />
+      </div>
+      <p className="mt-2 text-[12.5px] text-sage-600">{pct}% of today&rsquo;s care completed by the home team.</p>
+      {physio.length > 0 && (
+        <div className="mt-4">
+          <SectionLabel>Mobility & physiotherapy</SectionLabel>
+          <ul className="mt-2 space-y-1.5">
+            {physio.map((t) => (
+              <li key={t.id} className="flex items-center gap-2.5 text-[13.5px] text-ink">
+                <span className={`grid h-4 w-4 place-items-center rounded-full text-[10px] ${doneToday.has(t.id) ? "bg-brand-500 text-white" : "bg-mist-200 text-sage-500"}`}>{doneToday.has(t.id) ? "✓" : ""}</span>
+                <span className="w-[52px] shrink-0 text-[12px] font-semibold text-sky-700 tabular-nums">{t.time_label}</span>
+                <span className="min-w-0 flex-1">{t.title}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </Panel>
   );
 }
 
-/* ---------------- Medicines (add / edit / remove — persisted) ---------------- */
+/* ------------------------------- diet ------------------------------------- */
 
-const FIELD =
-  "rounded-xl bg-white px-3 py-1.5 text-[13px] text-ink ring-1 ring-ink/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400";
+function DietDetail({ plan }: { plan: PatientPlanRow }) {
+  const diet = plan.content?.diet ?? [];
+  return (
+    <Panel label="Detail" title="Diet">
+      {diet.length === 0 ? (
+        <p className="text-[13.5px] text-sage-500">No specific diet instructions in the active plan.</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {diet.map((d, i) => (
+            <li key={i} className="flex items-start gap-2 text-[13.5px] text-ink">
+              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-400" />
+              <span className="min-w-0 flex-1">{d.text}</span>
+              <ProvenanceTag p={d.provenance} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
+  );
+}
 
+/* ------------------------------ milestones -------------------------------- */
+
+function MilestonesPanel({ plan, day }: { plan: PatientPlanRow; day: number }) {
+  const ms = (plan.content?.milestones ?? []).slice().sort((a, b) => ((a.by_day ?? 999) - (b.by_day ?? 999)));
+  return (
+    <Panel label="Detail" title="Milestones">
+      {ms.length === 0 ? (
+        <p className="text-[13.5px] text-sage-500">No milestones set in the active plan.</p>
+      ) : (
+        <ol className="space-y-2.5">
+          {ms.map((m, i) => {
+            const due = m.by_day != null;
+            const passed = due && (m.by_day as number) < day;
+            const current = due && (m.by_day as number) >= day && (i === 0 || (ms[i - 1].by_day ?? 0) < day);
+            return (
+              <li key={i} className="flex items-center gap-3">
+                <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-[11px] font-bold ${passed ? "bg-brand-500 text-white" : current ? "bg-sky-600 text-white ring-4 ring-sky-500/15" : "bg-mist-200 text-sage-500"}`}>{i + 1}</span>
+                <span className="min-w-0 flex-1 text-[13.5px] text-ink">{m.name}</span>
+                {due && <span className="shrink-0 text-[12px] font-medium text-sage-500">target day {m.by_day}</span>}
+              </li>
+            );
+          })}
+        </ol>
+      )}
+      <p className="mt-3 text-[12px] text-sage-500">Targets from the approved pathway and your stated goal — not completion claims.</p>
+    </Panel>
+  );
+}
+
+/* ------------------------------ care team --------------------------------- */
+
+const TEAM_LABEL: Record<string, string> = { lead_doctor: "Lead clinician", nurse: "Rehab nurse", coordinator: "Recovery coordinator" };
+
+function CareTeamPanel({ team }: { team: CareTeamMember[] }) {
+  return (
+    <Panel label="Context" title="Care team">
+      {team.length === 0 ? (
+        <p className="text-[13.5px] text-sage-500">No care team assigned yet.</p>
+      ) : (
+        <ul className="space-y-3">
+          {team.map((m) => (
+            <li key={m.id} className="flex items-center gap-3">
+              <Avatar name={m.full_name ?? "?"} size={36} tone="neutral" />
+              <div className="min-w-0">
+                <div className="truncate text-[13.5px] font-semibold text-ink">{m.full_name ?? "Unassigned"}</div>
+                <div className="text-[12px] text-sage-500">{TEAM_LABEL[m.team_role] ?? m.team_role}</div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
+  );
+}
+
+/* --------------------------- approvals inbox ------------------------------ */
+
+type LocalStatus = ApprovalRow["status"];
+const A_META: Record<ApprovalRow["type"], { label: string; tone: Tone }> = {
+  duty_med: { label: "Medicine suggestion", tone: "calm" },
+  nurse_query: { label: "Nurse query", tone: "recovery" },
+  patient_query: { label: "Family query", tone: "neutral" },
+};
+
+function ApprovalsInbox({ patientId, rows }: { patientId: string; rows: ApprovalRow[] }) {
+  const [items, setItems] = useState(rows);
+  const [noteFor, setNoteFor] = useState<string | null>(null);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const setStatus = (id: string, status: LocalStatus) => setItems((xs) => xs.map((i) => (i.id === id ? { ...i, status } : i)));
+
+  const decide = async (id: string, status: "approved" | "declined") => {
+    setBusy(id); const prev = items; setStatus(id, status);
+    try { await decideApproval(id, status); } catch { setItems(prev); } finally { setBusy(null); }
+  };
+  const sendSuggestion = async (it: ApprovalRow) => {
+    setBusy(it.id); const prev = items; setStatus(it.id, "suggested"); setNoteFor(null);
+    const text = note.trim(); setNote("");
+    try {
+      await decideApproval(it.id, "suggested");
+      if (text) await addUpdate(patientId, { source: "pmr", author_name: "Lead clinician", body: `Re: ${it.from_name ?? "query"} — ${text}` });
+    } catch { setItems(prev); } finally { setBusy(null); }
+  };
+
+  const pending = items.filter((i) => i.status === "pending").length;
+  const rank = (i: ApprovalRow) => (i.status === "pending" ? (i.urgency === "urgent" ? 0 : 1) : 2);
+  const ordered = [...items].sort((a, b) => rank(a) - rank(b));
+
+  return (
+    <Panel
+      label="Decision"
+      title="Approvals"
+      aside={<StatusTag tone={pending > 0 ? "attention" : "recovery"}>{pending} pending</StatusTag>}
+    >
+      {items.length === 0 ? (
+        <p className="text-[13.5px] text-sage-500">Nothing awaiting your decision.</p>
+      ) : (
+        <ul className="space-y-2.5">
+          {ordered.map((it) => (
+            <li key={it.id} className={`rounded-2xl p-3.5 ring-1 ${it.urgency === "urgent" && it.status === "pending" ? "bg-warn-100/50 ring-warn-500/20" : "bg-mist ring-ink/[0.05]"}`}>
+              <div className="flex items-center gap-2">
+                <StatusTag tone={A_META[it.type].tone}>{A_META[it.type].label}</StatusTag>
+                {it.urgency === "urgent" && <StatusTag tone="escalation">Urgent</StatusTag>}
+                <span className="ml-auto text-[11px] text-sage-500">{timeAgo(it.created_at)}</span>
+              </div>
+              <p className="mt-1.5 text-[13px] font-semibold text-ink">{it.from_name}</p>
+              <p className="mt-0.5 text-[13px] leading-snug text-sage-600">{it.message}</p>
+              {it.suggestion && (
+                <p className="mt-1.5 rounded-xl bg-white px-3 py-1.5 text-[13px] text-ink ring-1 ring-ink/[0.06]">
+                  <span className="font-semibold text-sky-700">{it.type === "patient_query" ? "Your reply: " : "Suggests: "}</span>{it.suggestion}
+                </p>
+              )}
+              {it.status === "pending" ? (
+                noteFor === it.id ? (
+                  <div className="mt-2.5">
+                    <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder={it.type === "patient_query" ? "Your reply to the family…" : "Your suggestion back to the team…"} className="w-full rounded-xl bg-white px-3 py-2 text-[13px] text-ink ring-1 ring-line focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" />
+                    <div className="mt-2 flex gap-2">
+                      <button type="button" onClick={() => sendSuggestion(it)} disabled={busy === it.id || !note.trim()} className="tap rounded-full bg-sky-600 px-3.5 py-1.5 text-[12px] font-semibold text-white disabled:opacity-60">{it.type === "patient_query" ? "Send reply" : "Send suggestion"}</button>
+                      <button type="button" onClick={() => { setNoteFor(null); setNote(""); }} className="tap rounded-full px-3 py-1.5 text-[12px] font-semibold text-sage-600">Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-2.5 flex flex-wrap gap-2">
+                    {it.type === "patient_query" ? (
+                      <>
+                        <button type="button" onClick={() => setNoteFor(it.id)} className="tap rounded-full bg-sky-600 px-3.5 py-1.5 text-[12px] font-semibold text-white">Reply</button>
+                        <button type="button" onClick={() => decide(it.id, "approved")} disabled={busy === it.id} className="tap rounded-full bg-white px-3.5 py-1.5 text-[12px] font-semibold text-sage-600 ring-1 ring-line disabled:opacity-60">Mark reviewed</button>
+                      </>
+                    ) : (
+                      <>
+                        <button type="button" onClick={() => decide(it.id, "approved")} disabled={busy === it.id} className="tap rounded-full bg-brand-600 px-3.5 py-1.5 text-[12px] font-semibold text-white disabled:opacity-60">Approve</button>
+                        <button type="button" onClick={() => setNoteFor(it.id)} className="tap rounded-full bg-sky-600 px-3.5 py-1.5 text-[12px] font-semibold text-white">Suggest</button>
+                        <button type="button" onClick={() => decide(it.id, "declined")} disabled={busy === it.id} className="tap rounded-full bg-white px-3.5 py-1.5 text-[12px] font-semibold text-coral-600 ring-1 ring-coral-200 disabled:opacity-60">Decline</button>
+                      </>
+                    )}
+                  </div>
+                )
+              ) : (
+                <p className="mt-2 text-[12px] font-semibold text-sage-600">
+                  {it.type === "patient_query"
+                    ? it.status === "suggested" ? "Replied · the family can see it" : "Reviewed"
+                    : `${it.status === "approved" ? "Approved" : it.status === "declined" ? "Declined" : "Suggestion sent"} · saved`}
+                </p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
+  );
+}
+
+/* -------------------------------- medicines ------------------------------- */
+
+const FIELD = "rounded-xl bg-white px-3 py-1.5 text-[13px] text-ink ring-1 ring-line focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500";
 const emptyDraft: MedicationInput = { name: "", dose: "", freq: "", timing: "After food" };
 
 function Medicines({ patientId, rows, onChange }: { patientId: string; rows: MedicationRow[]; onChange: (m: MedicationRow[]) => void }) {
-  const [editId, setEditId] = useState<string | null>(null); // "new" = adding
+  const [editId, setEditId] = useState<string | null>(null);
   const [draft, setDraft] = useState<MedicationInput>(emptyDraft);
   const [busy, setBusy] = useState(false);
 
-  const startAdd = () => {
-    setDraft(emptyDraft);
-    setEditId("new");
-  };
-  const startEdit = (m: MedicationRow) => {
-    setDraft({ name: m.name, dose: m.dose ?? "", freq: m.freq ?? "", timing: m.timing ?? "", note: m.note ?? "" });
-    setEditId(m.id);
-  };
+  const startAdd = () => { setDraft(emptyDraft); setEditId("new"); };
+  const startEdit = (m: MedicationRow) => { setDraft({ name: m.name, dose: m.dose ?? "", freq: m.freq ?? "", timing: m.timing ?? "", note: m.note ?? "" }); setEditId(m.id); };
 
   const save = async () => {
     if (!draft.name.trim()) return;
     setBusy(true);
     try {
-      if (editId === "new") {
-        const created = await addMedication(patientId, draft);
-        onChange([...rows, created]);
-      } else if (editId) {
-        await updateMedication(editId, draft);
-        onChange(rows.map((m) => (m.id === editId ? { ...m, ...draft } : m)));
-      }
+      if (editId === "new") { const created = await addMedication(patientId, draft); onChange([...rows, created]); }
+      else if (editId) { await updateMedication(editId, draft); onChange(rows.map((m) => (m.id === editId ? { ...m, ...draft } : m))); }
       setEditId(null);
-    } finally {
-      setBusy(false);
-    }
+    } finally { setBusy(false); }
   };
-
   const remove = async (id: string) => {
-    const prev = rows;
-    onChange(rows.filter((m) => m.id !== id));
-    try {
-      await removeMedication(id);
-    } catch {
-      onChange(prev);
-    }
+    const prev = rows; onChange(rows.filter((m) => m.id !== id));
+    try { await removeMedication(id); } catch { onChange(prev); }
   };
 
   return (
-    <Card
+    <Panel
+      label="Detail"
       title="Medicines"
-      action={
-        <button type="button" onClick={startAdd} className="tap rounded-full bg-brand-600 px-3 py-1.5 text-[12px] font-semibold text-white">
-          + Add
-        </button>
-      }
+      aside={<button type="button" onClick={startAdd} className="tap rounded-full bg-sky-600 px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-sky-700">+ Add</button>}
     >
       {editId !== null && (
-        <div className="mb-3 rounded-2xl bg-mist p-3">
+        <div className="mb-3 rounded-2xl bg-mist p-3 ring-1 ring-ink/[0.04]">
           <div className="grid grid-cols-2 gap-2">
             <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Medicine name" className={FIELD} />
             <input value={draft.dose} onChange={(e) => setDraft({ ...draft, dose: e.target.value })} placeholder="Dose (e.g. 5 mg)" className={FIELD} />
@@ -456,66 +612,51 @@ function Medicines({ patientId, rows, onChange }: { patientId: string; rows: Med
             <input value={draft.timing} onChange={(e) => setDraft({ ...draft, timing: e.target.value })} placeholder="Timing" className={FIELD} />
           </div>
           <div className="mt-2 flex gap-2">
-            <button type="button" onClick={save} disabled={busy} className="tap rounded-full bg-good-500 px-3.5 py-1.5 text-[12px] font-semibold text-white disabled:opacity-60">
-              {editId === "new" ? "Add medicine" : "Save"}
-            </button>
-            <button type="button" onClick={() => setEditId(null)} className="tap rounded-full px-3 py-1.5 text-[12px] font-semibold text-sage-600">
-              Cancel
-            </button>
+            <button type="button" onClick={save} disabled={busy} className="tap rounded-full bg-brand-600 px-3.5 py-1.5 text-[12px] font-semibold text-white disabled:opacity-60">{editId === "new" ? "Add medicine" : "Save"}</button>
+            <button type="button" onClick={() => setEditId(null)} className="tap rounded-full px-3 py-1.5 text-[12px] font-semibold text-sage-600">Cancel</button>
           </div>
         </div>
       )}
-
       {rows.length === 0 ? (
-        <p className="text-[13px] text-sage-500">No medicines recorded.</p>
+        <p className="text-[13.5px] text-sage-500">No medicines recorded.</p>
       ) : (
         <ul className="divide-y divide-ink/[0.05]">
           {rows.map((m) => (
-            <li key={m.id} className="flex items-center gap-2 py-2">
-              <span className="min-w-0 flex-1 text-[13px] text-ink">
+            <li key={m.id} className="flex items-center gap-2 py-2.5">
+              <span className="min-w-0 flex-1 text-[13.5px] text-ink">
                 <span className="font-semibold">{m.name}</span> <span className="text-sage-500">{m.dose}</span>
-                <span className="block text-[11px] text-sage-400">
-                  {m.timing}
-                  {m.note ? ` · ${m.note}` : ""}
-                </span>
+                <span className="block text-[11px] text-sage-400">{m.timing}{m.note ? ` · ${m.note}` : ""}</span>
               </span>
-              <span className="shrink-0 rounded bg-mist px-1.5 py-0.5 text-[12px] font-semibold tabular-nums text-ink">{m.freq}</span>
-              <button type="button" onClick={() => startEdit(m)} className="tap shrink-0 text-[12px] font-semibold text-brand-700">
-                Edit
-              </button>
-              <button type="button" onClick={() => remove(m.id)} aria-label={`Remove ${m.name}`} className="tap shrink-0 px-1 text-[16px] leading-none text-sage-400 hover:text-coral-500">
-                ×
-              </button>
+              <span className="shrink-0 rounded-md bg-mist px-1.5 py-0.5 text-[12px] font-semibold tabular-nums text-ink ring-1 ring-ink/[0.04]">{m.freq}</span>
+              <button type="button" onClick={() => startEdit(m)} className="tap shrink-0 text-[12px] font-semibold text-sky-700">Edit</button>
+              <button type="button" onClick={() => remove(m.id)} aria-label={`Remove ${m.name}`} className="tap shrink-0 px-1 text-[16px] leading-none text-sage-400 hover:text-coral-500">×</button>
             </li>
           ))}
         </ul>
       )}
-      <p className="mt-2 text-[12px] text-sage-500">
-        You own medicine changes. Duty-doctor suggestions arrive in the approvals inbox above.
-      </p>
-    </Card>
+      <p className="mt-2 text-[12px] text-sage-500">You own medicine changes. Duty-doctor suggestions arrive in Approvals.</p>
+    </Panel>
   );
 }
 
-/* ---------------- Aggregated daily feed ---------------- */
+/* ---------------------------- clinical timeline --------------------------- */
 
-const SRC: Record<UpdateRow["source"], { label: string; cls: string }> = {
-  caregiver: { label: "Caregiver", cls: "bg-brand-50 text-brand-700" },
-  nurse: { label: "Nursing Coordinator", cls: "bg-good-100 text-good-600" },
-  duty_doctor: { label: "Duty Doctor", cls: "bg-ink/10 text-ink" },
-  pmr: { label: "HOD", cls: "bg-brand-600 text-white" },
+const SRC: Record<UpdateRow["source"], { label: string; tone: Tone }> = {
+  caregiver: { label: "Caregiver", tone: "calm" },
+  nurse: { label: "Rehab nurse", tone: "recovery" },
+  duty_doctor: { label: "Duty doctor", tone: "neutral" },
+  pmr: { label: "Lead clinician", tone: "attention" },
 };
-
 function clockTime(iso: string): string {
   const d = new Date(iso);
   return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
 }
 
-function DailyFeed({ rows }: { rows: UpdateRow[] }) {
+function ClinicalTimeline({ rows }: { rows: UpdateRow[] }) {
   return (
-    <Card title="Recent — from the care team">
+    <Panel label="Context" title="Clinical timeline">
       {rows.length === 0 ? (
-        <p className="text-[13px] text-sage-500">No updates yet today.</p>
+        <p className="text-[13.5px] text-sage-500">No updates yet today.</p>
       ) : (
         <ol className="space-y-3">
           {rows.map((u) => (
@@ -523,9 +664,7 @@ function DailyFeed({ rows }: { rows: UpdateRow[] }) {
               <div className="w-11 shrink-0 pt-0.5 text-[12px] font-medium tabular-nums text-sage-500">{clockTime(u.created_at)}</div>
               <div className={`min-w-0 flex-1 rounded-xl px-3 py-2 ${u.flag === "watch" ? "bg-warn-100/60 ring-1 ring-warn-500/20" : "bg-mist"}`}>
                 <div className="flex items-center gap-2">
-                  <span className={`rounded-full px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-wide ${SRC[u.source].cls}`}>
-                    {SRC[u.source].label}
-                  </span>
+                  <StatusTag tone={SRC[u.source].tone}>{SRC[u.source].label}</StatusTag>
                   {u.author_name && <span className="text-[12px] font-medium text-sage-500">{u.author_name}</span>}
                 </div>
                 <p className="mt-1 text-[13px] leading-snug text-ink">{u.body}</p>
@@ -534,6 +673,6 @@ function DailyFeed({ rows }: { rows: UpdateRow[] }) {
           ))}
         </ol>
       )}
-    </Card>
+    </Panel>
   );
 }

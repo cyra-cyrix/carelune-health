@@ -39,10 +39,27 @@ export default {
           300: "#93BFF0",
           400: "#5E9DE6",
           500: "#3B82D9",
-          600: "#2A6FC7", // primary action
+          600: "#2A6FC7", // primary action / luminous clinical blue
           700: "#215AA6",
           800: "#1C4A85",
           900: "#183C6B",
+        },
+        // Doctor-experience authority surface — deep midnight/navy for heroes.
+        midnight: {
+          950: "#070C17",
+          900: "#0A1120",
+          800: "#0F1A2E",
+          700: "#16243D",
+          600: "#1E3050",
+          500: "#294066",
+          400: "#3A567F",
+        },
+        // On-navy text/lines tuned for AA contrast over midnight surfaces.
+        haze: {
+          100: "#EAF1FA", // near-white body on navy
+          200: "#C7D6EC",
+          300: "#9DB2D2", // secondary on navy
+          400: "#6E86AC", // muted / captions on navy
         },
       },
       borderRadius: {
@@ -56,15 +73,37 @@ export default {
         // Soft, diffuse elevation — calm, never heavy or coloured.
         card: "0 1px 3px 0 rgba(23,33,38,0.05), 0 1px 2px -1px rgba(23,33,38,0.04)",
         lift: "0 2px 6px -1px rgba(23,33,38,0.06), 0 12px 28px -14px rgba(23,33,38,0.14)",
+        // Composed premium surface — used sparingly on the signature screens.
+        panel: "0 1px 2px rgba(16,26,46,0.04), 0 8px 24px -12px rgba(16,26,46,0.10)",
+        // Elevation over the midnight hero.
+        hero: "0 24px 60px -30px rgba(7,12,23,0.55)",
       },
       keyframes: {
         "fade-up": {
           "0%": { opacity: "0", transform: "translateY(6px)" },
           "100%": { opacity: "1", transform: "translateY(0)" },
         },
+        // Progressive-disclosure reveal — a little more travel than fade-up.
+        reveal: {
+          "0%": { opacity: "0", transform: "translateY(10px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        // Recovery-trajectory line draw.
+        draw: {
+          "0%": { "stroke-dashoffset": "var(--dash, 300)" },
+          "100%": { "stroke-dashoffset": "0" },
+        },
+        // Quiet processing shimmer for the AI journey.
+        breathe: {
+          "0%,100%": { opacity: "0.55" },
+          "50%": { opacity: "1" },
+        },
       },
       animation: {
         "fade-up": "fade-up 0.2s ease-out both",
+        reveal: "reveal 0.45s cubic-bezier(0.16,1,0.3,1) both",
+        draw: "draw 0.9s cubic-bezier(0.16,1,0.3,1) both",
+        breathe: "breathe 1.6s ease-in-out infinite",
       },
     },
   },

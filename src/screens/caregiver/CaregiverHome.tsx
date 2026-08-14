@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Icon, ProgressRing } from "../../components/ui";
 import RaiseConcern from "../../components/RaiseConcern";
+import { useBranding } from "../../branding/BrandingProvider";
 import { FOOD_OPTIONS, MOOD_OPTIONS } from "../../data/case";
-import { careTeamV2 } from "../../data/journey";
 import {
   getMyPatient,
   getCareTasks,
@@ -10,9 +10,11 @@ import {
   setTaskDone,
   getTodayReadings,
   saveReadings,
+  getMedications,
   type PatientRow,
   type CareTaskRow,
   type ReadingsInput,
+  type MedicationRow,
 } from "../../lib/db";
 
 type Tab = "today" | "readings" | "help";
@@ -33,9 +35,11 @@ const EMPTY_READINGS: ReadingsInput = {
  * Supabase for the real patient this caregiver is assigned to.
  */
 export default function CaregiverHome() {
+  const { profile } = useBranding();
   const [tab, setTab] = useState<Tab>("today");
   const [patient, setPatient] = useState<PatientRow | null>(null);
   const [tasks, setTasks] = useState<CareTaskRow[]>([]);
+  const [meds, setMeds] = useState<MedicationRow[]>([]);
   const [done, setDone] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -58,10 +62,15 @@ export default function CaregiverHome() {
         if (!active) return;
         setPatient(p);
         if (p) {
-          const [t, logs] = await Promise.all([getCareTasks(p.id), getTodayTaskLogs(p.id)]);
+          const [t, logs, m] = await Promise.all([
+            getCareTasks(p.id),
+            getTodayTaskLogs(p.id),
+            getMedications(p.id).catch(() => [] as MedicationRow[]),
+          ]);
           if (!active) return;
           setTasks(t);
           setDone(logs);
+          setMeds(m);
         }
       } catch (e) {
         if (active) setError(e instanceof Error ? e.message : "Could not load the plan.");
@@ -98,6 +107,7 @@ export default function CaregiverHome() {
   };
 
   const first = patient ? patient.full_name.split(" ")[0] : "";
+  const caregiverFirst = profile?.full_name?.split(" ")[0] ?? "";
   const next = tasks.find((t) => !done.has(t.id));
 
   return (
@@ -109,7 +119,7 @@ export default function CaregiverHome() {
         {!loading && !error && patient && (
           <>
             {tab === "today" && (
-              <Today first={first} day={dayAtHome(patient)} tasks={tasks} done={done} toggle={toggle} nextId={next?.id} />
+              <Today first={first} caregiverName={caregiverFirst} day={dayAtHome(patient)} tasks={tasks} meds={meds} done={done} toggle={toggle} nextId={next?.id} />
             )}
             {tab === "readings" && <ReadingsTab patientId={patient.id} />}
             {tab === "help" && <HelpTab patientId={patient.id} />}
@@ -162,15 +172,19 @@ function NavItem({ label, active, onClick, icon }: { label: string; active: bool
 
 function Today({
   first,
+  caregiverName,
   day,
   tasks,
+  meds,
   done,
   toggle,
   nextId,
 }: {
   first: string;
+  caregiverName: string;
   day: number;
   tasks: CareTaskRow[];
+  meds: MedicationRow[];
   done: Set<string>;
   toggle: (id: string) => void;
   nextId?: string;
@@ -182,7 +196,9 @@ function Today({
     <div className="space-y-4">
       <div>
         <div className="text-[13px] text-sage-600">{first}&rsquo;s day · Day {day}</div>
-        <h1 className="text-[22px] font-semibold tracking-tight text-ink">Good day, Lakshmi.</h1>
+        <h1 className="text-[22px] font-semibold tracking-tight text-ink">
+          {caregiverName ? `Good day, ${caregiverName}.` : "Good day."}
+        </h1>
       </div>
 
       {/* Progress hero */}
@@ -271,6 +287,32 @@ function Today({
           })}
         </ol>
       </div>
+
+      {/* Medicines — from the plan the doctor activated */}
+      {meds.length > 0 && (
+        <div>
+          <h2 className="mb-2 text-[15px] font-semibold text-ink">Medicines</h2>
+          <ul className="space-y-2 rounded-2xl bg-white p-2 shadow-card">
+            {meds.map((m) => (
+              <li key={m.id} className="flex items-start gap-3 rounded-xl px-2 py-2">
+                <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-50 text-brand-600">
+                  <Icon.Pill width={16} height={16} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-baseline gap-x-2">
+                    <span className="text-[14px] font-semibold text-ink">{m.name}</span>
+                    {m.dose && <span className="text-[13px] text-sage-600">{m.dose}</span>}
+                  </span>
+                  <span className="block text-[12px] text-sage-500">
+                    {[m.freq, m.timing].filter(Boolean).join(" · ") || "As directed"}
+                    {m.note ? ` — ${m.note}` : ""}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <p className="px-1 text-[12px] leading-relaxed text-sage-600">
         Everything here comes from the plan the care team approved.
@@ -406,20 +448,11 @@ function HelpTab({ patientId }: { patientId: string }) {
       {/* Ask the care team — type or voice */}
       <RaiseConcern patientId={patientId} />
       <div className="rounded-2xl bg-white p-4 shadow-card">
-        <h2 className="text-[15px] font-semibold text-ink">Care team</h2>
-        <ul className="mt-3 space-y-2.5">
-          {careTeamV2.map((m) => (
-            <li key={m.name} className="flex items-center gap-3">
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand-50 text-[12px] font-semibold text-brand-700">
-                {m.initials}
-              </span>
-              <span className="min-w-0">
-                <span className="block text-[14px] font-semibold text-ink">{m.name}</span>
-                <span className="block text-[12px] text-sage-500">{m.role}</span>
-              </span>
-            </li>
-          ))}
-        </ul>
+        <h2 className="text-[15px] font-semibold text-ink">Your care team</h2>
+        <p className="mt-1.5 text-[13px] leading-relaxed text-sage-600">
+          A nurse is your first point of contact, 8 AM – 8 PM. Send a message above and the team will reply here.
+          The doctor reviews your recovery and steps in when needed.
+        </p>
       </div>
     </div>
   );

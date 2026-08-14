@@ -10,11 +10,23 @@ import {
 
 const inr = (n: number | null | undefined) => (n == null ? "—" : `₹${n.toLocaleString("en-IN")}`);
 
+/** The family-facing package is always branded "Continuum Care"; the admin only
+ *  sets the price. Inclusions are the standard, non-editable programme benefits. */
+const PACKAGE_NAME = "Continuum Care";
+const BENEFITS = [
+  "Governed recovery plan, led by your treating clinician",
+  "Recovery Care Coordinator managing care at home",
+  "Rehabilitation nurse reviews",
+  "Daily caregiver guidance & task reminders",
+  "Family visibility of progress and updates",
+  "Coordinator & nurse support, 8 AM–8 PM, 7 days",
+];
+
 /**
- * Admin "Programme" workspace tab. Edits the institution's ONE commercial package
- * (name, price, trial, inclusions — the single commercial source of truth) and the
- * emergency guidance families see. Clinical pathways are shown read-only: they are
- * governed templates, not separately-priced products (see docs/COMMERCIAL_MODEL.md).
+ * Admin "Programme" workspace tab (journey steps E–F: HOD reviews the programme
+ * and sets the patient price). The commercial package is fixed as "Continuum Care"
+ * with standard inclusions — the admin's only decision is the price. Clinical
+ * pathways are shown read-only (governed templates, see docs/COMMERCIAL_MODEL.md).
  */
 export default function Programme({ onBack }: { onBack: () => void }) {
   const [sf, setSf] = useState<Storefront | null>(null);
@@ -66,10 +78,8 @@ export default function Programme({ onBack }: { onBack: () => void }) {
 }
 
 function PackageEditor({ sf, onSaved }: { sf: Storefront; onSaved: (s: Storefront) => void }) {
-  const [name, setName] = useState(sf.package_name ?? "");
   const [price, setPrice] = useState(sf.package_price != null ? String(sf.package_price) : "");
   const [trial, setTrial] = useState(sf.trial_days ? String(sf.trial_days) : "");
-  const [inc, setInc] = useState(sf.package_includes ?? "");
   const [emNote, setEmNote] = useState(sf.emergency_note ?? "");
   const [emNum, setEmNum] = useState(sf.emergency_number ?? "");
   const [busy, setBusy] = useState(false);
@@ -78,14 +88,15 @@ function PackageEditor({ sf, onSaved }: { sf: Storefront; onSaved: (s: Storefron
 
   const priceNum = Number(price) || 0;
   const payout = Math.round(priceNum * (1 - sf.platform_fee_pct / 100));
+  const includes = BENEFITS.join("\n");
 
   const save = async () => {
     setBusy(true); setErr(null); setSaved(false);
     try {
       const patch = {
-        package_name: name.trim() || null,
+        package_name: PACKAGE_NAME,
         package_price: price ? Number(price) : null,
-        package_includes: inc.trim() || null,
+        package_includes: includes,
         trial_days: Number(trial) || 0,
         emergency_note: emNote.trim() || null,
         emergency_number: emNum.trim() || null,
@@ -100,11 +111,18 @@ function PackageEditor({ sf, onSaved }: { sf: Storefront; onSaved: (s: Storefron
 
   return (
     <Card>
-      <SectionHeader title="Your care package" sub="The single package families subscribe to. Billing is settled at your centre." />
-      <div className="mt-4 space-y-4">
-        <Field label="Package name">
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Neuro Recovery Continuum" className={inputCls} />
-        </Field>
+      <SectionHeader title="Your care package" sub="The single package families subscribe to. You set the price; the inclusions are standard." />
+      <div className="mt-4 space-y-5">
+        {/* Fixed package identity — the family-facing brand */}
+        <div className="rounded-2xl bg-sky-50 p-4 ring-1 ring-sky-200">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-sky-700">Package families see</div>
+          <div className="mt-1 flex flex-wrap items-baseline gap-2">
+            <span className="font-display text-[22px] font-semibold tracking-tight text-ink">{PACKAGE_NAME}</span>
+            {priceNum > 0 && <span className="text-[15px] font-semibold text-sky-700">{inr(priceNum)}<span className="text-[12px] font-medium text-sage-500">/month</span></span>}
+          </div>
+        </div>
+
+        {/* The only real input: price (+ optional free trial) */}
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Price / month (₹)">
             <input value={price} onChange={(e) => setPrice(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="e.g. 5999" className={inputCls} />
@@ -113,9 +131,20 @@ function PackageEditor({ sf, onSaved }: { sf: Storefront; onSaved: (s: Storefron
             <input value={trial} onChange={(e) => setTrial(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="0" className={inputCls} />
           </Field>
         </div>
-        <Field label="What's included" hint="One item per line.">
-          <textarea value={inc} onChange={(e) => setInc(e.target.value)} rows={4} placeholder={"Daily caregiver visit\nWeekly doctor review\nNurse on call 8am–8pm"} className={`${inputCls} resize-y`} />
-        </Field>
+
+        {/* Standard inclusions — shown, not editable */}
+        <div>
+          <span className="mb-1.5 block text-[12.5px] font-semibold text-sage-600">What&rsquo;s included</span>
+          <ul className="space-y-2 rounded-2xl bg-mist-100 p-4 ring-1 ring-ink/[0.04]">
+            {BENEFITS.map((b) => (
+              <li key={b} className="flex items-start gap-2.5 text-[13.5px] text-ink">
+                <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-good-500 text-[10px] font-bold text-white">✓</span>
+                {b}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1.5 text-[11.5px] text-sage-500">Standard Continuum Care inclusions — shown to families with your package.</p>
+        </div>
 
         {priceNum > 0 && (
           <p className="rounded-xl bg-mist-100 px-3 py-2 text-[12px] text-sage-700 ring-1 ring-ink/[0.04]">

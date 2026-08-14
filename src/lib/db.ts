@@ -112,6 +112,9 @@ export type OrgRow = {
   service_hours: string | null;
   emergency_note: string | null;
   emergency_number: string | null;
+  /** 'active' | 'paused' — a paused institution is suspended by the super admin
+   *  (its non-super-admin users are gated out; no data is deleted). */
+  status: string;
 };
 
 export type MyProfile = {
@@ -129,7 +132,7 @@ export async function getMyOrg(): Promise<OrgRow | null> {
   const { data, error } = await supabase
     .from("centres")
     .select(
-      "id, name, display_name, logo_url, subdomain, setup_complete, invite_token, institution_type, contact_phone, service_hours, emergency_note, emergency_number",
+      "id, name, display_name, logo_url, subdomain, setup_complete, invite_token, institution_type, contact_phone, service_hours, emergency_note, emergency_number, status",
     )
     .limit(1);
   if (error) throw error;
@@ -870,6 +873,7 @@ export type OrgSummary = {
   institution_type: string | null;
   pathways: string[];
   patient_count: number | null;
+  status: string;
 };
 
 export type InstitutionType = "hospital" | "rehab_centre" | "doctor_practice" | "clinical_group";
@@ -895,6 +899,15 @@ export async function listOrgs(): Promise<OrgSummary[]> {
 export async function createOrg(input: NewOrg): Promise<void> {
   const { data, error } = await supabase.functions.invoke("platform-admin", {
     body: { action: "create-org", ...input },
+  });
+  if (error) throw new Error(await edgeError(error));
+  if (data?.error) throw new Error(data.error);
+}
+
+/** Super admin: pause or resume an institution (reversible; no data is deleted). */
+export async function setInstitutionStatus(centreId: string, status: "active" | "paused"): Promise<void> {
+  const { data, error } = await supabase.functions.invoke("platform-admin", {
+    body: { action: "set-org-status", centre_id: centreId, status },
   });
   if (error) throw new Error(await edgeError(error));
   if (data?.error) throw new Error(data.error);

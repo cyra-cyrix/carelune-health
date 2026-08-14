@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
     if (action === "list-orgs") {
       const { data: centres } = await admin
         .from("centres")
-        .select("id, name, display_name, setup_complete, institution_type, created_at")
+        .select("id, name, display_name, setup_complete, institution_type, created_at, status")
         .order("created_at", { ascending: false });
       const { data: admins } = await admin
         .from("profiles")
@@ -101,9 +101,21 @@ Deno.serve(async (req) => {
           admin_email: a?.email ?? null,
           pathways: pathwaysByCentre.get(c.id) ?? [],
           patient_count: countByCentre.get(c.id) ?? 0,
+          status: (c as { status?: string }).status ?? "active",
         };
       });
       return json({ orgs });
+    }
+
+    // ---- pause / resume an institution (no data is deleted) ----
+    if (action === "set-org-status") {
+      const centre_id = String(body.centre_id ?? "");
+      const status = String(body.status ?? "");
+      if (!centre_id) return json({ error: "centre_id is required." }, 400);
+      if (!["active", "paused"].includes(status)) return json({ error: "status must be 'active' or 'paused'." }, 400);
+      const { error: sErr } = await admin.from("centres").update({ status }).eq("id", centre_id);
+      if (sErr) return json({ error: sErr.message }, 400);
+      return json({ ok: true, centre_id, status });
     }
 
     // ---- create an org + its admin ----

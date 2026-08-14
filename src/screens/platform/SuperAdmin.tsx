@@ -4,6 +4,7 @@ import { useAuth } from "../../auth/AuthProvider";
 import {
   listOrgs,
   createOrg,
+  setInstitutionStatus,
   listPathwayPacks,
   type OrgSummary,
   type NewOrg,
@@ -45,6 +46,27 @@ export default function SuperAdmin() {
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [created, setCreated] = useState<NewOrg | null>(null);
+
+  const [actingId, setActingId] = useState<string | null>(null);
+  const [confirmPauseId, setConfirmPauseId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const toggleStatus = async (o: OrgSummary) => {
+    const next = o.status === "paused" ? "active" : "paused";
+    setActingId(o.id);
+    setConfirmPauseId(null);
+    setActionError(null);
+    const prev = orgs;
+    setOrgs((xs) => xs.map((x) => (x.id === o.id ? { ...x, status: next } : x)));
+    try {
+      await setInstitutionStatus(o.id, next);
+    } catch (e) {
+      setOrgs(prev);
+      setActionError(e instanceof Error ? e.message : "Could not update the institution.");
+    } finally {
+      setActingId(null);
+    }
+  };
 
   const load = async () => {
     try {
@@ -223,30 +245,62 @@ export default function SuperAdmin() {
               ) : orgs.length === 0 ? (
                 <EmptyState title="No institutions yet" body="Create the first institution with the form on the left." />
               ) : (
-                <ul className="divide-y divide-ink/[0.06]">
-                  {orgs.map((o) => (
+                <>
+                  {actionError && <div className="mb-2"><ErrorNote>{actionError}</ErrorNote></div>}
+                  <ul className="divide-y divide-ink/[0.06]">
+                  {orgs.map((o) => {
+                    const paused = o.status === "paused";
+                    return (
                     <li key={o.id} className="py-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-[14.5px] font-semibold text-ink">{o.display_name || o.name}</span>
-                        {o.institution_type && <Chip tone="grey">{TYPE_LABEL[o.institution_type] ?? o.institution_type}</Chip>}
-                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${o.setup_complete ? "bg-good-100 text-good-600" : "bg-warn-100 text-warn-600"}`}>
-                          {o.setup_complete ? "Active" : "Setup pending"}
-                        </span>
-                        {o.patient_count != null && o.patient_count > 0 && (
-                          <span className="text-[11.5px] font-medium text-sage-500">{o.patient_count} patient{o.patient_count > 1 ? "s" : ""}</span>
-                        )}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-[14.5px] font-semibold text-ink">{o.display_name || o.name}</span>
+                            {o.institution_type && <Chip tone="grey">{TYPE_LABEL[o.institution_type] ?? o.institution_type}</Chip>}
+                            {paused ? (
+                              <span className="rounded-full bg-coral-100 px-2 py-0.5 text-[11px] font-semibold text-coral-600">Paused</span>
+                            ) : (
+                              <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${o.setup_complete ? "bg-good-100 text-good-600" : "bg-warn-100 text-warn-600"}`}>
+                                {o.setup_complete ? "Active" : "Setup pending"}
+                              </span>
+                            )}
+                            {o.patient_count != null && o.patient_count > 0 && (
+                              <span className="text-[11.5px] font-medium text-sage-500">{o.patient_count} patient{o.patient_count > 1 ? "s" : ""}</span>
+                            )}
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            {o.pathways.length === 0 ? (
+                              <span className="text-[11.5px] text-sage-400">No programmes assigned</span>
+                            ) : (
+                              o.pathways.map((k) => <Chip key={k} tone="sky">{k === "spine" ? "Spine" : k === "joint" ? "Joint" : "Neuro"}</Chip>)
+                            )}
+                          </div>
+                          <div className="mt-1 text-[12px] text-sage-500">{o.admin_name ? `${o.admin_name} · ` : ""}{o.admin_email || "no admin"}</div>
+                        </div>
+
+                        {/* pause / resume — reversible; never deletes data */}
+                        <div className="shrink-0">
+                          {paused ? (
+                            <button type="button" onClick={() => toggleStatus(o)} disabled={actingId === o.id} className="tap rounded-lg border border-line px-2.5 py-1 text-[12px] font-semibold text-sky-700 hover:bg-mist-100 disabled:opacity-60">
+                              {actingId === o.id ? "…" : "Resume"}
+                            </button>
+                          ) : confirmPauseId === o.id ? (
+                            <div className="flex items-center gap-1.5">
+                              <button type="button" onClick={() => toggleStatus(o)} disabled={actingId === o.id} className="tap rounded-lg bg-coral-600 px-2.5 py-1 text-[12px] font-semibold text-white hover:bg-coral-500 disabled:opacity-60">
+                                {actingId === o.id ? "…" : "Confirm pause"}
+                              </button>
+                              <button type="button" onClick={() => setConfirmPauseId(null)} className="tap rounded-lg px-2 py-1 text-[12px] font-semibold text-sage-600 hover:text-ink">Cancel</button>
+                            </div>
+                          ) : (
+                            <button type="button" onClick={() => setConfirmPauseId(o.id)} className="tap rounded-lg border border-line px-2.5 py-1 text-[12px] font-semibold text-sage-600 hover:bg-mist-100 hover:text-ink">Pause</button>
+                          )}
+                        </div>
                       </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                        {o.pathways.length === 0 ? (
-                          <span className="text-[11.5px] text-sage-400">No programmes assigned</span>
-                        ) : (
-                          o.pathways.map((k) => <Chip key={k} tone="sky">{k === "spine" ? "Spine" : k === "joint" ? "Joint" : "Neuro"}</Chip>)
-                        )}
-                      </div>
-                      <div className="mt-1 text-[12px] text-sage-500">{o.admin_name ? `${o.admin_name} · ` : ""}{o.admin_email || "no admin"}</div>
                     </li>
-                  ))}
-                </ul>
+                    );
+                  })}
+                  </ul>
+                </>
               )}
             </div>
           </Card>

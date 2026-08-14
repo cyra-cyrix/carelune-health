@@ -76,7 +76,7 @@ describe("BrandingProvider resilience", () => {
     vi.mocked(getMyOrg).mockResolvedValue({
       id: "c1", name: "Sunrise", display_name: "Sunrise Spine & Neuro", logo_url: null,
       subdomain: "sunrise", setup_complete: true, invite_token: null, institution_type: "hospital",
-      contact_phone: null, service_hours: null, emergency_note: null, emergency_number: null,
+      contact_phone: null, service_hours: null, emergency_note: null, emergency_number: null, status: "active",
     });
     vi.mocked(getMyProfile).mockResolvedValue(pmrAdmin);
 
@@ -95,7 +95,7 @@ describe("BrandingProvider resilience", () => {
     vi.mocked(getMyOrg).mockResolvedValue({
       id: "c1", name: "Sunrise", display_name: "Sunrise", logo_url: null, subdomain: null,
       setup_complete: true, invite_token: null, institution_type: null, contact_phone: null,
-      service_hours: null, emergency_note: null, emergency_number: null,
+      service_hours: null, emergency_note: null, emergency_number: null, status: "active",
     });
     vi.mocked(getMyProfile).mockResolvedValue({ ...pmrAdmin, role: "nurse", is_admin: false });
 

@@ -37,7 +37,7 @@ export async function getMyOrg(): Promise<OrgRow> {
     id: "c1", name: "Sunrise Spine & Neuro Institute", display_name: "Sunrise Spine & Neuro Institute",
     logo_url: null, subdomain: "sunrise", setup_complete: true, invite_token: null,
     institution_type: "hospital", contact_phone: null, service_hours: "8:00 AM–8:00 PM IST",
-    emergency_note: null, emergency_number: "112",
+    emergency_note: null, emergency_number: "112", status: "active",
   };
 }
 

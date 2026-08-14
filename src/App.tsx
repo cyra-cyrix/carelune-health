@@ -57,6 +57,9 @@ function Shell() {
   // 2. Carelune platform super admin → the org console.
   if (profile?.is_super_admin) return <SuperAdmin />;
 
+  // 3. Institution paused by the super admin → suspend access (no data is lost).
+  if (org?.status === "paused") return <InstitutionPaused />;
+
   // 3. Org admin first-run → name the platform.
   if (profile?.is_admin && org && !org.setup_complete) return <OrgSetup />;
 
@@ -319,6 +322,32 @@ function NoRole() {
         <p className="mt-2 text-[14px] leading-relaxed text-sage-600">
           {user?.email ?? "This account"} does not have a Carelune role yet. Ask your centre admin to
           assign one.
+        </p>
+        <button
+          type="button"
+          onClick={() => void signOut()}
+          className="tap mt-4 rounded-full bg-brand-600 px-5 py-2 text-[14px] font-semibold text-white"
+        >
+          Sign out
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Shown when the super admin has paused this institution. Access is suspended
+ *  (not deleted) — resuming restores everything exactly as it was. */
+function InstitutionPaused() {
+  const { signOut } = useAuth();
+  const { platformName } = useBranding();
+  return (
+    <div className="grid min-h-screen place-items-center bg-mist px-6 text-center">
+      <div className="max-w-sm">
+        <span className="inline-flex rounded-full bg-warn-100 px-3 py-1 text-[12px] font-semibold text-warn-600">Access paused</span>
+        <h1 className="mt-3 font-display text-xl font-semibold text-ink">{platformName} is paused</h1>
+        <p className="mt-2 text-[14px] leading-relaxed text-sage-600">
+          Your institution's access has been temporarily suspended by Carelune. No data has been lost —
+          everything is restored when access resumes. Please contact your Carelune administrator.
         </p>
         <button
           type="button"

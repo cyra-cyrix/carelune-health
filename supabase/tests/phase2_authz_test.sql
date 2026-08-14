@@ -1,9 +1,12 @@
 -- ============================================================================
 -- Carelune — Phase 2 institution-setup authorization tests (pgTAP).
+-- Updated for the MVP commercial model (0015): ONE institution package is the
+-- single commercial source of truth; pathway assignment enables packs only and
+-- creates NO per-pack commercial config; there is no config->centre mirror.
 -- Run: supabase test db
 -- ============================================================================
 begin;
-select plan(8);
+select plan(7);
 
 create or replace function _as(uid text, urole text default 'authenticated') returns void
 language plpgsql as $$ begin
@@ -26,25 +29,24 @@ select throws_like(
   $$select set_institution_pathways('41111111-1111-1111-1111-111111111111', array['spine'])$$,
   '%permission denied%', 'HOD/admin CANNOT assign pathway packs (service_role-only RPC)');
 
--- ---- 2/3. service_role assigns Spine + Joint -> enabled + config created ----
+-- ---- 2/3. service_role assigns Spine + Joint -> enabled (no commercial config) ----
 reset role; select _as('svc','service_role');
 select lives_ok(
   $$select set_institution_pathways('41111111-1111-1111-1111-111111111111', array['spine','joint'])$$,
   'service_role (Super Admin) can assign packs');
 select is((select count(*)::int from institution_pathways where centre_id='41111111-1111-1111-1111-111111111111' and enabled),
           2, 'two packs enabled for the institution');
-select is((select count(*)::int from institution_pathway_config where centre_id='41111111-1111-1111-1111-111111111111'),
-          2, 'default commercial config created per enabled pack');
 
--- ---- 4/5. mirror: admin edits per-pack config -> centres.package_* reflects ----
+-- ---- 4. assignment creates NO per-pack commercial config (pathways are clinical only) ----
+select is((select count(*)::int from institution_pathway_config where centre_id='41111111-1111-1111-1111-111111111111'),
+          0, 'no per-pack commercial config is created — one institution package is authoritative');
+
+-- ---- 5. the institution package (centres.package_*) is directly editable by the admin ----
 reset role; select _as('a4000000-0000-0000-0000-000000000001');
-update institution_pathway_config set price = 7999
-  where centre_id='41111111-1111-1111-1111-111111111111'
-    and pack_id = (select id from pathway_packs where key='spine');
+update centres set package_name='Recovery Continuum', package_price=8499
+  where id='41111111-1111-1111-1111-111111111111';
 select is((select package_price from centres where id='41111111-1111-1111-1111-111111111111'),
-          7999, 'mirror: centres.package_price reflects the per-pack config (single source)');
-select is((select package_name from centres where id='41111111-1111-1111-1111-111111111111'),
-          'Spine Recovery', 'mirror: centres.package_name reflects the edited pack');
+          8499, 'the single institution package is the directly-edited commercial source of truth');
 
 -- ---- 6/7. approved version: cannot un-approve; can retire ----
 reset role; select _as('svc','service_role');

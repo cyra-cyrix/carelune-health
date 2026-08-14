@@ -18,6 +18,8 @@ export type PatientRow = {
   journey_total_days: number;
   diagnosis: string[];
   status: string;
+  pathway_pack_id: string | null;
+  pathway_version_id: string | null;
 };
 
 export type CareTaskRow = {
@@ -235,22 +237,23 @@ export async function listPathwayPacks(): Promise<PathwayPackRow[]> {
   return (data ?? []) as PathwayPackRow[];
 }
 
-export type InstitutionPathway = {
+/** A governed clinical pathway pack ENABLED for an institution. Pathways are
+ *  clinical templates only — they carry no price (the institution has one
+ *  commercial package; see docs/COMMERCIAL_MODEL.md). RLS returns only the
+ *  caller's own centre's assignments. */
+export type EnabledPack = {
   pack_id: string;
   pack_key: "spine" | "joint" | "neuro";
   pack_name: string;
   specialty: string;
   description: string | null;
-  price: number | null;
-  trial_days: number;
-  duration_days: number | null;
-  included: string | null;
-  platform_fee_pct: number;
+  status: PathwayPackRow["status"];
 };
 
-/** The packs enabled for the signed-in user's institution + their commercial
- *  config (admin-facing). RLS returns only the caller's own centre. */
-export async function getMyInstitutionPathways(): Promise<InstitutionPathway[]> {
+/** The clinical pathway packs a Super Admin has enabled for the signed-in user's
+ *  institution. Used to list programmes (read-only) and to assign a patient to a
+ *  pathway — only these packs may ever be assigned. */
+export async function getMyEnabledPacks(): Promise<EnabledPack[]> {
   const me = await getMyProfile();
   if (!me?.centre_id) return [];
   const { data: enabled, error: e1 } = await supabase
@@ -258,47 +261,27 @@ export async function getMyInstitutionPathways(): Promise<InstitutionPathway[]> 
     .select("pack_id")
     .eq("centre_id", me.centre_id)
     .eq("enabled", true);
-  if (e1) throw e1;
+  if (e1) throw new Error(pgErr(e1, "Could not load programmes."));
   const packIds = (enabled ?? []).map((r) => (r as { pack_id: string }).pack_id);
   if (!packIds.length) return [];
 
-  const [{ data: packs }, { data: cfgs }] = await Promise.all([
-    supabase.from("pathway_packs").select("id, key, name, specialty, description").in("id", packIds),
-    supabase.from("institution_pathway_config").select("*").eq("centre_id", me.centre_id).in("pack_id", packIds),
-  ]);
-  const cfgByPack = new Map((cfgs ?? []).map((c) => [(c as { pack_id: string }).pack_id, c as Record<string, unknown>]));
+  const { data: packs, error: e2 } = await supabase
+    .from("pathway_packs")
+    .select("id, key, name, specialty, description, status")
+    .in("id", packIds)
+    .order("key");
+  if (e2) throw new Error(pgErr(e2, "Could not load programmes."));
   return (packs ?? []).map((p) => {
-    const pk = p as { id: string; key: InstitutionPathway["pack_key"]; name: string; specialty: string; description: string | null };
-    const c = cfgByPack.get(pk.id) ?? {};
+    const pk = p as { id: string; key: EnabledPack["pack_key"]; name: string; specialty: string; description: string | null; status: EnabledPack["status"] };
     return {
       pack_id: pk.id,
       pack_key: pk.key,
       pack_name: pk.name,
       specialty: pk.specialty,
       description: pk.description,
-      price: (c.price as number | null) ?? null,
-      trial_days: (c.trial_days as number) ?? 0,
-      duration_days: (c.duration_days as number | null) ?? null,
-      included: (c.included as string | null) ?? null,
-      platform_fee_pct: (c.platform_fee_pct as number) ?? 30,
+      status: pk.status,
     };
   });
-}
-
-/** Admin: update the editable commercial fields for one enabled pack. RLS +
- *  the DB trigger enforce admin/centre/enabled; platform_fee_pct is server-held. */
-export async function updatePathwayConfig(
-  packId: string,
-  patch: { price?: number | null; trial_days?: number; duration_days?: number | null; included?: string | null },
-): Promise<void> {
-  const me = await getMyProfile();
-  if (!me?.centre_id) throw new Error("No institution for this account.");
-  const { error } = await supabase
-    .from("institution_pathway_config")
-    .update(patch)
-    .eq("centre_id", me.centre_id)
-    .eq("pack_id", packId);
-  if (error) throw new Error(pgErr(error, "Could not save the programme."));
 }
 
 /* --------------------- Storefront (packages) + subscription ---------------- */
@@ -416,6 +399,190 @@ export async function markSubscriptionActive(patientId: string): Promise<void> {
     .update({ status: "active" })
     .eq("patient_id", patientId);
   if (error) throw new Error(pgErr(error, "Could not update the subscription."));
+}
+
+/* --------- Phase 3: patient pathway, care team & private documents --------- */
+
+/** Assign (or clear) the patient's clinical pathway pack. Only a pack ENABLED for
+ *  the institution may be assigned — the DB trigger enforces this server-side. */
+export async function assignPatientPathway(patientId: string, packId: string | null): Promise<void> {
+  const { error } = await supabase.from("patients").update({ pathway_pack_id: packId }).eq("id", patientId);
+  if (error) throw new Error(pgErr(error, "Could not assign the pathway."));
+}
+
+export type StaffMember = {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  role: "nurse" | "duty_doctor" | "pmr";
+};
+
+/** Staff of the signed-in user's institution, for care-team dropdowns. RLS
+ *  (profiles_self_read) returns only same-centre staff to a staff caller. */
+export async function getCentreStaff(): Promise<StaffMember[]> {
+  const me = await getMyProfile();
+  if (!me?.centre_id) return [];
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, full_name, email, role")
+    .eq("centre_id", me.centre_id)
+    .in("role", ["nurse", "duty_doctor", "pmr"])
+    .order("full_name");
+  if (error) throw new Error(pgErr(error, "Could not load staff."));
+  return (data ?? []) as StaffMember[];
+}
+
+export type TeamRole = "lead_doctor" | "nurse" | "coordinator";
+
+export type CareTeamMember = {
+  id: string;
+  team_role: TeamRole;
+  staff_id: string;
+  full_name: string | null;
+  role: string | null;
+};
+
+/** The assigned care team for a patient. Staff-facing (households cannot read
+ *  other users' profiles), so names resolve for staff callers. */
+export async function getCareTeam(patientId: string): Promise<CareTeamMember[]> {
+  const { data, error } = await supabase
+    .from("patient_care_team")
+    .select("id, team_role, staff_id")
+    .eq("patient_id", patientId);
+  if (error) throw new Error(pgErr(error, "Could not load the care team."));
+  const rows = (data ?? []) as { id: string; team_role: TeamRole; staff_id: string }[];
+  if (!rows.length) return [];
+  const { data: profs } = await supabase
+    .from("profiles")
+    .select("id, full_name, role")
+    .in("id", rows.map((r) => r.staff_id));
+  const byId = new Map((profs ?? []).map((p) => [(p as { id: string }).id, p as { full_name: string | null; role: string | null }]));
+  return rows.map((r) => ({
+    id: r.id,
+    team_role: r.team_role,
+    staff_id: r.staff_id,
+    full_name: byId.get(r.staff_id)?.full_name ?? null,
+    role: byId.get(r.staff_id)?.role ?? null,
+  }));
+}
+
+/** Assign/replace the staff member for a team role, or clear it (staffId null).
+ *  The DB trigger enforces same-institution + role compatibility. */
+export async function setCareTeamMember(patientId: string, teamRole: TeamRole, staffId: string | null): Promise<void> {
+  if (staffId === null) {
+    const { error } = await supabase
+      .from("patient_care_team")
+      .delete()
+      .eq("patient_id", patientId)
+      .eq("team_role", teamRole);
+    if (error) throw new Error(pgErr(error, "Could not update the care team."));
+    return;
+  }
+  const me = await getMyProfile();
+  const { error } = await supabase
+    .from("patient_care_team")
+    .upsert(
+      { patient_id: patientId, team_role: teamRole, staff_id: staffId, assigned_by: me?.id ?? null },
+      { onConflict: "patient_id,team_role" },
+    );
+  if (error) throw new Error(pgErr(error, "Could not update the care team."));
+}
+
+export type HouseholdMember = {
+  user_id: string;
+  relation: "self" | "caregiver" | "family";
+  full_name: string | null;
+};
+
+/** Household users (caregiver/family) linked to a patient — shown read-only in
+ *  the care-team panel (caregivers are created via the family "Add caregiver" flow). */
+export async function getHouseholdMembers(patientId: string): Promise<HouseholdMember[]> {
+  const { data, error } = await supabase
+    .from("patient_members")
+    .select("user_id, relation")
+    .eq("patient_id", patientId);
+  if (error) throw new Error(pgErr(error, "Could not load household members."));
+  const rows = (data ?? []) as { user_id: string; relation: HouseholdMember["relation"] }[];
+  if (!rows.length) return [];
+  const { data: profs } = await supabase
+    .from("profiles")
+    .select("id, full_name")
+    .in("id", rows.map((r) => r.user_id));
+  const byId = new Map((profs ?? []).map((p) => [(p as { id: string }).id, (p as { full_name: string | null }).full_name]));
+  return rows.map((r) => ({ user_id: r.user_id, relation: r.relation, full_name: byId.get(r.user_id) ?? null }));
+}
+
+export type DocumentRow = {
+  id: string;
+  patient_id: string;
+  file_name: string;
+  mime: string | null;
+  size_bytes: number | null;
+  doc_type: "discharge_summary" | "imaging" | "prescription" | "lab" | "other";
+  storage_path: string;
+  created_at: string;
+};
+
+/** A patient's private documents (metadata). RLS returns them only to people who
+ *  can see the patient. */
+export async function getPatientDocuments(patientId: string): Promise<DocumentRow[]> {
+  const { data, error } = await supabase
+    .from("patient_documents")
+    .select("id, patient_id, file_name, mime, size_bytes, doc_type, storage_path, created_at")
+    .eq("patient_id", patientId)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(pgErr(error, "Could not load documents."));
+  return (data ?? []) as DocumentRow[];
+}
+
+/** Staff: upload a private document into the tenant-isolated bucket, then record
+ *  its metadata. The object path is <centre_id>/<patient_id>/<uuid>-<name>, which
+ *  the storage RLS uses to enforce isolation. */
+export async function uploadPatientDocument(
+  patientId: string,
+  file: File,
+  docType: DocumentRow["doc_type"],
+): Promise<DocumentRow> {
+  const me = await getMyProfile();
+  if (!me?.centre_id) throw new Error("No institution for this account.");
+  const safe = file.name.replace(/[^\w.\-]+/g, "_").slice(-120);
+  const path = `${me.centre_id}/${patientId}/${crypto.randomUUID()}-${safe}`;
+  const up = await supabase.storage
+    .from("patient-docs")
+    .upload(path, file, { contentType: file.type || "application/octet-stream", upsert: false });
+  if (up.error) throw new Error(up.error.message || "Upload failed.");
+  const { data, error } = await supabase
+    .from("patient_documents")
+    .insert({
+      patient_id: patientId,
+      storage_path: path,
+      file_name: file.name.slice(0, 200),
+      mime: file.type || null,
+      size_bytes: file.size,
+      doc_type: docType,
+      uploaded_by: me.id,
+    })
+    .select("id, patient_id, file_name, mime, size_bytes, doc_type, storage_path, created_at")
+    .single();
+  if (error) {
+    await supabase.storage.from("patient-docs").remove([path]).catch(() => undefined);
+    throw new Error(pgErr(error, "Could not save the document."));
+  }
+  return data as DocumentRow;
+}
+
+/** A short-lived signed URL to view/download a private document. */
+export async function getDocumentUrl(path: string): Promise<string> {
+  const { data, error } = await supabase.storage.from("patient-docs").createSignedUrl(path, 300);
+  if (error || !data?.signedUrl) throw new Error(error?.message || "Could not open the document.");
+  return data.signedUrl;
+}
+
+/** Staff: delete a document (metadata + the stored object). */
+export async function deletePatientDocument(doc: { id: string; storage_path: string }): Promise<void> {
+  const { error } = await supabase.from("patient_documents").delete().eq("id", doc.id);
+  if (error) throw new Error(pgErr(error, "Could not delete the document."));
+  await supabase.storage.from("patient-docs").remove([doc.storage_path]).catch(() => undefined);
 }
 
 /* ----------------------------- Team (admin) ------------------------------- */

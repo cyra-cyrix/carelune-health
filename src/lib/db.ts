@@ -76,6 +76,10 @@ export type ApprovalRow = {
   /** Read receipt (0020): when + who first read a family message. */
   read_at?: string | null;
   read_by?: string | null;
+  /** SLA escalation (0021): set when a read-but-unreplied family message breached
+   *  the 30-min duty-hours SLA and was routed up. */
+  escalated_at?: string | null;
+  escalated_to?: "duty_doctor" | "hod" | null;
 };
 
 export type UpdateRow = {

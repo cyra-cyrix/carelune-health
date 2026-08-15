@@ -103,6 +103,19 @@ const REPLY_ROLE: Record<string, string> = {
   family: "Family",
 };
 
+/** Reply-SLA badge (30 min after the care team reads a message; escalation from
+ *  migration 0021). null once replied. */
+function slaBadge(q: ApprovalRow, replied: boolean): { label: string; cls: string } | null {
+  if (replied) return null;
+  if (q.escalated_at) {
+    return { label: q.escalated_to === "duty_doctor" ? "Escalated · duty doctor" : "Escalated · HOD", cls: "bg-coral-100 text-coral-600" };
+  }
+  if (!q.read_at) return { label: "New", cls: "bg-sky-100 text-sky-700" };
+  const left = 30 - Math.floor((Date.now() - new Date(q.read_at).getTime()) / 60000);
+  if (left > 0) return { label: `Reply due · ${left}m left`, cls: "bg-warn-100 text-warn-600" };
+  return { label: "Overdue — escalating", cls: "bg-coral-100 text-coral-600" };
+}
+
 function ConcernRow({
   query,
   thread,
@@ -118,6 +131,7 @@ function ConcernRow({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const unanswered = query.status === "pending";
+  const sla = slaBadge(query, thread.length > 0 || !unanswered);
 
   const send = async () => {
     const body = text.trim();
@@ -148,6 +162,7 @@ function ConcernRow({
             Urgent
           </span>
         )}
+        {sla && <span className={`rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${sla.cls}`}>{sla.label}</span>}
         <span className="ml-auto text-[11px] text-sage-500">{niceTime(query.created_at)}</span>
       </div>
       <p className="mt-1 whitespace-pre-line text-[13px] leading-relaxed text-sage-700">{query.message}</p>

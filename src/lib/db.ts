@@ -237,7 +237,7 @@ export async function updateOrgBranding(
   },
 ): Promise<void> {
   const { error } = await supabase.from("centres").update(fields).eq("id", orgId);
-  if (error) throw error;
+  if (error) throw dbError(error);
 }
 
 /** Admin/doctor: save own basic credentialing (self-attested, 0022). */
@@ -248,7 +248,7 @@ export async function saveDoctorKyc(medRegNo: string | null, specialty: string |
     .from("profiles")
     .update({ med_reg_no: medRegNo, specialty })
     .eq("id", auth.user.id);
-  if (error) throw error;
+  if (error) throw dbError(error);
 }
 
 /* -------------------------- Pathway packs (catalogue) --------------------- */
@@ -858,6 +858,18 @@ export type NewTeamUser = {
   full_name: string;
   role: TeamUser["role"];
 };
+
+/**
+ * Turn a Supabase PostgrestError (a plain object {message, code, details, hint},
+ * NOT an Error instance) into a real Error so callers' `e instanceof Error`
+ * checks surface the real reason instead of a generic fallback. Common codes:
+ * 42501 = RLS/permission denied, PGRST204 = column missing from schema cache.
+ */
+function dbError(error: { message?: string; code?: string; hint?: string; details?: string }): Error {
+  const parts = [error.message, error.hint, error.details].filter(Boolean);
+  const msg = parts.join(" · ") || "Database error";
+  return new Error(error.code ? `${msg} (${error.code})` : msg);
+}
 
 /** Pull the real error text out of a failed Edge Function response body. */
 async function edgeError(error: unknown): Promise<string> {

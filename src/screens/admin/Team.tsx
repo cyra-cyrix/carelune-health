@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Icon } from "../../components/ui";
 import { useBranding } from "../../branding/BrandingProvider";
-import { listTeamUsers, createTeamUser, resetTeamUserPassword, removeTeamUser, type TeamUser, type NewTeamUser } from "../../lib/db";
+import { listTeamUsers, createTeamUser, resetTeamUserPassword, removeTeamUser, updateMyName, type TeamUser, type NewTeamUser } from "../../lib/db";
 import { credentialsText, shareOnWhatsApp, generatePassword } from "../../lib/share";
 
 const ROLE_OPTIONS: { value: NewTeamUser["role"]; label: string }[] = [
@@ -22,7 +22,7 @@ const FIELD =
  * person signs in with these credentials and can reset the password later.
  */
 export default function Team() {
-  const { platformName } = useBranding();
+  const { platformName, profile, refresh } = useBranding();
   const [users, setUsers] = useState<TeamUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -82,6 +82,25 @@ export default function Team() {
     void load();
   }, []);
 
+  // Your own display name (feeds greetings + headers). Editable anytime.
+  const [myName, setMyName] = useState("");
+  const [nameBusy, setNameBusy] = useState(false);
+  const [nameSaved, setNameSaved] = useState(false);
+  const [nameError, setNameError] = useState<string | null>(null);
+  useEffect(() => { setMyName(profile?.full_name ?? ""); }, [profile?.full_name]);
+
+  const saveMyName = async () => {
+    if (!myName.trim() || myName.trim() === profile?.full_name) return;
+    setNameBusy(true); setNameError(null); setNameSaved(false);
+    try {
+      await updateMyName(myName.trim());
+      await refresh();
+      setNameSaved(true); setTimeout(() => setNameSaved(false), 2000);
+    } catch (e) {
+      setNameError(e instanceof Error ? e.message : "Could not save your name.");
+    } finally { setNameBusy(false); }
+  };
+
   const create = async () => {
     setBusy(true);
     setFormError(null);
@@ -105,6 +124,30 @@ export default function Team() {
           Create accounts for your doctors, nurses, caregivers and families. They sign in with the email
           and password you set.
         </p>
+
+        {/* Your account — set your own name (shown in greetings + headers) */}
+        <section className="mt-5 rounded-2xl bg-white p-5 shadow-lift ring-1 ring-ink/[0.05]">
+          <h2 className="font-display text-[15px] font-semibold text-ink">Your account</h2>
+          <p className="mt-0.5 text-[13px] text-sage-500">
+            This is the name shown in your greeting and headers{profile?.full_name ? <> — currently <span className="font-semibold text-ink">{profile.full_name}</span></> : ""}.
+          </p>
+          <div className="mt-3 flex flex-wrap items-end gap-2.5">
+            <label className="block min-w-[220px] flex-1">
+              <span className="mb-1 block text-[12px] font-semibold text-sage-600">Your name</span>
+              <input value={myName} onChange={(e) => setMyName(e.target.value)} placeholder="e.g. Meera Nair" className={FIELD} />
+            </label>
+            <button
+              type="button"
+              onClick={saveMyName}
+              disabled={nameBusy || !myName.trim() || myName.trim() === profile?.full_name}
+              className="tap shrink-0 rounded-xl bg-brand-600 px-4 py-2 text-[14px] font-semibold text-white hover:bg-brand-500 disabled:opacity-60"
+            >
+              {nameBusy ? "Saving…" : "Save name"}
+            </button>
+            {nameSaved && <span className="text-[12.5px] font-semibold text-good-600">Saved ✓</span>}
+          </div>
+          {nameError && <p className="mt-2 text-[13px] text-coral-600">{nameError}</p>}
+        </section>
 
         <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_1.1fr]">
           {/* Create */}

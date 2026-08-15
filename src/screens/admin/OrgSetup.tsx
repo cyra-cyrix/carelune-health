@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { LoopMark } from "../../components/ui";
 import { useBranding } from "../../branding/BrandingProvider";
 import {
-  updateOrgBranding, getMyEnabledPacks, getStorefront, updateStorefront, saveDoctorKyc, getPackPathways,
+  updateOrgBranding, getMyEnabledPacks, getStorefront, updateStorefront, saveDoctorKyc, updateMyName, getPackPathways,
   type EnabledPack, type Storefront, type PackPathway,
 } from "../../lib/db";
 import {
@@ -42,6 +42,7 @@ export default function OrgSetup() {
   const [busy, setBusy] = useState(false);
 
   // identity
+  const [myName, setMyName] = useState("");
   const [name, setName] = useState("");
   const [logo, setLogo] = useState("");
   const [phone, setPhone] = useState("");
@@ -73,6 +74,7 @@ export default function OrgSetup() {
   }, [org]);
 
   useEffect(() => {
+    setMyName(profile?.full_name ?? "");
     setMedReg(profile?.med_reg_no ?? "");
     setSpecialty(profile?.specialty ?? "");
   }, [profile]);
@@ -94,6 +96,7 @@ export default function OrgSetup() {
         ce_reg_no: ceReg.trim() || null,
         ...(consent ? { terms_accepted_at: org.terms_accepted_at ?? new Date().toISOString(), terms_version: TERMS_VERSION } : {}),
       });
+      if (myName.trim()) await updateMyName(myName.trim());
       await saveDoctorKyc(medReg.trim() || null, specialty.trim() || null);
       await refresh();
       if (advance) setStep(1);
@@ -178,6 +181,9 @@ export default function OrgSetup() {
 
                 <div className="h-px bg-line" />
                 <p className="text-[12.5px] font-semibold text-sage-600">Credentialing</p>
+                <Field label="Your name" hint="Shown in your greeting and headers, e.g. “Dr. Meera Nair”.">
+                  <input value={myName} onChange={(e) => setMyName(e.target.value)} placeholder="Your full name" className={inputCls} />
+                </Field>
                 <Field label="Clinical Establishments Act reg. no. (institution)">
                   <input value={ceReg} onChange={(e) => setCeReg(e.target.value)} placeholder="e.g. KA/CEA/2024/…" className={inputCls} />
                 </Field>

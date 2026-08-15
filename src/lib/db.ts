@@ -260,6 +260,16 @@ export async function updateOrgBranding(
   if (error) throw new Error(pgErr(error, "Could not save."));
 }
 
+/** Any signed-in user: set their own display name (used in greetings + headers). */
+export async function updateMyName(fullName: string): Promise<void> {
+  const name = fullName.trim();
+  if (!name) return;
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) return;
+  const { error } = await supabase.from("profiles").update({ full_name: name }).eq("id", auth.user.id);
+  if (error) throw new Error(pgErr(error, "Could not save your name."));
+}
+
 /** Admin/doctor: save own basic credentialing (self-attested, 0022). */
 export async function saveDoctorKyc(medRegNo: string | null, specialty: string | null): Promise<void> {
   const { data: auth } = await supabase.auth.getUser();

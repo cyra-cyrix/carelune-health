@@ -197,6 +197,26 @@ export async function registerPatient(
   return data as { patient_name: string; family_email: string };
 }
 
+export type PublicOrgInfo = {
+  institution_name: string | null;
+  package_price: number | null;
+  trial_days: number;
+};
+
+/** Public: white-label institution + price for the token-linked onboarding page. */
+export async function getPublicOrgInfo(token: string): Promise<PublicOrgInfo> {
+  const { data, error } = await supabase.functions.invoke("registry", {
+    body: { action: "org-info", token },
+  });
+  if (error) throw new Error(await edgeError(error));
+  if (data?.error) throw new Error(data.error);
+  return {
+    institution_name: data?.institution_name ?? null,
+    package_price: data?.package_price ?? null,
+    trial_days: data?.trial_days ?? 0,
+  };
+}
+
 export type NewCaregiver = { patient_id: string; full_name: string; email: string; password: string; phone?: string };
 
 /** Family/staff: create a caregiver account linked to this patient. */
@@ -237,7 +257,7 @@ export async function updateOrgBranding(
   },
 ): Promise<void> {
   const { error } = await supabase.from("centres").update(fields).eq("id", orgId);
-  if (error) throw dbError(error);
+  if (error) throw new Error(pgErr(error, "Could not save."));
 }
 
 /** Admin/doctor: save own basic credentialing (self-attested, 0022). */
@@ -248,7 +268,7 @@ export async function saveDoctorKyc(medRegNo: string | null, specialty: string |
     .from("profiles")
     .update({ med_reg_no: medRegNo, specialty })
     .eq("id", auth.user.id);
-  if (error) throw dbError(error);
+  if (error) throw new Error(pgErr(error, "Could not save."));
 }
 
 /* -------------------------- Pathway packs (catalogue) --------------------- */
@@ -858,18 +878,6 @@ export type NewTeamUser = {
   full_name: string;
   role: TeamUser["role"];
 };
-
-/**
- * Turn a Supabase PostgrestError (a plain object {message, code, details, hint},
- * NOT an Error instance) into a real Error so callers' `e instanceof Error`
- * checks surface the real reason instead of a generic fallback. Common codes:
- * 42501 = RLS/permission denied, PGRST204 = column missing from schema cache.
- */
-function dbError(error: { message?: string; code?: string; hint?: string; details?: string }): Error {
-  const parts = [error.message, error.hint, error.details].filter(Boolean);
-  const msg = parts.join(" · ") || "Database error";
-  return new Error(error.code ? `${msg} (${error.code})` : msg);
-}
 
 /** Pull the real error text out of a failed Edge Function response body. */
 async function edgeError(error: unknown): Promise<string> {

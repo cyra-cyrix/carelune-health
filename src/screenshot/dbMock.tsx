@@ -10,6 +10,7 @@ export type {
   PatientRow, PendingCount, ReadingRow, MedicationRow, MedicationInput, ApprovalRow, UpdateRow,
   CareTeamMember, CareTaskRow, PatientPlanRow, QueryMessageRow, OrgRow, MyProfile, PackPathway,
   PlanIntake, DocumentFacts, DocumentRow, FactItem, FactMedicine, StoredFacts, TaskLogRow, NewApproval,
+  PublicOrgInfo,
 } from "../lib/db";
 
 import type {
@@ -39,6 +40,13 @@ export async function getMyOrg(): Promise<OrgRow> {
     institution_type: "hospital", contact_phone: null, service_hours: "8:00 AM–8:00 PM IST",
     emergency_note: null, emergency_number: "112", status: "active",
   };
+}
+
+export async function getPublicOrgInfo(): Promise<import("../lib/db").PublicOrgInfo> {
+  return { institution_name: "Sunrise Spine & Neuro Institute", package_price: 5999, trial_days: 7 };
+}
+export async function registerPatient(): Promise<{ patient_name: string; family_email: string }> {
+  return { patient_name: "Demo", family_email: "demo@example.com" };
 }
 
 /* -------------------------------- patients -------------------------------- */

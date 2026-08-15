@@ -9,6 +9,7 @@ import {
   Card, Field, inputCls, PrimaryButton, GhostButton, Stepper, Chip, PathwayStatusBadge,
   ErrorNote, Skeleton, SectionHeader,
 } from "../../components/system";
+import { CARE_PACKAGE, CARE_PACKAGE_INCLUDES_TEXT } from "../../domain/carePackage";
 
 const STEPS = ["Identity", "Programmes", "Package", "Finish"];
 const inr = (n: number | null | undefined) => (n == null ? "—" : `₹${n.toLocaleString("en-IN")}`);
@@ -344,10 +345,9 @@ function PackageEditor({
   onSaved: (s: Storefront) => void;
   onError: (m: string | null) => void;
 }) {
-  const [name, setName] = useState(sf.package_name ?? "");
+  // Only the price is editable. Name, duration, free-trial and inclusions are
+  // fixed by the platform and shown read-only (see src/domain/carePackage.ts).
   const [price, setPrice] = useState(sf.package_price != null ? String(sf.package_price) : "");
-  const [trial, setTrial] = useState(sf.trial_days ? String(sf.trial_days) : "");
-  const [inc, setInc] = useState(sf.package_includes ?? "");
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -357,11 +357,12 @@ function PackageEditor({
   const save = async () => {
     setBusy(true); onError(null); setSaved(false);
     try {
+      // Persist the fixed package identity alongside the price so every consumer
+      // (DB or client) reads the same offer. Free-trial is platform-set — untouched.
       const patch = {
-        package_name: name.trim() || null,
+        package_name: CARE_PACKAGE.name,
         package_price: price ? Number(price) : null,
-        package_includes: inc.trim() || null,
-        trial_days: Number(trial) || 0,
+        package_includes: CARE_PACKAGE_INCLUDES_TEXT,
       };
       await updateStorefront(sf.centre_id, patch);
       onSaved({ ...sf, ...patch });
@@ -373,29 +374,58 @@ function PackageEditor({
 
   return (
     <div className="space-y-4">
-      <Field label="Package name">
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Neuro Recovery Continuum" className={inputCls} />
-      </Field>
+      {/* Fixed package identity */}
+      <div className="rounded-2xl bg-sky-50 p-4 ring-1 ring-sky-200">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-sky-700">Package families subscribe to</div>
+        <div className="mt-1 flex flex-wrap items-baseline gap-2">
+          <span className="font-display text-[22px] font-semibold tracking-tight text-ink">{CARE_PACKAGE.name}</span>
+          <span className="text-[12.5px] font-medium text-sage-500">· {CARE_PACKAGE.durationLabel}</span>
+          {priceNum > 0 && (
+            <span className="ml-auto text-[15px] font-semibold text-sky-700">{inr(priceNum)}<span className="text-[12px] font-medium text-sage-500">/month</span></span>
+          )}
+        </div>
+      </div>
+
+      {/* The only editable field */}
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Price / month (₹)">
           <input value={price} onChange={(e) => setPrice(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="e.g. 5999" className={inputCls} />
         </Field>
-        <Field label="Free-trial days" hint="0 = no free trial.">
-          <input value={trial} onChange={(e) => setTrial(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="0" className={inputCls} />
-        </Field>
+        <ReadOnlyField label="Free-trial days" value={sf.trial_days > 0 ? `${sf.trial_days} days` : "No free trial"} hint="Set by the platform." />
       </div>
-      <Field label="What's included" hint="One item per line.">
-        <textarea value={inc} onChange={(e) => setInc(e.target.value)} rows={4} placeholder={"Daily caregiver visit\nWeekly doctor review\nNurse on call 8am–8pm"} className={`${inputCls} resize-y`} />
-      </Field>
+
+      {/* Fixed inclusions — read-only rows */}
+      <div>
+        <span className="mb-1.5 block text-[12.5px] font-semibold text-sage-600">What&rsquo;s included</span>
+        <ul className="space-y-2 rounded-2xl bg-mist-100 p-4 ring-1 ring-ink/[0.04]">
+          {CARE_PACKAGE.includes.map((b) => (
+            <li key={b} className="flex items-start gap-2.5 text-[13.5px] text-ink">
+              <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-good-500 text-[10px] font-bold text-white">✓</span>
+              {b}
+            </li>
+          ))}
+        </ul>
+        <p className="mt-1.5 text-[11.5px] text-sage-500">Standard programme inclusions — shown to families with your package.</p>
+      </div>
+
       {priceNum > 0 && (
         <p className="rounded-xl bg-mist-100 px-3 py-2 text-[12px] text-sage-700 ring-1 ring-ink/[0.04]">
-          Carelune platform fee {sf.platform_fee_pct}% — you receive <span className="font-semibold text-ink">{inr(payout)}</span> of {inr(priceNum)}/month. Families see {inr(priceNum)}.
+          Platform fee {sf.platform_fee_pct}% — you receive <span className="font-semibold text-ink">{inr(payout)}</span> of {inr(priceNum)}/month. Families see {inr(priceNum)}.
         </p>
       )}
       <div className="flex items-center gap-3">
-        <PrimaryButton onClick={save} disabled={busy}>{busy ? "Saving…" : "Save package"}</PrimaryButton>
+        <PrimaryButton onClick={save} disabled={busy}>{busy ? "Saving…" : "Save price"}</PrimaryButton>
         {saved && <span className="text-[12.5px] font-semibold text-good-600">Saved ✓</span>}
       </div>
     </div>
+  );
+}
+
+/** A locked, read-only field styled like the editable inputs but non-interactive. */
+function ReadOnlyField({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <Field label={label} hint={hint}>
+      <div className={`${inputCls} flex items-center bg-mist-100 text-sage-600`} aria-readonly="true">{value}</div>
+    </Field>
   );
 }

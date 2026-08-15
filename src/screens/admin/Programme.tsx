@@ -8,19 +8,9 @@ import {
   ErrorNote, Skeleton, SectionHeader,
 } from "../../components/system";
 
-const inr = (n: number | null | undefined) => (n == null ? "—" : `₹${n.toLocaleString("en-IN")}`);
+import { CARE_PACKAGE, CARE_PACKAGE_INCLUDES_TEXT } from "../../domain/carePackage";
 
-/** The family-facing package is always branded "Continuum Care"; the admin only
- *  sets the price. Inclusions are the standard, non-editable programme benefits. */
-const PACKAGE_NAME = "Continuum Care";
-const BENEFITS = [
-  "Governed recovery plan, led by your treating clinician",
-  "Recovery Care Coordinator managing care at home",
-  "Rehabilitation nurse reviews",
-  "Daily caregiver guidance & task reminders",
-  "Family visibility of progress and updates",
-  "Coordinator & nurse support, 8 AM–8 PM, 7 days",
-];
+const inr = (n: number | null | undefined) => (n == null ? "—" : `₹${n.toLocaleString("en-IN")}`);
 
 /**
  * Admin "Programme" workspace tab (journey steps E–F: HOD reviews the programme
@@ -79,7 +69,6 @@ export default function Programme({ onBack }: { onBack: () => void }) {
 
 function PackageEditor({ sf, onSaved }: { sf: Storefront; onSaved: (s: Storefront) => void }) {
   const [price, setPrice] = useState(sf.package_price != null ? String(sf.package_price) : "");
-  const [trial, setTrial] = useState(sf.trial_days ? String(sf.trial_days) : "");
   const [emNote, setEmNote] = useState(sf.emergency_note ?? "");
   const [emNum, setEmNum] = useState(sf.emergency_number ?? "");
   const [busy, setBusy] = useState(false);
@@ -88,16 +77,16 @@ function PackageEditor({ sf, onSaved }: { sf: Storefront; onSaved: (s: Storefron
 
   const priceNum = Number(price) || 0;
   const payout = Math.round(priceNum * (1 - sf.platform_fee_pct / 100));
-  const includes = BENEFITS.join("\n");
 
   const save = async () => {
     setBusy(true); setErr(null); setSaved(false);
     try {
+      // Only the price (and the institution's own emergency copy) is editable.
+      // Name/inclusions are the fixed platform package; free-trial is platform-set.
       const patch = {
-        package_name: PACKAGE_NAME,
+        package_name: CARE_PACKAGE.name,
         package_price: price ? Number(price) : null,
-        package_includes: includes,
-        trial_days: Number(trial) || 0,
+        package_includes: CARE_PACKAGE_INCLUDES_TEXT,
         emergency_note: emNote.trim() || null,
         emergency_number: emNum.trim() || null,
       };
@@ -111,24 +100,27 @@ function PackageEditor({ sf, onSaved }: { sf: Storefront; onSaved: (s: Storefron
 
   return (
     <Card>
-      <SectionHeader title="Your care package" sub="The single package families subscribe to. You set the price; the inclusions are standard." />
+      <SectionHeader title="Your care package" sub="The single package families subscribe to. You set the price; everything else is standard." />
       <div className="mt-4 space-y-5">
-        {/* Fixed package identity — the family-facing brand */}
+        {/* Fixed package identity — the family-facing offer */}
         <div className="rounded-2xl bg-sky-50 p-4 ring-1 ring-sky-200">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-sky-700">Package families see</div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-sky-700">Package families subscribe to</div>
           <div className="mt-1 flex flex-wrap items-baseline gap-2">
-            <span className="font-display text-[22px] font-semibold tracking-tight text-ink">{PACKAGE_NAME}</span>
-            {priceNum > 0 && <span className="text-[15px] font-semibold text-sky-700">{inr(priceNum)}<span className="text-[12px] font-medium text-sage-500">/month</span></span>}
+            <span className="font-display text-[22px] font-semibold tracking-tight text-ink">{CARE_PACKAGE.name}</span>
+            <span className="text-[12.5px] font-medium text-sage-500">· {CARE_PACKAGE.durationLabel}</span>
+            {priceNum > 0 && <span className="ml-auto text-[15px] font-semibold text-sky-700">{inr(priceNum)}<span className="text-[12px] font-medium text-sage-500">/month</span></span>}
           </div>
         </div>
 
-        {/* The only real input: price (+ optional free trial) */}
+        {/* The only real input: price. Free-trial is platform-set (read-only). */}
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Price / month (₹)">
             <input value={price} onChange={(e) => setPrice(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="e.g. 5999" className={inputCls} />
           </Field>
-          <Field label="Free-trial days" hint="0 = no free trial.">
-            <input value={trial} onChange={(e) => setTrial(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="0" className={inputCls} />
+          <Field label="Free-trial days" hint="Set by the platform.">
+            <div className={`${inputCls} flex items-center bg-mist-100 text-sage-600`} aria-readonly="true">
+              {sf.trial_days > 0 ? `${sf.trial_days} days` : "No free trial"}
+            </div>
           </Field>
         </div>
 
@@ -136,19 +128,19 @@ function PackageEditor({ sf, onSaved }: { sf: Storefront; onSaved: (s: Storefron
         <div>
           <span className="mb-1.5 block text-[12.5px] font-semibold text-sage-600">What&rsquo;s included</span>
           <ul className="space-y-2 rounded-2xl bg-mist-100 p-4 ring-1 ring-ink/[0.04]">
-            {BENEFITS.map((b) => (
+            {CARE_PACKAGE.includes.map((b) => (
               <li key={b} className="flex items-start gap-2.5 text-[13.5px] text-ink">
                 <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-good-500 text-[10px] font-bold text-white">✓</span>
                 {b}
               </li>
             ))}
           </ul>
-          <p className="mt-1.5 text-[11.5px] text-sage-500">Standard Continuum Care inclusions — shown to families with your package.</p>
+          <p className="mt-1.5 text-[11.5px] text-sage-500">Standard programme inclusions — shown to families with your package.</p>
         </div>
 
         {priceNum > 0 && (
           <p className="rounded-xl bg-mist-100 px-3 py-2 text-[12px] text-sage-700 ring-1 ring-ink/[0.04]">
-            Carelune platform fee {sf.platform_fee_pct}% — you receive <span className="font-semibold text-ink">{inr(payout)}</span> of {inr(priceNum)}/month. Families see {inr(priceNum)}.
+            Platform fee {sf.platform_fee_pct}% — you receive <span className="font-semibold text-ink">{inr(payout)}</span> of {inr(priceNum)}/month. Families see {inr(priceNum)}.
           </p>
         )}
 
@@ -163,7 +155,7 @@ function PackageEditor({ sf, onSaved }: { sf: Storefront; onSaved: (s: Storefron
 
         {err && <p className="text-[12px] text-coral-600">{err}</p>}
         <div className="flex items-center gap-3">
-          <PrimaryButton onClick={save} disabled={busy}>{busy ? "Saving…" : "Save package"}</PrimaryButton>
+          <PrimaryButton onClick={save} disabled={busy}>{busy ? "Saving…" : "Save price"}</PrimaryButton>
           {saved && <span className="text-[12.5px] font-semibold text-good-600">Saved ✓</span>}
         </div>
       </div>

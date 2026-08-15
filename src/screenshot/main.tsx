@@ -10,6 +10,7 @@ import Caseload from "../screens/pmr/Caseload";
 import PatientProgress from "../screens/pmr/PatientProgress";
 import PlanStudio from "../screens/intake/PlanStudio";
 import NursePatient from "../screens/nurse/NursePatient";
+import RegisterPatient from "../screens/register/RegisterPatient";
 import "../index.css";
 
 const screen = new URLSearchParams(location.search).get("screen") ?? "command";
@@ -23,6 +24,8 @@ function Harness() {
       return <PatientProgress patientId="p1" onBack={noop} />;
     case "nurse":
       return <NursePatient patientId="p1" onBack={noop} />;
+    case "register":
+      return <RegisterPatient token="demo" />;
     case "studio-prepare":
     case "studio-review":
       return <PlanStudio patientId="p1" onExit={noop} />;
@@ -34,7 +37,7 @@ function Harness() {
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    {screen === "login" ? (
+    {screen === "login" || screen === "register" ? (
       <Harness />
     ) : (
       <BrandingProvider>

@@ -1,6 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { LoopMark } from "../../components/ui";
-import { registerPatient } from "../../lib/db";
+import { registerPatient, getPublicOrgInfo, type PublicOrgInfo } from "../../lib/db";
+import { CARE_PACKAGE } from "../../domain/carePackage";
+
+const inr = (n: number | null | undefined) => (n == null ? null : `₹${n.toLocaleString("en-IN")}`);
 
 const FIELD =
   "w-full rounded-xl bg-white px-3.5 py-2.5 text-[15px] text-ink ring-1 ring-ink/10 placeholder:text-sage-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400";
@@ -30,6 +33,16 @@ export default function RegisterPatient({ token }: { token: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+
+  // White-label institution + price for the token-linked link (public lookup).
+  const [org, setOrg] = useState<PublicOrgInfo | null>(null);
+  useEffect(() => {
+    void getPublicOrgInfo(token).then(setOrg).catch(() => setOrg(null));
+  }, [token]);
+
+  const institution = org?.institution_name?.trim() || "Your care team";
+  const priceLabel = inr(org?.package_price);
+  const trialLabel = org && org.trial_days > 0 ? `${org.trial_days}-day free trial` : null;
 
   const canSubmit =
     pName.trim().length > 1 &&
@@ -66,8 +79,8 @@ export default function RegisterPatient({ token }: { token: string }) {
         <div className="flex items-center gap-2.5 text-brand-600">
           <LoopMark size={28} />
           <div>
-            <div className="font-display text-lg font-semibold tracking-tight text-ink">Carelune</div>
-            <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-sage-500">Care continues</div>
+            <div className="font-display text-lg font-semibold tracking-tight text-ink">{institution}</div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-sage-500">Recovery programme</div>
           </div>
         </div>
 
@@ -96,6 +109,38 @@ export default function RegisterPatient({ token }: { token: string }) {
                 here.
               </p>
             </div>
+
+            {/* Package summary — institution's name, programme, duration, price */}
+            <section className="rounded-2xl bg-white p-4 shadow-lift ring-1 ring-ink/[0.05]">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-sage-500">{institution}</div>
+              <div className="mt-1 font-display text-[19px] font-semibold tracking-tight text-ink">
+                {CARE_PACKAGE.name}
+              </div>
+              <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                <span className="text-[12.5px] font-medium text-sage-500">{CARE_PACKAGE.durationLabel}</span>
+                {priceLabel && (
+                  <span className="text-[16px] font-semibold text-brand-700">
+                    {priceLabel}<span className="text-[12px] font-medium text-sage-500">/month</span>
+                  </span>
+                )}
+                {trialLabel && (
+                  <span className="rounded-full bg-good-100 px-2.5 py-0.5 text-[11.5px] font-semibold text-good-600">
+                    {trialLabel}
+                  </span>
+                )}
+              </div>
+              <ul className="mt-3 grid gap-1.5">
+                {CARE_PACKAGE.includes.map((b) => (
+                  <li key={b} className="flex items-start gap-2 text-[13px] text-sage-700">
+                    <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-good-500 text-[9px] font-bold text-white">✓</span>
+                    {b}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2.5 text-[11.5px] text-sage-500">
+                Billing is handled directly by {institution}. Nothing is charged here.
+              </p>
+            </section>
 
             {/* Patient */}
             <section className="rounded-2xl bg-white p-4 shadow-lift ring-1 ring-ink/[0.05]">
@@ -164,7 +209,7 @@ export default function RegisterPatient({ token }: { token: string }) {
             <label className="flex items-start gap-3 rounded-2xl bg-white p-4 shadow-lift ring-1 ring-ink/[0.05]">
               <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-brand-600" />
               <span className="text-[13px] leading-relaxed text-sage-700">
-                I consent, on behalf of the patient, to Carelune and the care team processing the patient&rsquo;s
+                I consent, on behalf of the patient, to {institution} and its care team processing the patient&rsquo;s
                 health information — including AI-assisted structuring of the discharge summary — to support their
                 recovery.
               </span>

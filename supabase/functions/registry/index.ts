@@ -46,6 +46,31 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const action = str(body.action) || "register";
 
+    // ---- PUBLIC: white-label institution + package summary for the onboarding
+    //      screen. Authorised by the invite token; returns only display-safe
+    //      fields (no Carelune branding, no internal identifiers). ----
+    if (action === "org-info") {
+      const token = str(body.token);
+      if (!token) return json({ error: "Missing registration token." }, 400);
+
+      const { data: centreId, error: tErr } = await admin.rpc("centre_id_for_token", { t: token });
+      if (tErr) return json({ error: `Token lookup failed: ${tErr.message}` }, 500);
+      if (!centreId) return json({ error: "This registration link is invalid or has expired." }, 403);
+
+      const { data: c } = await admin
+        .from("centres")
+        .select("display_name, package_price, trial_days")
+        .eq("id", centreId)
+        .maybeSingle();
+
+      return json({
+        ok: true,
+        institution_name: c?.display_name ?? null,
+        package_price: c?.package_price ?? null,
+        trial_days: c?.trial_days ?? 0,
+      });
+    }
+
     // ---- PUBLIC: register a patient via the org invite token ----
     if (action === "register") {
       const token = str(body.token);

@@ -50,6 +50,16 @@ export type ReadingRow = {
   food_intake: string | null;
   mood: string | null;
   activity: string | null;
+  // Extra caregiver-recorded observations (0024, all nullable).
+  pulse: string | null;
+  spo2: string | null;
+  temperature: string | null;
+  pain: string | null;
+  fluid_ml: string | null;
+  bowel: string | null;
+  skin: string | null;
+  feeding: string | null;
+  cognition: string | null;
 };
 
 export type MedicationRow = {
@@ -100,6 +110,16 @@ export type ReadingsInput = {
   foodIntake: string;
   mood: string;
   activity: string;
+  // 0024 additions — all optional so callers may set only prescribed params.
+  pulse: string;
+  spo2: string;
+  temperature: string;
+  pain: string;
+  fluidMl: string;
+  bowel: string;
+  skin: string;
+  feeding: string;
+  cognition: string;
 };
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -1188,12 +1208,63 @@ export async function setTaskDone(patientId: string, taskId: string, done: boole
       task_id: taskId,
       log_date: todayISO(),
       done,
+      outcome: done ? "done" : null,
       done_by: auth.user?.id ?? null,
       done_at: new Date().toISOString(),
     },
     { onConflict: "task_id,log_date" },
   );
   if (error) throw error;
+}
+
+/** A task's recorded result for today. 'done' also sets the legacy `done` flag
+ *  true; the others (unable/refused/na) count as attempted-not-completed. */
+export type TaskOutcome = "done" | "unable" | "refused" | "na";
+
+/** Today's outcome per task_id (only rows the caregiver has acted on). */
+export async function getTodayTaskOutcomes(patientId: string): Promise<Map<string, TaskOutcome>> {
+  const { data, error } = await supabase
+    .from("task_logs")
+    .select("task_id, done, outcome")
+    .eq("patient_id", patientId)
+    .eq("log_date", todayISO());
+  if (error) throw error;
+  const m = new Map<string, TaskOutcome>();
+  for (const row of (data ?? []) as (TaskLogRow & { outcome: TaskOutcome | null })[]) {
+    // Fall back to the legacy boolean for rows written before 0024.
+    const o = row.outcome ?? (row.done ? "done" : null);
+    if (o) m.set(row.task_id, o);
+  }
+  return m;
+}
+
+/** Record a task's outcome for today (Done / Unable / Patient refused / N.A.).
+ *  Passing null clears it. `done` stays true only for the 'done' outcome. */
+export async function setTaskOutcome(patientId: string, taskId: string, outcome: TaskOutcome | null): Promise<void> {
+  if (outcome === null) {
+    const { error } = await supabase
+      .from("task_logs")
+      .delete()
+      .eq("patient_id", patientId)
+      .eq("task_id", taskId)
+      .eq("log_date", todayISO());
+    if (error) throw new Error(pgErr(error, "Could not update the task."));
+    return;
+  }
+  const { data: auth } = await supabase.auth.getUser();
+  const { error } = await supabase.from("task_logs").upsert(
+    {
+      patient_id: patientId,
+      task_id: taskId,
+      log_date: todayISO(),
+      done: outcome === "done",
+      outcome,
+      done_by: auth.user?.id ?? null,
+      done_at: new Date().toISOString(),
+    },
+    { onConflict: "task_id,log_date" },
+  );
+  if (error) throw new Error(pgErr(error, "Could not update the task."));
 }
 
 /* ------------------------------- Readings -------------------------------- */
@@ -1208,6 +1279,11 @@ export async function getTodayReadings(patientId: string): Promise<ReadingsInput
   if (error) throw error;
   if (!data) return null;
   const r = data as ReadingRow;
+  return readingRowToInput(r);
+}
+
+/** Map a stored reading row to the caregiver's camelCase input shape. */
+export function readingRowToInput(r: ReadingRow): ReadingsInput {
   return {
     bp: r.bp ?? "",
     grbs: r.grbs ?? "",
@@ -1215,6 +1291,15 @@ export async function getTodayReadings(patientId: string): Promise<ReadingsInput
     foodIntake: r.food_intake ?? "",
     mood: r.mood ?? "",
     activity: r.activity ?? "",
+    pulse: r.pulse ?? "",
+    spo2: r.spo2 ?? "",
+    temperature: r.temperature ?? "",
+    pain: r.pain ?? "",
+    fluidMl: r.fluid_ml ?? "",
+    bowel: r.bowel ?? "",
+    skin: r.skin ?? "",
+    feeding: r.feeding ?? "",
+    cognition: r.cognition ?? "",
   };
 }
 
@@ -1243,12 +1328,100 @@ export async function saveReadings(patientId: string, r: ReadingsInput): Promise
       food_intake: r.foodIntake,
       mood: r.mood,
       activity: r.activity,
+      pulse: r.pulse,
+      spo2: r.spo2,
+      temperature: r.temperature,
+      pain: r.pain,
+      fluid_ml: r.fluidMl,
+      bowel: r.bowel,
+      skin: r.skin,
+      feeding: r.feeding,
+      cognition: r.cognition,
       recorded_by: auth.user?.id ?? null,
       updated_at: new Date().toISOString(),
     },
     { onConflict: "patient_id,reading_date" },
   );
   if (error) throw error;
+}
+
+/* --------------------- Medicine administration (0024) --------------------- */
+
+export type MedAdminStatus = "given" | "missed" | "skipped";
+
+/** Today's med-admin entries keyed by `${medication_id}|${slot}`. */
+export async function getMedAdminToday(patientId: string): Promise<Map<string, MedAdminStatus>> {
+  const { data, error } = await supabase
+    .from("med_admin")
+    .select("medication_id, slot, status")
+    .eq("patient_id", patientId)
+    .eq("log_date", todayISO());
+  if (error) throw new Error(pgErr(error, "Could not load medicine records."));
+  const m = new Map<string, MedAdminStatus>();
+  for (const r of (data ?? []) as { medication_id: string; slot: string; status: MedAdminStatus }[]) {
+    m.set(`${r.medication_id}|${r.slot}`, r.status);
+  }
+  return m;
+}
+
+/** Record a medicine as given/missed/skipped for a slot today (upsert). */
+export async function setMedAdmin(
+  patientId: string, medicationId: string, slot: string, status: MedAdminStatus,
+): Promise<void> {
+  const { data: auth } = await supabase.auth.getUser();
+  const { error } = await supabase.from("med_admin").upsert(
+    {
+      patient_id: patientId,
+      medication_id: medicationId,
+      log_date: todayISO(),
+      slot,
+      status,
+      recorded_by: auth.user?.id ?? null,
+    },
+    { onConflict: "medication_id,log_date,slot" },
+  );
+  if (error) throw new Error(pgErr(error, "Could not save the medicine record."));
+}
+
+/* --------------------- Reading thresholds (0024, doctor) ------------------ */
+
+export type ThresholdRow = {
+  id: string;
+  patient_id: string;
+  param: string;
+  min_val: number | null;
+  max_val: number | null;
+  unit: string | null;
+};
+
+/** Doctor-approved normal ranges per parameter (the ONLY basis for family status). */
+export async function getThresholds(patientId: string): Promise<ThresholdRow[]> {
+  const { data, error } = await supabase
+    .from("reading_thresholds")
+    .select("id, patient_id, param, min_val, max_val, unit")
+    .eq("patient_id", patientId);
+  if (error) throw new Error(pgErr(error, "Could not load thresholds."));
+  return (data ?? []) as ThresholdRow[];
+}
+
+/** Doctor: set/clear a parameter's normal range (upsert on patient+param). */
+export async function saveThreshold(
+  patientId: string, param: string, min: number | null, max: number | null, unit: string | null,
+): Promise<void> {
+  const { data: auth } = await supabase.auth.getUser();
+  const { error } = await supabase.from("reading_thresholds").upsert(
+    {
+      patient_id: patientId,
+      param,
+      min_val: min,
+      max_val: max,
+      unit,
+      updated_by: auth.user?.id ?? null,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "patient_id,param" },
+  );
+  if (error) throw new Error(pgErr(error, "Could not save the threshold."));
 }
 
 /* ---------------------------- Meds / feed / approvals ---------------------- */

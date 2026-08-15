@@ -26,6 +26,15 @@ const EMPTY_READINGS: ReadingsInput = {
   foodIntake: FOOD_OPTIONS[1],
   mood: MOOD_OPTIONS[0],
   activity: "",
+  pulse: "",
+  spo2: "",
+  temperature: "",
+  pain: "",
+  fluidMl: "",
+  bowel: "",
+  skin: "",
+  feeding: "",
+  cognition: "",
 };
 
 /**

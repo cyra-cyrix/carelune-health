@@ -78,7 +78,10 @@ function mkReadings(id: string, bp: number[], grbs: number[], urine: number[]): 
   return bp.map((_, i) => ({
     id: `${id}-r${i}`, patient_id: id, reading_date: ymd(bp.length - 1 - i),
     bp: `${bp[i]}/${Math.round(bp[i] * 0.63)}`, grbs: String(grbs[i]), urine_ml: String(urine[i]),
-    food_intake: "Adequate", mood: "Settled", activity: "Assisted walking",
+    food_intake: "Adequate", mood: "Comfortable", activity: "Walks with aid",
+    pulse: String(72 + (i % 5)), spo2: String(96 + (i % 3)), temperature: "98.4",
+    pain: String(4 - Math.min(4, i)), fluid_ml: String(1200 + i * 50),
+    bowel: "Passed — normal", skin: "Intact", feeding: "Oral — normal", cognition: "Alert & oriented",
   }));
 }
 const READINGS: Record<string, ReadingRow[]> = {

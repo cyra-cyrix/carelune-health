@@ -98,7 +98,10 @@ export default function CaregiverHome({ initialTab = "today" }: { initialTab?: T
 
   const firstName = patient?.full_name.split(" ")[0] ?? "";
   const caregiverName = profile?.full_name?.split(" ")[0] ?? "";
-  const params = useMemo(() => prescribedParams(modules, patient?.diagnosis ?? []), [modules, patient]);
+  const params = useMemo(
+    () => prescribedParams(modules, patient?.diagnosis ?? [], tasks.map((t) => t.title)),
+    [modules, patient, tasks],
+  );
 
   return (
     <div className="min-h-[calc(100vh-3rem)] bg-mist">
@@ -490,31 +493,44 @@ function PainScale({ value, onChange }: { value: string; onChange: (v: string) =
 
 /* ============================== MEDICINES ============================== */
 
-type Slot = "morning" | "afternoon" | "night";
-const SLOT_LABEL: Record<Slot, string> = { morning: "Morning", afternoon: "Afternoon", night: "Night" };
+type DaySlot = "morning" | "afternoon" | "evening" | "night";
+const DAY_SLOTS: { key: DaySlot; label: string; from: number; to: number }[] = [
+  { key: "morning", label: "Morning", from: 0, to: 12 },
+  { key: "afternoon", label: "Afternoon", from: 12, to: 16 },
+  { key: "evening", label: "Evening", from: 16, to: 20 },
+  { key: "night", label: "Night", from: 20, to: 24 },
+];
+type MedPlan = { slots: DaySlot[]; interval: string | null; prn: boolean; food: "before" | "after" | null };
 
-function medSlots(m: MedicationRow): { slots: Slot[]; prn: boolean } {
-  const text = `${m.freq ?? ""} ${m.timing ?? ""}`.toLowerCase();
-  if (/need|sos|prn|required/.test(text)) return { slots: [], prn: true };
-  const pat = (m.timing ?? "").match(/(\d)\s*-\s*(\d)\s*-\s*(\d)/);
+/** Turn a doctor's dose line (1-0-1, 1-1-1, 2-1-2-2, "every 6 hours", "SOS",
+ *  "after food"…) into a day schedule. */
+function parseMed(m: MedicationRow): MedPlan {
+  const text = `${m.freq ?? ""} ${m.timing ?? ""} ${m.note ?? ""}`.toLowerCase();
+  const prn = /need|sos|prn|required/.test(text);
+  const interval = text.match(/every\s+[\w-]+\s*(?:hours?|hrs?|h)\b/)?.[0] ?? (/hourly/.test(text) ? "hourly" : null);
+  const food: MedPlan["food"] = /before food|empty stomach/.test(text) ? "before" : /after food|with food|post food/.test(text) ? "after" : null;
+
+  const slots: DaySlot[] = [];
+  // The dose pattern can live in either freq or timing depending on the source.
+  const pat = `${m.timing ?? ""} ${m.freq ?? ""}`.match(/\d+(?:\s*-\s*\d+){2,3}/); // 3 or 4 positions
   if (pat) {
-    const s: Slot[] = [];
-    if (Number(pat[1]) > 0) s.push("morning");
-    if (Number(pat[2]) > 0) s.push("afternoon");
-    if (Number(pat[3]) > 0) s.push("night");
-    if (s.length) return { slots: s, prn: false };
+    const nums = pat[0].split("-").map((n) => Number(n.trim()));
+    const map: DaySlot[] = nums.length === 4 ? ["morning", "afternoon", "evening", "night"] : ["morning", "afternoon", "night"];
+    nums.forEach((n, i) => { if (n > 0 && map[i]) slots.push(map[i]); });
   }
-  const s: Slot[] = [];
-  if (/morning|breakfast|am\b/.test(text)) s.push("morning");
-  if (/after ?noon|lunch|noon/.test(text)) s.push("afternoon");
-  if (/night|bed|dinner|hs\b|pm\b/.test(text)) s.push("night");
-  return { slots: s.length ? s : ["morning"], prn: false };
+  if (slots.length === 0 && !prn && !interval) {
+    if (/morning|breakfast|\bam\b/.test(text)) slots.push("morning");
+    if (/after ?noon|lunch|noon/.test(text)) slots.push("afternoon");
+    if (/evening|dinner/.test(text)) slots.push("evening");
+    if (/night|bed|\bhs\b|\bpm\b/.test(text)) slots.push("night");
+    if (slots.length === 0) slots.push("morning");
+  }
+  return { slots, interval, prn, food };
 }
-function currentSlot(): Slot {
+function currentDaySlot(): DaySlot {
   const h = new Date().getHours();
-  return h < 12 ? "morning" : h < 17 ? "afternoon" : "night";
+  return (DAY_SLOTS.find((s) => h >= s.from && h < s.to) ?? DAY_SLOTS[0]).key;
 }
-const SLOT_ORDER: Slot[] = ["morning", "afternoon", "night"];
 
 function MedicinesTab({ patientId, meds }: { patientId: string; meds: MedicationRow[] }) {
   const [admin, setAdmin] = useState<Map<string, MedAdminStatus>>(new Map());
@@ -526,103 +542,114 @@ function MedicinesTab({ patientId, meds }: { patientId: string; meds: Medication
     try { await setMedAdmin(patientId, medId, slot, status); } catch { void getMedAdminToday(patientId).then(setAdmin).catch(() => {}); }
   };
 
-  const scheduled = meds.map((m) => ({ m, ...medSlots(m) }));
-  const nowSlot = currentSlot();
-  const nowIdx = SLOT_ORDER.indexOf(nowSlot);
-
-  const dueNow = scheduled.filter((s) => s.slots.includes(nowSlot));
-  const later = scheduled
-    .flatMap((s) => s.slots.filter((sl) => SLOT_ORDER.indexOf(sl) > nowIdx).map((sl) => ({ m: s.m, slot: sl })));
-  const prn = scheduled.filter((s) => s.prn);
+  const parsed = meds.map((m) => ({ m, plan: parseMed(m) }));
+  const now = currentDaySlot();
 
   return (
     <div className="space-y-5">
       <div>
         <h1 className="text-[22px] font-semibold tracking-tight text-ink">Medicines</h1>
-        <p className="text-[13px] text-sage-600">Mark each as given or missed. The care team sees this.</p>
+        <p className="text-[13px] text-sage-600">The day&rsquo;s schedule. Mark each as given or missed — the care team sees this.</p>
       </div>
 
       {meds.length === 0 ? (
         <p className="rounded-2xl bg-white p-4 text-[14px] text-sage-600 shadow-card">No medicines in the plan yet.</p>
       ) : (
         <>
-          <MedSection title="Due now" tone="brand">
-            {dueNow.length === 0 ? <Empty text="Nothing due right now." /> :
-              dueNow.map(({ m }) => <MedRow key={m.id} med={m} slot={nowSlot} status={admin.get(`${m.id}|${nowSlot}`)} onMark={mark} />)}
-          </MedSection>
+          {DAY_SLOTS.map((slot) => {
+            const rows = parsed.filter((p) => p.plan.slots.includes(slot.key));
+            if (rows.length === 0) return null;
+            return (
+              <MedSlotCard key={slot.key} title={slot.label} now={slot.key === now}>
+                {rows.map(({ m, plan }) => (
+                  <MedRow key={`${m.id}-${slot.key}`} med={m} slot={slot.key} food={plan.food} status={admin.get(`${m.id}|${slot.key}`)} onMark={mark} />
+                ))}
+              </MedSlotCard>
+            );
+          })}
 
-          {later.length > 0 && (
-            <MedSection title="Later today" tone="sage">
-              {later.map(({ m, slot }) => <MedRow key={`${m.id}-${slot}`} med={m} slot={slot} slotHint={SLOT_LABEL[slot]} status={admin.get(`${m.id}|${slot}`)} onMark={mark} />)}
-            </MedSection>
-          )}
-
-          {prn.length > 0 && (
-            <MedSection title="As needed" tone="sage">
-              {prn.map(({ m }) => <MedRow key={m.id} med={m} slot="prn" status={admin.get(`${m.id}|prn`)} onMark={mark} asNeeded />)}
-            </MedSection>
-          )}
-
-          <MedSection title="Full medicine list" tone="sage">
-            <ul className="divide-y divide-ink/[0.05]">
-              {meds.map((m) => (
-                <li key={m.id} className="flex items-start gap-3 py-2.5">
-                  <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-50 text-brand-600"><Icon.Pill width={15} height={15} /></span>
-                  <span className="min-w-0 flex-1">
-                    <span className="flex flex-wrap items-baseline gap-x-2">
-                      <span className="text-[14px] font-semibold text-ink">{m.name}</span>
-                      {m.dose && <span className="text-[13px] text-sage-600">{m.dose}</span>}
-                    </span>
-                    <span className="block text-[12px] text-sage-500">{[m.freq, m.timing].filter(Boolean).join(" · ") || "As directed"}{m.note ? ` — ${m.note}` : ""}</span>
-                  </span>
-                </li>
+          {parsed.some((p) => p.plan.interval) && (
+            <MedSlotCard title="Round the clock">
+              {parsed.filter((p) => p.plan.interval).map(({ m, plan }) => (
+                <MedRow key={m.id} med={m} slot="interval" food={plan.food} hint={plan.interval ?? undefined} status={admin.get(`${m.id}|interval`)} onMark={mark} />
               ))}
+            </MedSlotCard>
+          )}
+
+          {parsed.some((p) => p.plan.prn) && (
+            <MedSlotCard title="As needed">
+              {parsed.filter((p) => p.plan.prn).map(({ m, plan }) => (
+                <MedRow key={m.id} med={m} slot="prn" food={plan.food} status={admin.get(`${m.id}|prn`)} onMark={mark} asNeeded />
+              ))}
+            </MedSlotCard>
+          )}
+
+          <section>
+            <h2 className="mb-2 text-[13px] font-semibold uppercase tracking-wide text-sage-500">Full medicine list</h2>
+            <ul className="divide-y divide-ink/[0.05] rounded-2xl bg-white p-3 shadow-card">
+              {meds.map((m) => {
+                const food = parseMed(m).food;
+                return (
+                  <li key={m.id} className="flex items-start gap-3 py-2.5">
+                    <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-50 text-brand-600"><Icon.Pill width={15} height={15} /></span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex flex-wrap items-baseline gap-x-2">
+                        <span className="text-[14px] font-semibold text-ink">{m.name}</span>
+                        {m.dose && <span className="text-[13px] text-sage-600">{m.dose}</span>}
+                        {food && <FoodTag food={food} />}
+                      </span>
+                      <span className="block text-[12px] text-sage-500">{[m.freq, m.timing].filter(Boolean).join(" · ") || "As directed"}{m.note ? ` — ${m.note}` : ""}</span>
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
-          </MedSection>
+          </section>
         </>
       )}
     </div>
   );
 }
 
-function MedSection({ title, tone, children }: { title: string; tone: "brand" | "sage"; children: React.ReactNode }) {
+function MedSlotCard({ title, now, children }: { title: string; now?: boolean; children: React.ReactNode }) {
   return (
     <section>
-      <h2 className={`mb-2 text-[13px] font-semibold uppercase tracking-wide ${tone === "brand" ? "text-brand-600" : "text-sage-500"}`}>{title}</h2>
-      <div className="rounded-2xl bg-white p-3 shadow-card">{children}</div>
+      <div className="mb-2 flex items-center gap-2">
+        <h2 className="text-[13px] font-semibold uppercase tracking-wide text-sage-500">{title}</h2>
+        {now && <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand-700">Now</span>}
+      </div>
+      <div className="divide-y divide-ink/[0.05] rounded-2xl bg-white p-3 shadow-card">{children}</div>
     </section>
   );
 }
-function Empty({ text }: { text: string }) { return <p className="px-1 py-2 text-[13px] text-sage-500">{text}</p>; }
 
-function MedRow({ med, slot, slotHint, status, onMark, asNeeded }: {
-  med: MedicationRow; slot: string; slotHint?: string; status?: MedAdminStatus;
+function FoodTag({ food }: { food: "before" | "after" }) {
+  return <span className="rounded-full bg-haze-100 px-2 py-0.5 text-[10.5px] font-semibold text-sage-600">{food === "before" ? "Before food" : "After food"}</span>;
+}
+
+function MedRow({ med, slot, food, hint, status, onMark, asNeeded }: {
+  med: MedicationRow; slot: string; food: "before" | "after" | null; hint?: string; status?: MedAdminStatus;
   onMark: (medId: string, slot: string, status: MedAdminStatus) => void; asNeeded?: boolean;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2.5">
       <span className="min-w-0 flex-1">
-        <span className="flex flex-wrap items-baseline gap-x-2">
+        <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
           <span className="text-[14px] font-semibold text-ink">{med.name}</span>
           {med.dose && <span className="text-[13px] text-sage-600">{med.dose}</span>}
-          {slotHint && <span className="rounded-full bg-mist-100 px-2 py-0.5 text-[11px] font-semibold text-sage-600">{slotHint}</span>}
+          {food && <FoodTag food={food} />}
+          {hint && <span className="rounded-full bg-mist-100 px-2 py-0.5 text-[10.5px] font-semibold text-sage-600">{hint}</span>}
         </span>
         {med.note && <span className="block text-[12px] text-sage-500">{med.note}</span>}
       </span>
       <div className="flex shrink-0 items-center gap-1.5">
-        <button
-          type="button"
-          onClick={() => onMark(med.id, slot, "given")}
-          className={`tap rounded-lg px-3 py-1.5 text-[12.5px] font-semibold ring-1 transition-colors ${status === "given" ? "bg-good-500 text-white ring-transparent" : "bg-white text-ink ring-line hover:ring-good-500"}`}
-        >
+        <button type="button" onClick={() => onMark(med.id, slot, "given")}
+          className={`tap rounded-lg px-3 py-1.5 text-[12.5px] font-semibold ring-1 transition-colors ${status === "given" ? "bg-good-500 text-white ring-transparent" : "bg-white text-ink ring-line hover:ring-good-500"}`}>
           {asNeeded ? "Given now" : "Given"}
         </button>
         {!asNeeded && (
-          <button
-            type="button"
-            onClick={() => onMark(med.id, slot, "missed")}
-            className={`tap rounded-lg px-3 py-1.5 text-[12.5px] font-semibold ring-1 transition-colors ${status === "missed" ? "bg-coral-500 text-white ring-transparent" : "bg-white text-ink ring-line hover:ring-coral-400"}`}
-          >
+          <button type="button" onClick={() => onMark(med.id, slot, "missed")}
+            className={`tap rounded-lg px-3 py-1.5 text-[12.5px] font-semibold ring-1 transition-colors ${status === "missed" ? "bg-coral-500 text-white ring-transparent" : "bg-white text-ink ring-line hover:ring-coral-400"}`}>
             Missed
           </button>
         )}

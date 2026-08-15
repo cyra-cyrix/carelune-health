@@ -31,6 +31,13 @@ export interface MonitorParam {
   modules: string[];
   /** Alternative gate — show if the diagnosis text contains any keyword. */
   diagnosisKeywords?: string[];
+  /** Alternative gate — show if any care-task title contains a keyword. Lets
+   *  vitals prescribed as nursing/monitoring TASKS (not observation modules)
+   *  still surface on the caregiver Record page. */
+  taskKeywords?: string[];
+  /** Core home vital — always shown on the caregiver Record page regardless of
+   *  how the plan expresses it (the universal set a caregiver records at home). */
+  core?: boolean;
   /** Eligible for a numeric trend in the family view. */
   trend?: boolean;
   group: ParamGroup;
@@ -53,20 +60,20 @@ const COGNITION = ["Alert & oriented", "Drowsy", "Confused", "Not communicating"
 
 /** Ordered catalogue — display order in both Record and Family. */
 export const PARAM_CATALOGUE: MonitorParam[] = [
-  { key: "bp", label: "Blood pressure", short: "BP", field: "bp", input: "bp", unit: "mmHg", modules: ["vitals"], trend: true, group: "vitals" },
-  { key: "pulse", label: "Pulse", short: "Pulse", field: "pulse", input: "number", unit: "bpm", min: 30, max: 200, modules: ["vitals"], trend: true, group: "vitals" },
-  { key: "spo2", label: "SpO₂", short: "SpO₂", field: "spo2", input: "number", unit: "%", min: 50, max: 100, modules: ["vitals"], trend: true, group: "vitals" },
-  { key: "temperature", label: "Temperature", short: "Temp", field: "temperature", input: "number", unit: "°F", min: 93, max: 108, modules: ["vitals"], trend: true, group: "vitals" },
-  { key: "grbs", label: "Blood sugar", short: "Sugar", field: "grbs", input: "number", unit: "mg/dL", min: 20, max: 600, modules: [], diagnosisKeywords: ["diabet", "dm", "sugar", "glycae", "glucose"], trend: true, group: "vitals" },
-  { key: "pain", label: "Pain", short: "Pain", field: "pain", input: "scale", unit: "/10", min: 0, max: 10, modules: ["pain", "spasticity", "radiating_pain"], trend: true, group: "vitals" },
-  { key: "fluid_ml", label: "Fluid intake", short: "Fluids", field: "fluidMl", input: "number", unit: "mL", min: 0, max: 5000, modules: ["diet_hydration"], trend: true, group: "intake" },
-  { key: "feeding", label: "Feeding & swallowing", short: "Feeding", field: "feeding", input: "select", options: FEEDING, modules: ["feeding_swallowing", "diet_hydration"], group: "intake" },
-  { key: "urine_ml", label: "Urine output", short: "Urine", field: "urineMl", input: "number", unit: "mL", min: 0, max: 5000, modules: ["bowel_bladder"], trend: true, group: "elimination" },
-  { key: "bowel", label: "Bowel movement", short: "Bowel", field: "bowel", input: "select", options: BOWEL, modules: ["bowel_bladder"], group: "elimination" },
-  { key: "activity", label: "Mobility", short: "Mobility", field: "activity", input: "select", options: MOBILITY, modules: ["mobility_function", "adl", "walking_distance", "range_of_motion"], group: "function" },
-  { key: "skin", label: "Skin condition", short: "Skin", field: "skin", input: "select", options: SKIN, modules: ["skin_integrity", "wound_care"], group: "function" },
-  { key: "mood", label: "Mood", short: "Mood", field: "mood", input: "select", options: MOOD, modules: ["cognition_behaviour"], group: "wellbeing" },
-  { key: "cognition", label: "Cognition & communication", short: "Mind", field: "cognition", input: "select", options: COGNITION, modules: ["cognition_behaviour", "speech_communication"], group: "wellbeing" },
+  { key: "bp", label: "Blood pressure", short: "BP", field: "bp", input: "bp", unit: "mmHg", modules: ["vitals"], taskKeywords: ["blood pressure", "bp"], core: true, trend: true, group: "vitals" },
+  { key: "pulse", label: "Pulse", short: "Pulse", field: "pulse", input: "number", unit: "bpm", min: 30, max: 200, modules: ["vitals"], taskKeywords: ["pulse", "heart rate"], core: true, trend: true, group: "vitals" },
+  { key: "spo2", label: "SpO₂", short: "SpO₂", field: "spo2", input: "number", unit: "%", min: 50, max: 100, modules: ["vitals"], taskKeywords: ["spo2", "spo₂", "oxygen", "saturation", "pulse ox"], core: true, trend: true, group: "vitals" },
+  { key: "temperature", label: "Temperature", short: "Temp", field: "temperature", input: "number", unit: "°F", min: 93, max: 108, modules: ["vitals"], taskKeywords: ["temperature", "temp", "fever"], core: true, trend: true, group: "vitals" },
+  { key: "grbs", label: "Blood sugar", short: "Sugar", field: "grbs", input: "number", unit: "mg/dL", min: 20, max: 600, modules: [], diagnosisKeywords: ["diabet", "dm", "sugar", "glycae", "glucose"], taskKeywords: ["sugar", "grbs", "glucose", "glycae"], core: true, trend: true, group: "vitals" },
+  { key: "pain", label: "Pain", short: "Pain", field: "pain", input: "scale", unit: "/10", min: 0, max: 10, modules: ["pain", "spasticity", "radiating_pain"], taskKeywords: ["pain", "spasticity"], core: true, trend: true, group: "vitals" },
+  { key: "fluid_ml", label: "Fluid intake", short: "Fluids", field: "fluidMl", input: "number", unit: "mL", min: 0, max: 5000, modules: ["diet_hydration"], taskKeywords: ["fluid", "hydration", "intake", "diet"], trend: true, group: "intake" },
+  { key: "feeding", label: "Feeding & swallowing", short: "Feeding", field: "feeding", input: "select", options: FEEDING, modules: ["feeding_swallowing", "diet_hydration"], taskKeywords: ["feeding", "swallow"], group: "intake" },
+  { key: "urine_ml", label: "Urine output", short: "Urine", field: "urineMl", input: "number", unit: "mL", min: 0, max: 5000, modules: ["bowel_bladder"], taskKeywords: ["urine", "output"], trend: true, group: "elimination" },
+  { key: "bowel", label: "Bowel movement", short: "Bowel", field: "bowel", input: "select", options: BOWEL, modules: ["bowel_bladder"], taskKeywords: ["bowel", "bladder"], group: "elimination" },
+  { key: "activity", label: "Mobility", short: "Mobility", field: "activity", input: "select", options: MOBILITY, modules: ["mobility_function", "adl", "walking_distance", "range_of_motion"], taskKeywords: ["mobility", "walking", "adl", "motion", "range of"], group: "function" },
+  { key: "skin", label: "Skin condition", short: "Skin", field: "skin", input: "select", options: SKIN, modules: ["skin_integrity", "wound_care"], taskKeywords: ["skin", "wound", "pressure"], group: "function" },
+  { key: "mood", label: "Mood", short: "Mood", field: "mood", input: "select", options: MOOD, modules: ["cognition_behaviour"], taskKeywords: ["mood"], group: "wellbeing" },
+  { key: "cognition", label: "Cognition & communication", short: "Mind", field: "cognition", input: "select", options: COGNITION, modules: ["cognition_behaviour", "speech_communication"], taskKeywords: ["cognition", "speech", "communication", "behaviour"], group: "wellbeing" },
 ];
 
 /** Core caregiver modules used when a patient has no explicit plan observations
@@ -74,15 +81,21 @@ export const PARAM_CATALOGUE: MonitorParam[] = [
 const DEFAULT_CORE_MODULES = ["vitals", "pain", "mobility_function", "diet_hydration", "bowel_bladder"];
 
 /**
- * The parameters prescribed for a patient, in catalogue order. Driven by the
- * plan's observation modules; falls back to the common core set when a plan has
- * none. Diagnosis keywords add condition-specific params (e.g. blood sugar).
+ * The parameters prescribed for a patient, in catalogue order. Core home vitals
+ * are always included; the rest are driven by the plan's observation modules,
+ * the patient's care-task titles (so vitals prescribed as nursing tasks still
+ * appear), diagnosis keywords, or the common core fallback when a plan has none.
  */
-export function prescribedParams(modules: string[], diagnosis: string[] = []): MonitorParam[] {
+export function prescribedParams(modules: string[], diagnosis: string[] = [], taskTitles: string[] = []): MonitorParam[] {
   const set = new Set(modules.length ? modules : DEFAULT_CORE_MODULES);
   const diag = diagnosis.join(" ").toLowerCase();
+  const titles = taskTitles.join(" · ").toLowerCase();
   return PARAM_CATALOGUE.filter(
-    (p) => p.modules.some((m) => set.has(m)) || (p.diagnosisKeywords?.some((k) => diag.includes(k)) ?? false),
+    (p) =>
+      p.core ||
+      p.modules.some((m) => set.has(m)) ||
+      (p.diagnosisKeywords?.some((k) => diag.includes(k)) ?? false) ||
+      (p.taskKeywords?.some((k) => titles.includes(k)) ?? false),
   );
 }
 

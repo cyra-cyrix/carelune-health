@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { LoopMark } from "../../components/ui";
 import { useBranding } from "../../branding/BrandingProvider";
 import {
-  updateOrgBranding, getMyEnabledPacks, getStorefront, updateStorefront,
-  type EnabledPack, type Storefront,
+  updateOrgBranding, getMyEnabledPacks, getStorefront, updateStorefront, saveDoctorKyc, getPackPathways,
+  type EnabledPack, type Storefront, type PackPathway,
 } from "../../lib/db";
 import {
   Card, Field, inputCls, PrimaryButton, GhostButton, Stepper, Chip, PathwayStatusBadge,
@@ -12,6 +12,21 @@ import {
 
 const STEPS = ["Identity", "Programmes", "Package", "Finish"];
 const inr = (n: number | null | undefined) => (n == null ? "—" : `₹${n.toLocaleString("en-IN")}`);
+
+/** Recovery departments an institution can declare it serves (trial shortlist). */
+const DEPARTMENTS = [
+  "Joint / Orthopaedics", "Spine", "Neuro / Stroke", "Cardiac rehab", "Pulmonary rehab",
+  "Post-surgical / wound", "Oncology rehab", "Geriatric / falls", "Maternal / post-natal",
+];
+
+// Consent/terms version stamped on acceptance. DRAFT copy — replace the wording
+// (CONSENT_COPY) with counsel-approved text before onboarding real patients.
+const TERMS_VERSION = "trial-draft-2026-08";
+const CONSENT_COPY =
+  "I confirm the institution and clinician details above are accurate. Our institution is the " +
+  "data fiduciary for patient data and Carelune processes it on our instructions; we will obtain " +
+  "patient consent as required (DPDP Act 2023 · Telemedicine Practice Guidelines 2020). I accept " +
+  "Carelune's Terms and Data-Processing terms.";
 
 /**
  * HOD / Admin onboarding wizard. Sets institution identity + branding, reviews
@@ -32,6 +47,12 @@ export default function OrgSetup() {
   const [hours, setHours] = useState("");
   const [emNote, setEmNote] = useState("");
   const [emNum, setEmNum] = useState("");
+  // departments + KYC + consent (0022)
+  const [departments, setDepartments] = useState<string[]>([]);
+  const [ceReg, setCeReg] = useState("");
+  const [medReg, setMedReg] = useState("");
+  const [specialty, setSpecialty] = useState("");
+  const [consent, setConsent] = useState(false);
 
   // programmes / package
   const [packs, setPacks] = useState<EnabledPack[] | null>(null);
@@ -45,7 +66,15 @@ export default function OrgSetup() {
     setHours(org.service_hours ?? "");
     setEmNote(org.emergency_note ?? "");
     setEmNum(org.emergency_number ?? "");
+    setDepartments(org.departments ?? []);
+    setCeReg(org.ce_reg_no ?? "");
+    setConsent(!!org.terms_accepted_at);
   }, [org]);
+
+  useEffect(() => {
+    setMedReg(profile?.med_reg_no ?? "");
+    setSpecialty(profile?.specialty ?? "");
+  }, [profile]);
 
   useEffect(() => {
     void getMyEnabledPacks().then(setPacks).catch(() => setPacks([]));
@@ -60,7 +89,11 @@ export default function OrgSetup() {
         display_name: name.trim(), logo_url: logo.trim() || null,
         contact_phone: phone.trim() || null, service_hours: hours.trim() || null,
         emergency_note: emNote.trim() || null, emergency_number: emNum.trim() || null,
+        departments,
+        ce_reg_no: ceReg.trim() || null,
+        ...(consent ? { terms_accepted_at: org.terms_accepted_at ?? new Date().toISOString(), terms_version: TERMS_VERSION } : {}),
       });
+      await saveDoctorKyc(medReg.trim() || null, specialty.trim() || null);
       await refresh();
       if (advance) setStep(1);
     } catch (e) {
@@ -119,6 +152,44 @@ export default function OrgSetup() {
                 <Field label="Monitoring / service hours (optional)">
                   <input value={hours} onChange={(e) => setHours(e.target.value)} placeholder="e.g. 8:00 AM – 8:00 PM IST, 7 days" className={inputCls} />
                 </Field>
+
+                <div className="h-px bg-line" />
+                <div>
+                  <span className="mb-1.5 block text-[12.5px] font-semibold text-sage-600">Recovery departments you serve</span>
+                  <div className="flex flex-wrap gap-2">
+                    {DEPARTMENTS.map((d) => {
+                      const on = departments.includes(d);
+                      return (
+                        <button
+                          key={d}
+                          type="button"
+                          aria-pressed={on}
+                          onClick={() => setDepartments((xs) => (on ? xs.filter((x) => x !== d) : [...xs, d]))}
+                          className={`tap rounded-full px-3 py-1.5 text-[12.5px] font-semibold transition-colors ${on ? "bg-sky-600 text-white" : "bg-mist-100 text-sage-600 hover:text-ink"}`}
+                        >
+                          {d}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-1.5 text-[11.5px] text-sage-500">Determines which recovery pathways apply to your institution.</p>
+                </div>
+
+                <div className="h-px bg-line" />
+                <p className="text-[12.5px] font-semibold text-sage-600">Credentialing</p>
+                <Field label="Clinical Establishments Act reg. no. (institution)">
+                  <input value={ceReg} onChange={(e) => setCeReg(e.target.value)} placeholder="e.g. KA/CEA/2024/…" className={inputCls} />
+                </Field>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Your medical registration no.">
+                    <input value={medReg} onChange={(e) => setMedReg(e.target.value)} placeholder="NMC / state council no." className={inputCls} />
+                  </Field>
+                  <Field label="Specialty">
+                    <input value={specialty} onChange={(e) => setSpecialty(e.target.value)} placeholder="e.g. Orthopaedics" className={inputCls} />
+                  </Field>
+                </div>
+                <p className="text-[11.5px] text-sage-500">Self-attested for the trial — not verified against the registry.</p>
+
                 <div className="h-px bg-line" />
                 <Field label="What to do in an emergency" hint="Shown to families. If no ambulance line, direct them to 112/108 or the nearest hospital.">
                   <textarea value={emNote} onChange={(e) => setEmNote(e.target.value)} rows={3} placeholder="e.g. Call our centre first. If unreachable, call 112/108 or go to the nearest hospital." className={`${inputCls} resize-y`} />
@@ -126,9 +197,20 @@ export default function OrgSetup() {
                 <Field label="Emergency / ambulance number (optional)">
                   <input value={emNum} onChange={(e) => setEmNum(e.target.value)} inputMode="tel" placeholder="+91 …" className={inputCls} />
                 </Field>
+                <div className="h-px bg-line" />
+                <label className="flex items-start gap-2.5 rounded-2xl bg-mist-100 p-3.5 ring-1 ring-ink/[0.04]">
+                  <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 accent-sky-600" />
+                  <span className="text-[12.5px] leading-relaxed text-sage-700">
+                    {CONSENT_COPY} <span className="font-semibold text-warn-600">(DRAFT — to be finalised by your counsel before onboarding real patients.)</span>
+                  </span>
+                </label>
+
                 {error && <ErrorNote>{error}</ErrorNote>}
-                <div className="flex justify-end">
-                  <PrimaryButton onClick={() => saveIdentity(true)} disabled={busy || !name.trim()}>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-[11.5px] text-sage-500">
+                    {departments.length === 0 ? "Select at least one department." : !consent ? "Accept the terms to continue." : ""}
+                  </span>
+                  <PrimaryButton onClick={() => saveIdentity(true)} disabled={busy || !name.trim() || !consent || departments.length === 0}>
                     {busy ? "Saving…" : "Continue"}
                   </PrimaryButton>
                 </div>
@@ -145,20 +227,12 @@ export default function OrgSetup() {
                 ) : packs.length === 0 ? (
                   <p className="text-[13px] text-sage-500">No pathways enabled yet. Ask Carelune to enable a Continuum Care programme.</p>
                 ) : (
-                  packs.map((p) => (
-                    <div key={p.pack_id} className="rounded-2xl border border-line bg-white p-4">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-[15px] font-semibold text-ink">{p.pack_name}</span>
-                        <Chip tone="grey">{p.specialty}</Chip>
-                        <span className="ml-auto"><PathwayStatusBadge status={p.status} /></span>
-                      </div>
-                      {p.description && <p className="mt-1.5 text-[12.5px] leading-relaxed text-sage-600">{p.description}</p>}
-                      <p className="mt-1.5 text-[11.5px] text-sage-500">
-                        This is a draft pathway. Your clinician must review and approve it before any patient plan built on it is activated.
-                      </p>
-                    </div>
-                  ))
+                  packs.map((p) => <PackReadCard key={p.pack_id} pack={p} />)
                 )}
+                <p className="text-[11.5px] leading-relaxed text-sage-500">
+                  Need a pathway we don&rsquo;t offer yet? Ask your Carelune contact — uploading your own SOP and an
+                  AI-built library are coming soon.
+                </p>
                 <div className="flex justify-between pt-1">
                   <GhostButton onClick={() => setStep(0)}>Back</GhostButton>
                   <PrimaryButton onClick={() => setStep(2)}>Continue</PrimaryButton>
@@ -205,6 +279,60 @@ export default function OrgSetup() {
 
         <p className="mt-4 text-center text-[11.5px] text-sage-400">Powered by Carelune · Care continues.</p>
       </main>
+    </div>
+  );
+}
+
+/** A read-only pathway card the HOD can expand to read what the programme covers
+ *  (its sub-pathways, lazy-loaded). Full SOP viewer + upload + AI library are later. */
+function PackReadCard({ pack }: { pack: EnabledPack }) {
+  const [open, setOpen] = useState(false);
+  const [pathways, setPathways] = useState<PackPathway[] | null>(null);
+
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (next && pathways === null) getPackPathways(pack.pack_id).then(setPathways).catch(() => setPathways([]));
+  };
+
+  return (
+    <div className="rounded-2xl border border-line bg-white p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[15px] font-semibold text-ink">{pack.pack_name}</span>
+        <Chip tone="grey">{pack.specialty}</Chip>
+        <span className="ml-auto"><PathwayStatusBadge status={pack.status} /></span>
+      </div>
+      {pack.description && <p className="mt-1.5 text-[12.5px] leading-relaxed text-sage-600">{pack.description}</p>}
+
+      <button type="button" onClick={toggle} className="tap mt-2 text-[12.5px] font-semibold text-sky-700 hover:text-sky-800">
+        {open ? "Hide details" : "Read what’s included"}
+      </button>
+      {open && (
+        <div className="mt-2 rounded-xl bg-mist-100 p-3 ring-1 ring-ink/[0.04]">
+          {pathways === null ? (
+            <p className="text-[12px] text-sage-500">Loading…</p>
+          ) : pathways.length === 0 ? (
+            <p className="text-[12px] text-sage-500">No sub-pathways listed.</p>
+          ) : (
+            <>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-sage-500">Pathways in this programme</p>
+              <ul className="mt-1.5 space-y-1.5">
+                {pathways.map((pw) => (
+                  <li key={pw.pathway_id} className="flex items-center gap-2 text-[13px] text-ink">
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-sky-400" />
+                    {pw.name}
+                    {pw.version_status && <span className="ml-1"><PathwayStatusBadge status={pw.version_status} /></span>}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-[11px] text-sage-500">The full clinical SOP is provided for your clinician’s review.</p>
+            </>
+          )}
+        </div>
+      )}
+      <p className="mt-1.5 text-[11.5px] text-sage-500">
+        This is a draft pathway. Your clinician must review and approve it before any patient plan built on it is activated.
+      </p>
     </div>
   );
 }

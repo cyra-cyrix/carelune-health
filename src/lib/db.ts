@@ -122,6 +122,12 @@ export type OrgRow = {
   /** 'active' | 'paused' — a paused institution is suspended by the super admin
    *  (its non-super-admin users are gated out; no data is deleted). */
   status: string;
+  /** Onboarding (0022): recovery departments served + basic institution KYC +
+   *  consent stamp. */
+  departments?: string[];
+  ce_reg_no?: string | null;
+  terms_accepted_at?: string | null;
+  terms_version?: string | null;
 };
 
 export type MyProfile = {
@@ -132,6 +138,9 @@ export type MyProfile = {
   is_admin: boolean;
   is_super_admin: boolean;
   must_reset_password: boolean;
+  /** Doctor KYC (0022) — self-attested. */
+  med_reg_no?: string | null;
+  specialty?: string | null;
 };
 
 /** The signed-in user's org (RLS returns only their own centre). */
@@ -139,7 +148,7 @@ export async function getMyOrg(): Promise<OrgRow | null> {
   const { data, error } = await supabase
     .from("centres")
     .select(
-      "id, name, display_name, logo_url, subdomain, setup_complete, invite_token, institution_type, contact_phone, service_hours, emergency_note, emergency_number, status",
+      "id, name, display_name, logo_url, subdomain, setup_complete, invite_token, institution_type, contact_phone, service_hours, emergency_note, emergency_number, status, departments, ce_reg_no, terms_accepted_at, terms_version",
     )
     .limit(1);
   if (error) throw error;
@@ -161,7 +170,7 @@ export async function getMyProfile(): Promise<MyProfile | null> {
   if (!auth.user) return null;
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, role, full_name, centre_id, is_admin, is_super_admin, must_reset_password")
+    .select("id, role, full_name, centre_id, is_admin, is_super_admin, must_reset_password, med_reg_no, specialty")
     .eq("id", auth.user.id)
     .maybeSingle();
   if (error) throw error;
@@ -221,9 +230,24 @@ export async function updateOrgBranding(
     service_hours?: string | null;
     emergency_note?: string | null;
     emergency_number?: string | null;
+    departments?: string[];
+    ce_reg_no?: string | null;
+    terms_accepted_at?: string | null;
+    terms_version?: string | null;
   },
 ): Promise<void> {
   const { error } = await supabase.from("centres").update(fields).eq("id", orgId);
+  if (error) throw error;
+}
+
+/** Admin/doctor: save own basic credentialing (self-attested, 0022). */
+export async function saveDoctorKyc(medRegNo: string | null, specialty: string | null): Promise<void> {
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) return;
+  const { error } = await supabase
+    .from("profiles")
+    .update({ med_reg_no: medRegNo, specialty })
+    .eq("id", auth.user.id);
   if (error) throw error;
 }
 

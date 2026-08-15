@@ -11,6 +11,7 @@ import PatientProgress from "../screens/pmr/PatientProgress";
 import PlanStudio from "../screens/intake/PlanStudio";
 import NursePatient from "../screens/nurse/NursePatient";
 import RegisterPatient from "../screens/register/RegisterPatient";
+import CaregiverHome from "../screens/caregiver/CaregiverHome";
 import "../index.css";
 
 const screen = new URLSearchParams(location.search).get("screen") ?? "command";
@@ -26,6 +27,11 @@ function Harness() {
       return <NursePatient patientId="p1" onBack={noop} />;
     case "register":
       return <RegisterPatient token="demo" />;
+    case "caregiver": {
+      const t = new URLSearchParams(location.search).get("tab") as
+        | "today" | "record" | "medicines" | "messages" | null;
+      return <CaregiverHome initialTab={t ?? "today"} />;
+    }
     case "studio-prepare":
     case "studio-review":
       return <PlanStudio patientId="p1" onExit={noop} />;

@@ -10,7 +10,7 @@ export type {
   PatientRow, PendingCount, ReadingRow, MedicationRow, MedicationInput, ApprovalRow, UpdateRow,
   CareTeamMember, CareTaskRow, PatientPlanRow, QueryMessageRow, OrgRow, MyProfile, PackPathway,
   PlanIntake, DocumentFacts, DocumentRow, FactItem, FactMedicine, StoredFacts, TaskLogRow, NewApproval,
-  PublicOrgInfo,
+  PublicOrgInfo, ReadingsInput, TaskOutcome, MedAdminStatus,
 } from "../lib/db";
 
 import type {
@@ -93,6 +93,31 @@ const READINGS: Record<string, ReadingRow[]> = {
 export async function getReadingHistory(patientId: string): Promise<ReadingRow[]> {
   return READINGS[patientId] ?? [];
 }
+
+/* ---- caregiver-loop mocks (recovery-loop redesign) ---- */
+export async function getMyPatient(): Promise<PatientRow | null> {
+  return PATIENTS.find((p) => p.id === "p1") ?? PATIENTS[0] ?? null;
+}
+export async function getTodayReadings(): Promise<import("../lib/db").ReadingsInput | null> {
+  const last = (READINGS.p1 ?? [])[(READINGS.p1 ?? []).length - 1];
+  if (!last) return null;
+  return {
+    bp: last.bp ?? "", grbs: last.grbs ?? "", urineMl: last.urine_ml ?? "", foodIntake: last.food_intake ?? "",
+    mood: last.mood ?? "", activity: last.activity ?? "", pulse: last.pulse ?? "", spo2: last.spo2 ?? "",
+    temperature: last.temperature ?? "", pain: last.pain ?? "", fluidMl: last.fluid_ml ?? "", bowel: last.bowel ?? "",
+    skin: last.skin ?? "", feeding: last.feeding ?? "", cognition: last.cognition ?? "",
+  };
+}
+export async function saveReadings(): Promise<void> {}
+export async function getTodayTaskOutcomes(): Promise<Map<string, import("../lib/db").TaskOutcome>> {
+  return new Map();
+}
+export async function setTaskOutcome(): Promise<void> {}
+export async function getMedAdminToday(): Promise<Map<string, import("../lib/db").MedAdminStatus>> {
+  return new Map();
+}
+export async function setMedAdmin(): Promise<void> {}
+export async function transcribeAudio(): Promise<string> { return ""; }
 
 /* ------------------------------- medicines -------------------------------- */
 
@@ -235,6 +260,14 @@ export async function getPatientPlan(patientId: string): Promise<PatientPlanRow 
   void patientId;
   if (SCREEN === "studio-prepare") return null;
   if (SCREEN === "studio-review") return { id: "pl1", version: 1, status: "draft", content: draftPlan, pathway_version_id: "v2", updated_at: iso(0), activated_at: null };
+  // caregiver / family → realistic prescribed observation modules (registry keys)
+  if (SCREEN === "caregiver" || SCREEN === "family") {
+    const obs = [
+      "vitals", "pain", "diet_hydration", "feeding_swallowing", "bowel_bladder",
+      "mobility_function", "skin_integrity", "cognition_behaviour",
+    ].map((module) => ({ module, frequency: "daily", recorded_by: "caregiver" as const }));
+    return { id: "pl1", version: 1, status: "approved", content: { ...basePlan, observations: obs }, pathway_version_id: "v2", updated_at: iso(0), activated_at: iso(2 * 86_400_000) };
+  }
   // cockpit / other → an active plan
   return { id: "pl1", version: 1, status: "approved", content: basePlan, pathway_version_id: "v2", updated_at: iso(0), activated_at: iso(2 * 86_400_000) };
 }

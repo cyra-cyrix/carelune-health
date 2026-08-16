@@ -1383,6 +1383,20 @@ export async function setMedAdmin(
   if (error) throw new Error(pgErr(error, "Could not save the medicine record."));
 }
 
+/** Undo a medicine record for a slot today — deletes the row so the dose returns
+ *  to "not recorded". Uses the existing med_admin delete grant + RLS
+ *  (med_admin_write `for all` gated on can_see_patient); no schema/RLS change. */
+export async function clearMedAdmin(patientId: string, medicationId: string, slot: string): Promise<void> {
+  const { error } = await supabase
+    .from("med_admin")
+    .delete()
+    .eq("patient_id", patientId)
+    .eq("medication_id", medicationId)
+    .eq("slot", slot)
+    .eq("log_date", todayISO());
+  if (error) throw new Error(pgErr(error, "Could not undo the medicine record."));
+}
+
 /* --------------------- Reading thresholds (0024, doctor) ------------------ */
 
 export type ThresholdRow = {

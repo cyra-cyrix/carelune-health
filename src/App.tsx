@@ -15,8 +15,10 @@ const RegistrationLink = lazy(() => import("./screens/admin/RegistrationLink"));
 const Programme = lazy(() => import("./screens/admin/Programme"));
 const SuperAdmin = lazy(() => import("./screens/platform/SuperAdmin"));
 const ForcePasswordReset = lazy(() => import("./screens/auth/ForcePasswordReset"));
-const CaregiverHome = lazy(() => import("./screens/caregiver/CaregiverHome"));
-const FamilyOverview = lazy(() => import("./screens/family/FamilyOverview"));
+// Family + Caregiver share one mobile Home Care surface (role decides record
+// permissions + household-only actions). The legacy CaregiverHome/FamilyOverview
+// screens are retired from routing but kept on disk until this redesign is approved.
+const HomeCare = lazy(() => import("./screens/home/HomeCare"));
 const NursePatient = lazy(() => import("./screens/nurse/NursePatient"));
 const DutyPatient = lazy(() => import("./screens/duty/DutyPatient"));
 const Caseload = lazy(() => import("./screens/pmr/Caseload"));
@@ -99,19 +101,15 @@ function RoleSurface({ role }: { role: AppRole }) {
   switch (role) {
     case "caregiver":
       return (
-        <PhoneColumn>
-          <Suspense fallback={<PanelLoader />}>
-            <CaregiverHome />
-          </Suspense>
-        </PhoneColumn>
+        <Suspense fallback={<PanelLoader />}>
+          <HomeCare role="caregiver" />
+        </Suspense>
       );
     case "family":
       return (
-        <PhoneColumn>
-          <Suspense fallback={<PanelLoader />}>
-            <FamilyOverview />
-          </Suspense>
-        </PhoneColumn>
+        <Suspense fallback={<PanelLoader />}>
+          <HomeCare role="family" />
+        </Suspense>
       );
     case "nurse":
       return <NurseWorkspace />;
@@ -337,10 +335,6 @@ function TopBar({ role }: { role: AppRole }) {
       </div>
     </header>
   );
-}
-
-function PhoneColumn({ children }: { children: ReactNode }) {
-  return <div className="mx-auto w-full max-w-[640px]">{children}</div>;
 }
 
 function NoRole() {

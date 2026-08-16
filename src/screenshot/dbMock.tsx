@@ -135,6 +135,7 @@ export async function getMedAdminToday(): Promise<Map<string, import("../lib/db"
   return new Map();
 }
 export async function setMedAdmin(): Promise<void> {}
+export async function clearMedAdmin(): Promise<void> {}
 export async function transcribeAudio(): Promise<string> { return ""; }
 
 /* ------------------------------- medicines -------------------------------- */
@@ -279,7 +280,7 @@ export async function getPatientPlan(patientId: string): Promise<PatientPlanRow 
   if (SCREEN === "studio-prepare") return null;
   if (SCREEN === "studio-review") return { id: "pl1", version: 1, status: "draft", content: draftPlan, pathway_version_id: "v2", updated_at: iso(0), activated_at: null };
   // caregiver / family → realistic prescribed observation modules (registry keys)
-  if (SCREEN === "caregiver" || SCREEN === "family") {
+  if (SCREEN === "caregiver" || SCREEN === "family" || SCREEN === "home") {
     const obs = [
       "vitals", "pain", "diet_hydration", "feeding_swallowing", "bowel_bladder",
       "mobility_function", "skin_integrity", "cognition_behaviour",

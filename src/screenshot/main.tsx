@@ -14,6 +14,7 @@ import NursePatient from "../screens/nurse/NursePatient";
 import RegisterPatient from "../screens/register/RegisterPatient";
 import CaregiverHome from "../screens/caregiver/CaregiverHome";
 import FamilyOverview from "../screens/family/FamilyOverview";
+import HomeCare, { type HcTab } from "../screens/home/HomeCare";
 import DutyPatient from "../screens/duty/DutyPatient";
 import "../index.css";
 
@@ -39,6 +40,12 @@ function Harness() {
     }
     case "family":
       return <FamilyOverview />;
+    case "home": {
+      const p = new URLSearchParams(location.search);
+      const role = p.get("role") === "caregiver" ? "caregiver" : "family";
+      const tab = (p.get("tab") as HcTab | null) ?? "today";
+      return <HomeCare role={role} initialTab={tab} />;
+    }
     case "duty":
       return <DutyPatient patientId="p1" onBack={noop} />;
     case "studio-prepare":

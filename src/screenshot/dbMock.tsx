@@ -131,11 +131,16 @@ export async function getTodayTaskOutcomes(): Promise<Map<string, import("../lib
   return new Map();
 }
 export async function setTaskOutcome(): Promise<void> {}
+const MED_ADMIN = new Map<string, import("../lib/db").MedAdminStatus>();
 export async function getMedAdminToday(): Promise<Map<string, import("../lib/db").MedAdminStatus>> {
-  return new Map();
+  return new Map(MED_ADMIN);
 }
-export async function setMedAdmin(): Promise<void> {}
-export async function clearMedAdmin(): Promise<void> {}
+export async function setMedAdmin(_p: string, medicationId: string, slot: string, status: import("../lib/db").MedAdminStatus): Promise<void> {
+  MED_ADMIN.set(`${medicationId}|${slot}`, status);
+}
+export async function clearMedAdmin(_p: string, medicationId: string, slot: string): Promise<void> {
+  MED_ADMIN.delete(`${medicationId}|${slot}`);
+}
 export async function transcribeAudio(): Promise<string> { return ""; }
 
 /* ------------------------------- medicines -------------------------------- */

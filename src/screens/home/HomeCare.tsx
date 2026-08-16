@@ -374,24 +374,26 @@ function CompactTimeline({ tasks, outcomes, currentId, onPick }: {
         return (
           <div className="hc-tl-group" key={p.key}>
             <div className="hc-tl-label">{PERIOD_ICON[p.key]} {p.label}</div>
-            {group.map((t) => {
-              const oc = outcomes.get(t.id);
-              const isMed = classifyTask(t) === "medicine";
-              return (
-                <button key={t.id} type="button"
-                  className={`hc-tl${oc ? " recorded" : ""}${t.id === currentId ? " current" : ""}`}
-                  onClick={() => onPick(t.id)}>
-                  <span className="tl-time num">{t.time_label || "—"}</span>
-                  <span className="tl-ic">{KIND_ICON(t)}</span>
-                  <span className="tl-body">
-                    <span className="tl-title">{t.title}</span>
-                    <span className="tl-state">{t.discipline}{t.detail ? ` · ${t.detail}` : ""}</span>
-                  </span>
-                  {oc ? <span className={`tl-chip ${oc}`}>{OUTCOME_META[oc].short}</span>
-                    : isMed ? <span className="tl-chip na">In Medicines</span> : null}
-                </button>
-              );
-            })}
+            <div className="hc-mlist">
+              {group.map((t) => {
+                const oc = outcomes.get(t.id);
+                const isMed = classifyTask(t) === "medicine";
+                return (
+                  <button key={t.id} type="button"
+                    className={`hc-tl${oc ? " recorded" : ""}${t.id === currentId ? " current" : ""}`}
+                    onClick={() => onPick(t.id)}>
+                    <span className="tl-time num">{t.time_label || "—"}</span>
+                    <span className="tl-ic">{KIND_ICON(t)}</span>
+                    <span className="tl-body">
+                      <span className="tl-title">{t.title}</span>
+                      <span className="tl-state">{t.discipline}{t.detail ? ` · ${t.detail}` : ""}</span>
+                    </span>
+                    {oc ? <span className={`tl-chip ${oc}`}>{OUTCOME_META[oc].short}</span>
+                      : isMed ? <span className="tl-chip na">In Medicines</span> : null}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         );
       })}

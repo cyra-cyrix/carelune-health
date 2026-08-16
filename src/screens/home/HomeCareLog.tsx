@@ -62,6 +62,7 @@ export function HomeCareLog() {
         <Section title="Vitals">
           {vitals.map((p) => (
             <LogRow key={p.field} label={p.label} unit={p.unit} value={readings[p.field] ?? ""} updated={updated}
+              numeric={["number", "bp", "scale"].includes(p.input)}
               attention={statusFor(p, readings[p.field] ?? "", thByKey.get(p.key)) === "attention"}
               onOpen={() => setSheet(p)} onInstr={() => setInstr(p.label)} onMsg />
           ))}
@@ -86,7 +87,7 @@ export function HomeCareLog() {
       {outputs.length > 0 && (
         <Section title="Output">
           {outputs.map((p) => (
-            <LogRow key={p.field} label={p.label} unit={p.unit} value={readings[p.field] ?? ""} updated={updated} onOpen={() => setSheet(p)} />
+            <LogRow key={p.field} label={p.label} unit={p.unit} value={readings[p.field] ?? ""} updated={updated} numeric={["number", "bp", "scale"].includes(p.input)} onOpen={() => setSheet(p)} />
           ))}
         </Section>
       )}
@@ -94,7 +95,7 @@ export function HomeCareLog() {
       {wellbeing.length > 0 && (
         <Section title="Wellbeing">
           {wellbeing.map((p) => (
-            <LogRow key={p.field} label={p.label} unit={p.unit} value={readings[p.field] ?? ""} updated={updated} onOpen={() => setSheet(p)} />
+            <LogRow key={p.field} label={p.label} unit={p.unit} value={readings[p.field] ?? ""} updated={updated} numeric={["number", "bp", "scale"].includes(p.input)} onOpen={() => setSheet(p)} />
           ))}
         </Section>
       )}
@@ -102,7 +103,7 @@ export function HomeCareLog() {
       {funct.length > 0 && (
         <Section title="Mobility & skin">
           {funct.map((p) => (
-            <LogRow key={p.field} label={p.label} value={readings[p.field] ?? ""} updated={updated} onOpen={() => setSheet(p)} />
+            <LogRow key={p.field} label={p.label} value={readings[p.field] ?? ""} updated={updated} numeric={["number", "bp", "scale"].includes(p.input)} onOpen={() => setSheet(p)} />
           ))}
         </Section>
       )}
@@ -167,8 +168,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function LogRow({ label, unit, value, updated, attention, onOpen, onInstr, onMsg }: {
-  label: string; unit?: string; value: string; updated: string; attention?: boolean;
+function LogRow({ label, unit, value, updated, numeric, attention, onOpen, onInstr, onMsg }: {
+  label: string; unit?: string; value: string; updated: string; numeric?: boolean; attention?: boolean;
   onOpen: () => void; onInstr?: () => void; onMsg?: boolean;
 }) {
   const { goTab } = useHc();
@@ -179,9 +180,12 @@ function LogRow({ label, unit, value, updated, attention, onOpen, onInstr, onMsg
         <span className="lr-ic">{has ? <HcIcon.Check size={16} /> : <HcIcon.Plus size={16} />}</span>
         <span className="lr-body">
           <b>{label}</b>
-          <small>{has ? `${value}${unit ? ` ${unit}` : ""} · ${updated}` : "Tap to record"}</small>
+          <small>{has ? (numeric ? updated : `${value} · ${updated}`) : "Tap to record"}</small>
         </span>
-        <HcIcon.Right size={16} />
+        {has && numeric
+          ? <span className="lr-value num">{value}{unit ? <em>{unit}</em> : null}</span>
+          : !has ? <span className="lr-add">Record</span> : null}
+        <HcIcon.Right size={15} />
       </button>
       {attention && (
         <div className="hc-attn-note">

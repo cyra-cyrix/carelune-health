@@ -260,19 +260,30 @@ function TodayTab() {
     .filter((r) => !Number.isNaN(r.t) && r.t >= Date.now() - 86_400_000)
     .sort((a, b) => a.t - b.t)[0];
 
+  // Per-period summary (real counts) for the Continuum-style period cards.
+  const periodSummary = PERIODS.map((p) => {
+    const items = completable.filter((t) => periodOf(t) === p.key);
+    return { p, total: items.length, done: items.filter((t) => outcomes.get(t.id) === "done").length, first: (items.find((t) => !outcomes.has(t.id)) ?? items[0]) };
+  }).filter((x) => x.total > 0);
+  const currentPeriodKey = current ? periodOf(current) : null;
+
   return (
     <>
       <Header />
-      <WeekStrip />
 
-      <div className="hc-prog compact" style={{ marginTop: 10 }}>
-        <Ring value={doneCount} total={Math.max(completable.length, 1)} size={54} />
-        <div className="lede">
-          <div className="big num">{doneCount} <small>of {completable.length} done</small></div>
-          <div className="sub">
-            {completable.length === 0 ? "No scheduled care yet — your team will add it."
-              : allDone ? "All scheduled care recorded today."
-              : current ? `Up next · ${current.time_label || "today"}` : "All caught up."}
+      {/* Fuller sky hero: week strip + ring + current action together. */}
+      <div className="hc-hero">
+        <WeekStrip />
+        <div className="hc-hero-main">
+          <Ring value={doneCount} total={Math.max(completable.length, 1)} size={76} onDark />
+          <div className="hh-txt">
+            <div className="hh-eye">{first}&rsquo;s day</div>
+            <div className="hh-count num">{doneCount} of {completable.length} done</div>
+            <div className="hh-next">
+              {completable.length === 0 ? "No scheduled care yet"
+                : allDone ? "All scheduled care recorded today"
+                : current ? `Up next · ${current.time_label || "today"} · ${current.title}` : "All caught up"}
+            </div>
           </div>
         </div>
       </div>
@@ -283,6 +294,21 @@ function TodayTab() {
           {lastStaff
             ? <span><b>{lastStaff.author_name || "Care team"}</b> replied · {niceTime(lastStaff.created_at)}</span>
             : <span>Next review · {new Date(nextReview!.date).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })}</span>}
+        </div>
+      )}
+
+      {periodSummary.length > 0 && (
+        <div className="hc-periods">
+          {periodSummary.map(({ p, total, done, first: firstTask }) => (
+            <button key={p.key} type="button"
+              className={`hc-pcard${p.key === currentPeriodKey ? " on" : ""}${done >= total ? " full" : ""}`}
+              aria-label={`${p.label}: ${done} of ${total} done`}
+              onClick={() => firstTask && setSelectedId(firstTask.id)}>
+              <span className="pc-ic">{PERIOD_ICON[p.key]}</span>
+              <span className="pc-label">{p.label}</span>
+              <span className="pc-count num">{done}/{total}</span>
+            </button>
+          ))}
         </div>
       )}
 

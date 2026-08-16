@@ -36,6 +36,11 @@ Continuum-Pitch.pptx
 *.key.json
 .netlify/
 
+# --- Database dumps / backups (may contain data; keep out of git) ---
+backups/
+pre_reset_backup.sql*
+*.dump
+
 # --- OS and editor noise ---
 .DS_Store
 Thumbs.db

@@ -64,7 +64,7 @@ export default function ForcePasswordReset() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="New password"
-              className="w-full rounded-2xl bg-white px-4 py-3 text-[15px] text-ink ring-1 ring-line placeholder:text-sage-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+              className="w-full rounded-2xl bg-white px-4 py-3 text-[15px] text-ink ring-1 ring-line placeholder:text-sage-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
             />
             <input
               type="password"
@@ -74,7 +74,7 @@ export default function ForcePasswordReset() {
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               placeholder="Confirm new password"
-              className="w-full rounded-2xl bg-white px-4 py-3 text-[15px] text-ink ring-1 ring-line placeholder:text-sage-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+              className="w-full rounded-2xl bg-white px-4 py-3 text-[15px] text-ink ring-1 ring-line placeholder:text-sage-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
             />
             {error && (
               <p role="alert" className="rounded-2xl bg-coral-100 px-3.5 py-2 text-[13px] text-coral-600">
@@ -84,7 +84,7 @@ export default function ForcePasswordReset() {
             <button
               type="submit"
               disabled={busy}
-              className="tap w-full rounded-2xl bg-brand-600 py-3 text-[15px] font-semibold text-white shadow-lift hover:bg-brand-500 disabled:opacity-50"
+              className="tap w-full rounded-2xl bg-brand-800 py-3 text-[15px] font-semibold text-white shadow-lift hover:bg-brand-900 disabled:opacity-50"
             >
               {busy ? "Saving…" : "Save and continue"}
             </button>

@@ -77,7 +77,7 @@ export default function TemplateGovernance() {
                   type="button"
                   disabled={!note.trim()}
                   onClick={() => act("note")}
-                  className="tap rounded-full bg-brand-600 px-4 py-2 text-[13px] font-semibold text-white disabled:opacity-40"
+                  className="tap rounded-full bg-brand-800 px-4 py-2 text-[13px] font-semibold text-white disabled:opacity-40"
                 >
                   Add governance note
                 </button>

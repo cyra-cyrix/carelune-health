@@ -187,7 +187,7 @@ function ConcernRow({
           onChange={(e) => setText(e.target.value)}
           rows={2}
           placeholder={thread.length ? "Add a reply…" : "Reply to the family…"}
-          className="w-full resize-y rounded-xl bg-white px-3 py-2 text-[13px] text-ink ring-1 ring-ink/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+          className="w-full resize-y rounded-xl bg-white px-3 py-2 text-[13px] text-ink ring-1 ring-ink/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
         />
         {error && <p className="mt-1 text-[12px] text-coral-600">{error}</p>}
         <div className="mt-1.5 flex items-center gap-2">
@@ -195,7 +195,7 @@ function ConcernRow({
             type="button"
             onClick={send}
             disabled={busy || !text.trim()}
-            className="tap rounded-full bg-brand-600 px-4 py-1.5 text-[12px] font-semibold text-white hover:bg-brand-500 disabled:opacity-60"
+            className="tap rounded-full bg-brand-800 px-4 py-1.5 text-[12px] font-semibold text-white hover:bg-brand-900 disabled:opacity-60"
           >
             {busy ? "Sending…" : "Send reply"}
           </button>

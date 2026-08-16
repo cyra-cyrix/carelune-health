@@ -109,6 +109,24 @@ export async function getTodayReadings(): Promise<import("../lib/db").ReadingsIn
   };
 }
 export async function saveReadings(): Promise<void> {}
+export function readingRowToInput(r: ReadingRow): import("../lib/db").ReadingsInput {
+  return {
+    bp: r.bp ?? "", grbs: r.grbs ?? "", urineMl: r.urine_ml ?? "", foodIntake: r.food_intake ?? "",
+    mood: r.mood ?? "", activity: r.activity ?? "", pulse: r.pulse ?? "", spo2: r.spo2 ?? "",
+    temperature: r.temperature ?? "", pain: r.pain ?? "", fluidMl: r.fluid_ml ?? "", bowel: r.bowel ?? "",
+    skin: r.skin ?? "", feeding: r.feeding ?? "", cognition: r.cognition ?? "",
+  };
+}
+export async function getThresholds(patientId: string): Promise<import("../lib/db").ThresholdRow[]> {
+  // Doctor-approved ranges — the ONLY basis for family attention. GRBS 142 > 140 → one "Check".
+  return patientId === "p1"
+    ? [
+        { id: "th1", patient_id: "p1", param: "bp", min_val: 90, max_val: 140, unit: "mmHg" },
+        { id: "th2", patient_id: "p1", param: "grbs", min_val: 70, max_val: 140, unit: "mg/dL" },
+        { id: "th3", patient_id: "p1", param: "spo2", min_val: 92, max_val: null, unit: "%" },
+      ]
+    : [];
+}
 export async function getTodayTaskOutcomes(): Promise<Map<string, import("../lib/db").TaskOutcome>> {
   return new Map();
 }
@@ -319,6 +337,28 @@ export async function getPlanIntake(): Promise<PlanIntake | null> {
     : null;
 }
 export async function savePlanIntake(): Promise<void> {}
+
+/* ------------------------------ storefront / family ----------------------- */
+
+export async function getStorefront(): Promise<import("../lib/db").Storefront> {
+  return {
+    centre_id: "c1", package_name: "30-Day Recovery Continuum", package_price: 5999,
+    package_includes: [
+      "Doctor-approved recovery plan", "Daily caregiver care schedule", "Medicine and adherence tracking",
+      "Pain, vitals and symptom monitoring", "Physiotherapy and mobility tracking", "Family recovery view",
+    ].join("\n"),
+    trial_days: 7, platform_fee_pct: 0,
+    emergency_note: "Call the institution first on 080-4000-1234. If unreachable, call 112 or 108, or go to the nearest hospital.",
+    emergency_number: "080-4000-1234",
+  };
+}
+export async function getSubscription(): Promise<import("../lib/db").SubscriptionRow | null> {
+  return null; // show the offer card in the harness
+}
+export async function startTrial(patientId: string): Promise<import("../lib/db").SubscriptionRow> {
+  return { id: "sub1", patient_id: patientId, status: "trial", plan_name: "30-Day Recovery Continuum", price: 5999, trial_days: 7, trial_ends: ymd(-7), pay_mode: "centre", started_at: iso(0) };
+}
+export async function addCaregiver(): Promise<void> {}
 export async function generatePlan(): Promise<{ plan: PlanDraft; validation: { ok: boolean; errors: string[] } }> {
   return { plan: draftPlan, validation: { ok: true, errors: [] } };
 }

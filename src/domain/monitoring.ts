@@ -99,6 +99,23 @@ export function prescribedParams(modules: string[], diagnosis: string[] = [], ta
   );
 }
 
+/**
+ * The parameters shown to the FAMILY, in catalogue order. Stricter than the
+ * caregiver's Record page: gated ONLY by the doctor-approved plan's observation
+ * modules (or a diagnosis keyword) — never the always-on core vitals or nursing
+ * task titles. A parameter the plan does not prescribe is never shown to family
+ * (e.g. blood sugar / urine / bowel appear only when actually in the plan).
+ */
+export function familyParams(modules: string[], diagnosis: string[] = []): MonitorParam[] {
+  const set = new Set(modules);
+  const diag = diagnosis.join(" ").toLowerCase();
+  return PARAM_CATALOGUE.filter(
+    (p) =>
+      p.modules.some((m) => set.has(m)) ||
+      (p.diagnosisKeywords?.some((k) => diag.includes(k)) ?? false),
+  );
+}
+
 /** Parse a stored reading value to a number for trend/threshold comparison.
  *  Blood pressure compares the systolic value. Returns null if not numeric. */
 export function numericValue(param: MonitorParam, raw: string | null | undefined): number | null {

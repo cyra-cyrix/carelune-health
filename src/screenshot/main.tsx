@@ -12,6 +12,8 @@ import PlanStudio from "../screens/intake/PlanStudio";
 import NursePatient from "../screens/nurse/NursePatient";
 import RegisterPatient from "../screens/register/RegisterPatient";
 import CaregiverHome from "../screens/caregiver/CaregiverHome";
+import FamilyOverview from "../screens/family/FamilyOverview";
+import DutyPatient from "../screens/duty/DutyPatient";
 import "../index.css";
 
 const screen = new URLSearchParams(location.search).get("screen") ?? "command";
@@ -32,6 +34,10 @@ function Harness() {
         | "today" | "record" | "medicines" | "messages" | null;
       return <CaregiverHome initialTab={t ?? "today"} />;
     }
+    case "family":
+      return <FamilyOverview />;
+    case "duty":
+      return <DutyPatient patientId="p1" onBack={noop} />;
     case "studio-prepare":
     case "studio-review":
       return <PlanStudio patientId="p1" onExit={noop} />;

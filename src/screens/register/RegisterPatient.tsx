@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react";
-import { LoopMark } from "../../components/ui";
 import { registerPatient, getPublicOrgInfo, type PublicOrgInfo } from "../../lib/db";
 import { CARE_PACKAGE } from "../../domain/carePackage";
 
 const inr = (n: number | null | undefined) => (n == null ? null : `₹${n.toLocaleString("en-IN")}`);
 
 const FIELD =
-  "w-full rounded-xl bg-white px-3.5 py-2.5 text-[15px] text-ink ring-1 ring-ink/10 placeholder:text-sage-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400";
+  "w-full rounded-xl bg-white px-3.5 py-2.5 text-[15px] text-ink ring-1 ring-ink/10 placeholder:text-sage-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500";
 
 const LABEL = "mb-1 block text-[12px] font-semibold text-sage-600";
 
@@ -76,8 +75,10 @@ export default function RegisterPatient({ token }: { token: string }) {
   return (
     <div className="min-h-screen bg-mist px-4 py-8">
       <div className="mx-auto w-full max-w-md">
-        <div className="flex items-center gap-2.5 text-brand-600">
-          <LoopMark size={28} />
+        <div className="flex items-center gap-2.5">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-600 text-[15px] font-bold text-white">
+            {(institution?.trim()?.[0] ?? "•").toUpperCase()}
+          </span>
           <div>
             <div className="font-display text-lg font-semibold tracking-tight text-ink">{institution}</div>
             <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-sage-500">Recovery programme</div>
@@ -95,7 +96,7 @@ export default function RegisterPatient({ token }: { token: string }) {
             <button
               type="button"
               onClick={goToSignIn}
-              className="tap mt-5 w-full rounded-xl bg-brand-600 py-3 text-[15px] font-semibold text-white hover:bg-brand-500"
+              className="tap mt-5 w-full rounded-xl bg-brand-800 py-3 text-[15px] font-semibold text-white hover:bg-brand-900"
             >
               Go to sign in
             </button>
@@ -221,7 +222,7 @@ export default function RegisterPatient({ token }: { token: string }) {
               type="button"
               onClick={submit}
               disabled={!canSubmit}
-              className="tap w-full rounded-xl bg-brand-600 py-3 text-[15px] font-semibold text-white shadow-lift hover:bg-brand-500 disabled:opacity-50"
+              className="tap w-full rounded-xl bg-brand-800 py-3 text-[15px] font-semibold text-white shadow-lift hover:bg-brand-900 disabled:opacity-50"
             >
               {busy ? "Registering…" : "Register"}
             </button>

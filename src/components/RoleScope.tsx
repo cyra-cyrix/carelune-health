@@ -29,7 +29,7 @@ export default function RoleScope({ role }: { role: RoleId }) {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-controls={panelId}
-        className="tap flex w-full items-center gap-3 p-4 text-left hover:bg-mist/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 sm:p-5"
+        className="tap flex w-full items-center gap-3 p-4 text-left hover:bg-mist/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 sm:p-5"
       >
         <span className="min-w-0 flex-1">
           <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-sage-600">

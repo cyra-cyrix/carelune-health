@@ -61,7 +61,7 @@ export function PrimaryButton({
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className={`tap inline-flex items-center justify-center gap-2 rounded-xl bg-sky-600 px-4 py-2.5 text-[14px] font-semibold text-white shadow-sm transition-colors hover:bg-sky-700 disabled:opacity-50 ${className}`}
+      className={`tap inline-flex items-center justify-center gap-2 rounded-xl bg-brand-800 px-4 py-2.5 text-[14px] font-semibold text-white shadow-sm transition-colors hover:bg-brand-900 disabled:opacity-50 ${className}`}
     >
       {children}
     </button>

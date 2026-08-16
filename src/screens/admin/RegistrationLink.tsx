@@ -78,7 +78,7 @@ export default function RegistrationLink({ onBack }: { onBack: () => void }) {
                 <button type="button" onClick={copy} className="tap rounded-xl border border-line px-3 py-2 text-[13px] font-semibold text-ink hover:bg-mist-100">
                   {copied ? "Copied" : "Copy"}
                 </button>
-                <button type="button" onClick={share} className="tap inline-flex items-center gap-1.5 rounded-xl bg-brand-600 px-3.5 py-2 text-[13px] font-semibold text-white hover:bg-brand-500">
+                <button type="button" onClick={share} className="tap inline-flex items-center gap-1.5 rounded-xl bg-brand-800 px-3.5 py-2 text-[13px] font-semibold text-white hover:bg-brand-900">
                   <Icon.Phone width={14} height={14} /> WhatsApp
                 </button>
               </div>
@@ -100,7 +100,7 @@ export default function RegistrationLink({ onBack }: { onBack: () => void }) {
                 type="button"
                 onClick={generate}
                 disabled={busy}
-                className="tap mt-3 inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-[14px] font-semibold text-white hover:bg-brand-500 disabled:opacity-60"
+                className="tap mt-3 inline-flex items-center gap-2 rounded-xl bg-brand-800 px-4 py-2.5 text-[14px] font-semibold text-white hover:bg-brand-900 disabled:opacity-60"
               >
                 {busy ? "Generating…" : "Generate registration link"}
               </button>

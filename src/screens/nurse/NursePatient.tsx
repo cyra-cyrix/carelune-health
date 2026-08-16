@@ -311,7 +311,7 @@ function RaiseQuery({ patientId, myName }: { patientId: string; myName: string |
           className="w-full rounded-xl bg-white px-3 py-2 text-[13px] text-ink ring-1 ring-line focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
         />
         {error && <p className="text-[13px] text-coral-600">{error}</p>}
-        <button type="button" onClick={send} disabled={busy || !msg.trim()} className="tap w-full rounded-2xl bg-sky-600 py-2.5 text-[15px] font-semibold text-white transition-colors hover:bg-sky-700 disabled:opacity-60">
+        <button type="button" onClick={send} disabled={busy || !msg.trim()} className="tap w-full rounded-2xl bg-brand-800 py-2.5 text-[15px] font-semibold text-white transition-colors hover:bg-brand-900 disabled:opacity-60">
           {busy ? "Sending…" : "Send query"}
         </button>
       </div>

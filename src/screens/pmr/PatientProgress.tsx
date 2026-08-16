@@ -535,7 +535,7 @@ function ApprovalsInbox({ patientId, rows }: { patientId: string; rows: Approval
                   <div className="mt-2.5">
                     <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder={it.type === "patient_query" ? "Your reply to the family…" : "Your suggestion back to the team…"} className="w-full rounded-xl bg-white px-3 py-2 text-[13px] text-ink ring-1 ring-line focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" />
                     <div className="mt-2 flex gap-2">
-                      <button type="button" onClick={() => sendSuggestion(it)} disabled={busy === it.id || !note.trim()} className="tap rounded-full bg-sky-600 px-3.5 py-1.5 text-[12px] font-semibold text-white disabled:opacity-60">{it.type === "patient_query" ? "Send reply" : "Send suggestion"}</button>
+                      <button type="button" onClick={() => sendSuggestion(it)} disabled={busy === it.id || !note.trim()} className="tap rounded-full bg-brand-800 px-3.5 py-1.5 text-[12px] font-semibold text-white disabled:opacity-60">{it.type === "patient_query" ? "Send reply" : "Send suggestion"}</button>
                       <button type="button" onClick={() => { setNoteFor(null); setNote(""); }} className="tap rounded-full px-3 py-1.5 text-[12px] font-semibold text-sage-600">Cancel</button>
                     </div>
                   </div>
@@ -543,13 +543,13 @@ function ApprovalsInbox({ patientId, rows }: { patientId: string; rows: Approval
                   <div className="mt-2.5 flex flex-wrap gap-2">
                     {it.type === "patient_query" ? (
                       <>
-                        <button type="button" onClick={() => setNoteFor(it.id)} className="tap rounded-full bg-sky-600 px-3.5 py-1.5 text-[12px] font-semibold text-white">Reply</button>
+                        <button type="button" onClick={() => setNoteFor(it.id)} className="tap rounded-full bg-brand-800 px-3.5 py-1.5 text-[12px] font-semibold text-white">Reply</button>
                         <button type="button" onClick={() => decide(it.id, "approved")} disabled={busy === it.id} className="tap rounded-full bg-white px-3.5 py-1.5 text-[12px] font-semibold text-sage-600 ring-1 ring-line disabled:opacity-60">Mark reviewed</button>
                       </>
                     ) : (
                       <>
-                        <button type="button" onClick={() => decide(it.id, "approved")} disabled={busy === it.id} className="tap rounded-full bg-brand-600 px-3.5 py-1.5 text-[12px] font-semibold text-white disabled:opacity-60">Approve</button>
-                        <button type="button" onClick={() => setNoteFor(it.id)} className="tap rounded-full bg-sky-600 px-3.5 py-1.5 text-[12px] font-semibold text-white">Suggest</button>
+                        <button type="button" onClick={() => decide(it.id, "approved")} disabled={busy === it.id} className="tap rounded-full bg-brand-800 px-3.5 py-1.5 text-[12px] font-semibold text-white disabled:opacity-60">Approve</button>
+                        <button type="button" onClick={() => setNoteFor(it.id)} className="tap rounded-full bg-brand-800 px-3.5 py-1.5 text-[12px] font-semibold text-white">Suggest</button>
                         <button type="button" onClick={() => decide(it.id, "declined")} disabled={busy === it.id} className="tap rounded-full bg-white px-3.5 py-1.5 text-[12px] font-semibold text-coral-600 ring-1 ring-coral-200 disabled:opacity-60">Decline</button>
                       </>
                     )}
@@ -601,7 +601,7 @@ function Medicines({ patientId, rows, onChange }: { patientId: string; rows: Med
     <Panel
       label="Detail"
       title="Medicines"
-      aside={<button type="button" onClick={startAdd} className="tap rounded-full bg-sky-600 px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-sky-700">+ Add</button>}
+      aside={<button type="button" onClick={startAdd} className="tap rounded-full bg-brand-800 px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-brand-900">+ Add</button>}
     >
       {editId !== null && (
         <div className="mb-3 rounded-2xl bg-mist p-3 ring-1 ring-ink/[0.04]">
@@ -612,7 +612,7 @@ function Medicines({ patientId, rows, onChange }: { patientId: string; rows: Med
             <input value={draft.timing} onChange={(e) => setDraft({ ...draft, timing: e.target.value })} placeholder="Timing" className={FIELD} />
           </div>
           <div className="mt-2 flex gap-2">
-            <button type="button" onClick={save} disabled={busy} className="tap rounded-full bg-brand-600 px-3.5 py-1.5 text-[12px] font-semibold text-white disabled:opacity-60">{editId === "new" ? "Add medicine" : "Save"}</button>
+            <button type="button" onClick={save} disabled={busy} className="tap rounded-full bg-brand-800 px-3.5 py-1.5 text-[12px] font-semibold text-white disabled:opacity-60">{editId === "new" ? "Add medicine" : "Save"}</button>
             <button type="button" onClick={() => setEditId(null)} className="tap rounded-full px-3 py-1.5 text-[12px] font-semibold text-sage-600">Cancel</button>
           </div>
         </div>

@@ -14,7 +14,7 @@ const ROLE_OPTIONS: { value: NewTeamUser["role"]; label: string }[] = [
 const roleLabel = (r: TeamUser["role"]) => ROLE_OPTIONS.find((o) => o.value === r)?.label ?? r;
 
 const FIELD =
-  "w-full rounded-xl bg-white px-3 py-2 text-[14px] text-ink ring-1 ring-line focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400";
+  "w-full rounded-xl bg-white px-3 py-2 text-[14px] text-ink ring-1 ring-line focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500";
 
 /**
  * Admin team management. Lists the org's people and creates new teammates
@@ -140,7 +140,7 @@ export default function Team() {
               type="button"
               onClick={saveMyName}
               disabled={nameBusy || !myName.trim() || myName.trim() === profile?.full_name}
-              className="tap shrink-0 rounded-xl bg-brand-600 px-4 py-2 text-[14px] font-semibold text-white hover:bg-brand-500 disabled:opacity-60"
+              className="tap shrink-0 rounded-xl bg-brand-800 px-4 py-2 text-[14px] font-semibold text-white hover:bg-brand-900 disabled:opacity-60"
             >
               {nameBusy ? "Saving…" : "Save name"}
             </button>
@@ -193,7 +193,7 @@ export default function Team() {
                 type="button"
                 onClick={create}
                 disabled={busy || !draft.email || !draft.password}
-                className="tap w-full rounded-xl bg-brand-600 py-2.5 text-[15px] font-semibold text-white hover:bg-brand-500 disabled:opacity-60"
+                className="tap w-full rounded-xl bg-brand-800 py-2.5 text-[15px] font-semibold text-white hover:bg-brand-900 disabled:opacity-60"
               >
                 {busy ? "Creating…" : "Create account"}
               </button>
@@ -217,7 +217,7 @@ export default function Team() {
                         }),
                       )
                     }
-                    className="tap mt-2 inline-flex items-center gap-1.5 rounded-full bg-brand-600 px-3.5 py-1.5 text-[13px] font-semibold text-white hover:bg-brand-500"
+                    className="tap mt-2 inline-flex items-center gap-1.5 rounded-full bg-brand-800 px-3.5 py-1.5 text-[13px] font-semibold text-white hover:bg-brand-900"
                   >
                     <Icon.Phone width={14} height={14} /> Share on WhatsApp
                   </button>
@@ -253,7 +253,7 @@ export default function Team() {
                       }),
                     )
                   }
-                  className="tap mt-2 inline-flex items-center gap-1.5 rounded-full bg-brand-600 px-3.5 py-1.5 text-[13px] font-semibold text-white hover:bg-brand-500"
+                  className="tap mt-2 inline-flex items-center gap-1.5 rounded-full bg-brand-800 px-3.5 py-1.5 text-[13px] font-semibold text-white hover:bg-brand-900"
                 >
                   <Icon.Phone width={14} height={14} /> Share on WhatsApp
                 </button>

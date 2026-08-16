@@ -149,7 +149,7 @@ export function ProgressRing({
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const track = onDark ? "rgba(255,255,255,0.22)" : "#DCE4E7";
-  const bar = onDark ? "#ffffff" : "#12A594";
+  const bar = onDark ? "#ffffff" : "#2A6FC7";
   return (
     <div
       className="relative shrink-0"
@@ -175,12 +175,18 @@ export function ProgressRing({
           style={{ transition: "stroke-dashoffset 0.6s ease" }}
         />
       </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className={`font-display text-3xl font-semibold leading-none ${onDark ? "text-white" : "text-ink"}`}>
+      <div className="absolute inset-0 flex flex-col items-center justify-center leading-none">
+        <span
+          className={`font-display font-semibold leading-none ${onDark ? "text-white" : "text-ink"}`}
+          style={{ fontSize: Math.round(size * 0.3) }}
+        >
           {value}
         </span>
-        <span className={`mt-0.5 text-xs ${onDark ? "text-white/90" : "text-sage-500"}`}>
-          of {total} done
+        <span
+          className={`mt-1 ${onDark ? "text-white/90" : "text-sage-500"}`}
+          style={{ fontSize: Math.max(8, Math.round(size * 0.11)) }}
+        >
+          {size < 76 ? `of ${total}` : `of ${total} done`}
         </span>
       </div>
     </div>

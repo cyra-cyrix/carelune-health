@@ -10,8 +10,8 @@ const FIELD =
   "placeholder:text-sage-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 transition-shadow";
 
 const SUBMIT =
-  "tap w-full rounded-2xl bg-sky-600 py-3 text-[15px] font-semibold text-white shadow-sm transition-colors " +
-  "hover:bg-sky-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:opacity-50";
+  "tap w-full rounded-2xl bg-brand-800 py-3 text-[15px] font-semibold text-white shadow-sm transition-colors " +
+  "hover:bg-brand-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:opacity-50";
 
 /**
  * The login gate. While the session is loading, shows a splash; when the user

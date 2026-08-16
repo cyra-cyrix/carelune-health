@@ -226,7 +226,7 @@ export default function SuperAdmin() {
                     {created.admin_email} · temporary password <span className="font-semibold text-ink">{created.admin_password}</span>
                     {created.pathway_keys.length ? ` · ${created.pathway_keys.length} programme${created.pathway_keys.length > 1 ? "s" : ""}` : ""}
                   </p>
-                  <button type="button" onClick={shareCreated} className="tap mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-sky-600 px-3.5 py-1.5 text-[13px] font-semibold text-white hover:bg-sky-700">
+                  <button type="button" onClick={shareCreated} className="tap mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-brand-800 px-3.5 py-1.5 text-[13px] font-semibold text-white hover:bg-brand-900">
                     <Icon.Phone width={14} height={14} /> Share on WhatsApp
                   </button>
                 </div>

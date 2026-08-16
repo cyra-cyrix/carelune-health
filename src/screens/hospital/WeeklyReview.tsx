@@ -498,7 +498,7 @@ export default function WeeklyReview({ onBack }: { onBack: () => void }) {
 
             <button
               onClick={completeReview}
-              className="tap w-full rounded-full bg-brand-600 py-3 text-[15px] font-semibold text-white shadow-lift hover:bg-brand-700"
+              className="tap w-full rounded-full bg-brand-800 py-3 text-[15px] font-semibold text-white shadow-lift hover:bg-brand-900"
             >
               Complete &amp; record weekly review
             </button>

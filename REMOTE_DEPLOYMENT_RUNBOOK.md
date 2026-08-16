@@ -374,31 +374,80 @@ re-running Phase 6 step 9/12 is safe.
 
 ---
 
-## Remote inventory result (fill in during Phase 1)
+## Remote inventory result — INSPECTED 2026-08-14 (read-only)
 
-| Migration | In history (list) | Objects exist (SQL) | Decision |
+**Headline:** remote was built entirely by **manual SQL** — `supabase_migrations.schema_migrations`
+**does not exist**, so `supabase migration list --linked` shows every version's `Remote`
+column blank. The real state must therefore be read from the schema (object existence), done
+below. Migrations **0001–0012 are all applied**; **0013–0018 are absent**. Data present:
+3 centres, 2 patients. `OPENAI_API_KEY` is already set. 4 of 7 functions deployed.
+
+| Migration | In history | Objects exist (SQL) | Decision |
 |---|:--:|:--:|---|
-| 0001 carelune_core |  |  |  |
-| 0002 seed_pilot |  |  |  |
-| 0003 grants |  |  |  |
-| 0004 multitenant_branding |  |  |  |
-| 0005 service_role_grants |  |  |  |
-| 0006 super_admin |  |  |  |
-| 0007 registration |  |  |  |
-| 0008 hardening |  |  |  |
-| 0009 storefront |  |  |  |
-| 0010 query_replies |  |  |  |
-| 0011 pilot_security_gate |  |  |  |
-| 0012 fix_trigger_execution_context |  |  |  |
-| 0013 pathway_engine |  |  |  |
-| 0014 institution_setup |  |  |  |
-| 0015 patient_intake_assignment |  |  |  |
-| 0016 plan_generation |  |  |  |
-| 0017 document_extraction_and_activation |  |  |  |
-| 0018 activation_idempotent |  |  |  |
+| 0001 carelune_core | no (no history table) | ✅ patients/centres/profiles/care_tasks/medications | **repair** (mark applied) |
+| 0002 seed_pilot | no | data-only (indeterminate) | **repair** — do NOT push (would inject demo seed into live data) |
+| 0003 grants | no | grants (idempotent) | **repair** |
+| 0004 multitenant_branding | no | ✅ centres.display_name | **repair** |
+| 0005 service_role_grants | no | grants (idempotent) | **repair** |
+| 0006 super_admin | no | ✅ profiles.is_super_admin | **repair** |
+| 0007 registration | no | ✅ centres.invite_token | **repair** |
+| 0008 hardening | no | ✅ trigger patients_activation_guard + policy profiles_self_read | **repair** |
+| 0009 storefront | no | ✅ table subscriptions | **repair** |
+| 0010 query_replies | no | ✅ table query_messages | **repair** |
+| 0011 pilot_security_gate | no | ✅ trigger approvals_provenance_guard + fn enforce_approval_provenance | **repair** |
+| 0012 fix_trigger_execution_context | no | ✅ fn request_role | **repair** |
+| 0013 pathway_engine | no | ❌ pathway_packs / pathways absent | **APPLY** |
+| 0014 institution_setup | no | ❌ institution_pathways / set_institution_pathways absent | **APPLY** |
+| 0015 patient_intake_assignment | no | ❌ patients.pathway_pack_id / patient_care_team / patient_documents / patient-docs bucket absent | **APPLY** |
+| 0016 plan_generation | no | ❌ patient_plans / patient_document_facts / institution_pathway_versions absent | **APPLY** |
+| 0017 document_extraction_and_activation | no | ❌ care_tasks.source_plan_id / patient_plans.activated_at / activate_patient_plan absent | **APPLY** |
+| 0018 activation_idempotent | no | ❌ activate_patient_plan (idempotent) absent | **APPLY** |
 
-Decision key: **apply** (pending) · **repair** (manual-applied, record only) ·
-**skip** (already applied+recorded) · **investigate** (drift).
+**Edge Functions — deployed vs required:**
+
+| Function | Remote | Action |
+|---|---|---|
+| admin-users | ✅ v9, verify_jwt=true | up to date (optional resync) |
+| platform-admin | ✅ v7 | up to date (optional resync) |
+| registry | ✅ v2, verify_jwt=false | up to date (optional resync) |
+| structure-discharge | ✅ v4 | up to date (optional resync) |
+| **extract-facts** | ❌ not deployed | **DEPLOY** |
+| **generate-plan** | ❌ not deployed | **DEPLOY** |
+| **transcribe** | ❌ not deployed | **DEPLOY** |
+
+**Secrets:** `OPENAI_API_KEY` already set (2026-08-13). `SUPABASE_*` auto-injected. **No secret action needed** (rotate only if desired).
+
+### Recommended repair/apply sequence (WRITES — not yet authorized; run after backup)
+
+```bash
+# A. Backup first (read-only dumps + a dashboard backup point) — HARD GATE
+supabase db dump --linked -f backups/pre_deploy_schema_$(date +%Y%m%d).sql
+supabase db dump --linked --data-only -f backups/pre_deploy_data_$(date +%Y%m%d).sql
+
+# B. Baseline the history for the manually-applied set (writes history rows ONLY — does
+#    NOT re-run their SQL and does NOT touch app data). This is mandatory: without it,
+#    `db push` would try `create table patients` etc. and fail on "already exists".
+supabase migration repair --status applied 0001 0002 0003 0004 0005 0006 0007 0008 0009 0010 0011 0012
+
+# C. Verify the baseline
+supabase migration list --linked      # 0001–0012 now Remote; 0013–0018 pending
+
+# D. Preview then apply ONLY the missing migrations (ascending order)
+supabase db push --linked --dry-run   # MUST list EXACTLY 0013,0014,0015,0016,0017,0018
+supabase db push --linked
+
+# E. Deploy the 3 missing functions (+ optional resync of the 4 already-deployed)
+supabase functions deploy extract-facts --project-ref eixndbgphecohmandztq
+supabase functions deploy generate-plan --project-ref eixndbgphecohmandztq
+supabase functions deploy transcribe    --project-ref eixndbgphecohmandztq
+
+# F. OPENAI_API_KEY already set — no action. Then run Phase 6 UAT + Phase 7 Advisors.
+```
+
+> ⚠️ If the Phase-D dry-run lists **any** version ≤ 0012, STOP — the baseline repair didn't
+> take, and pushing would fail on existing objects. Re-run step B for the missing version.
+
+Decision key: **APPLY** (pending, must run) · **repair** (manual-applied, record history only).
 
 ---
 

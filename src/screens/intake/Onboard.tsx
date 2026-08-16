@@ -19,9 +19,9 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 type Step = "details" | "structuring" | "review" | "saving" | "done";
 
 const FIELD =
-  "w-full rounded-xl bg-white px-3 py-2 text-[14px] text-ink ring-1 ring-line focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400";
+  "w-full rounded-xl bg-white px-3 py-2 text-[14px] text-ink ring-1 ring-line focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500";
 const FIELD_MIST =
-  "w-full rounded-xl bg-mist px-3 py-2 text-[14px] text-ink ring-1 ring-ink/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400";
+  "w-full rounded-xl bg-mist px-3 py-2 text-[14px] text-ink ring-1 ring-ink/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500";
 
 /** Extract selectable text from a PDF in the browser (digital PDFs). */
 async function extractPdfText(file: File): Promise<string> {
@@ -268,7 +268,7 @@ function DetailsStep({
             type="button"
             onClick={onNext}
             disabled={!canNext}
-            className="tap inline-flex items-center gap-2 rounded-full bg-brand-600 px-5 py-2.5 text-[15px] font-semibold text-white shadow-lift hover:bg-brand-500 disabled:opacity-50"
+            className="tap inline-flex items-center gap-2 rounded-full bg-brand-800 px-5 py-2.5 text-[15px] font-semibold text-white shadow-lift hover:bg-brand-900 disabled:opacity-50"
           >
             Structure with AI <Icon.ChevronRight width={17} height={17} />
           </button>
@@ -415,7 +415,7 @@ function ReviewStep({
           type="button"
           onClick={onApprove}
           disabled={saving || plan.tasks.length === 0}
-          className="tap inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-brand-600 px-5 py-3 text-[15px] font-semibold text-white hover:bg-brand-500 disabled:opacity-60"
+          className="tap inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-brand-800 px-5 py-3 text-[15px] font-semibold text-white hover:bg-brand-900 disabled:opacity-60"
         >
           {saving ? "Saving…" : (<><Icon.Check width={17} height={17} /> Approve &amp; activate plan</>)}
         </button>
@@ -481,7 +481,7 @@ function DoneStep({ name, warnings, onExit }: { name: string; warnings: string[]
         <button
           type="button"
           onClick={onExit}
-          className="tap mt-6 rounded-full bg-brand-600 px-6 py-2.5 text-[15px] font-semibold text-white hover:bg-brand-500"
+          className="tap mt-6 rounded-full bg-brand-800 px-6 py-2.5 text-[15px] font-semibold text-white hover:bg-brand-900"
         >
           Back to caseload
         </button>

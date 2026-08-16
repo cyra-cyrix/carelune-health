@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Icon, ProgressRing } from "../../components/ui";
+import { Button, EmptyState, inputClass } from "../../components/clinical";
 import RaiseConcern from "../../components/RaiseConcern";
 import { useBranding } from "../../branding/BrandingProvider";
 import { prescribedParams, GROUP_LABEL, type MonitorParam, type ParamGroup } from "../../domain/monitoring";
@@ -199,7 +200,7 @@ function TodayTab({
       </div>
 
       {/* Progress hero */}
-      <div className="flex items-center justify-between rounded-2xl bg-brand-600 p-5 text-white shadow-lift">
+      <div className="flex items-center justify-between rounded-2xl bg-brand-800 p-5 text-white shadow-lift">
         <div className="min-w-0">
           <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/80">Today&rsquo;s plan</div>
           <div className="mt-1 text-[22px] font-semibold">{doneCount} of {tasks.length} done</div>
@@ -220,7 +221,7 @@ function TodayTab({
               type="button"
               onClick={() => sendStatus(s)}
               className={`tap rounded-full px-3.5 py-1.5 text-[13px] font-semibold ring-1 transition-colors ${
-                statusSent === s.label ? "bg-brand-600 text-white ring-brand-600" : "bg-mist-100 text-ink ring-ink/[0.05] hover:ring-brand-300"
+                statusSent === s.label ? "bg-brand-800 text-white ring-brand-800" : "bg-mist-100 text-ink ring-ink/[0.05] hover:ring-brand-300"
               }`}
             >
               {s.label}
@@ -396,7 +397,7 @@ function RecordTab({ patientId, params, first }: { patientId: string; params: Mo
       {r === null ? (
         <div className="h-64 animate-pulse rounded-2xl bg-mist-200" />
       ) : params.length === 0 ? (
-        <p className="rounded-2xl bg-white p-4 text-[14px] text-sage-600 shadow-card">No observations are prescribed yet.</p>
+        <EmptyState title="Nothing to record yet">The care team hasn&rsquo;t prescribed any observations for {first}. They&rsquo;ll appear here once added.</EmptyState>
       ) : (
         <>
           {groups.map(({ g, items }) => (
@@ -407,15 +408,18 @@ function RecordTab({ patientId, params, first }: { patientId: string; params: Mo
               </div>
             </section>
           ))}
-          <button
-            type="button"
+          <Button
+            variant="primary"
+            size="lg"
+            full
+            busy={status === "saving"}
             onClick={save}
-            disabled={status === "saving"}
-            className="tap sticky bottom-24 flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand-600 py-3 text-[15px] font-semibold text-white shadow-lift hover:bg-brand-500 disabled:opacity-60"
+            icon={status === "saved" ? <Icon.Check width={16} height={16} /> : undefined}
+            className="sticky bottom-24 shadow-lift"
           >
-            {status === "saved" ? (<><Icon.Check width={16} height={16} /> Saved · shared with the care team</>)
+            {status === "saved" ? "Saved · shared with the care team"
               : status === "saving" ? "Saving…" : status === "error" ? "Couldn't save — tap to retry" : "Save today's record"}
-          </button>
+          </Button>
         </>
       )}
     </div>
@@ -442,7 +446,7 @@ function ParamInput({ param, value, onChange }: { param: MonitorParam; value: st
               type="button"
               onClick={() => onChange(value === o ? "" : o)}
               className={`tap rounded-full px-3 py-1.5 text-[12.5px] font-semibold ring-1 transition-colors ${
-                value === o ? "bg-brand-600 text-white ring-brand-600" : "bg-mist-100 text-ink ring-ink/[0.05] hover:ring-brand-300"
+                value === o ? "bg-brand-800 text-white ring-brand-800" : "bg-mist-100 text-ink ring-ink/[0.05] hover:ring-brand-300"
               }`}
             >
               {o}
@@ -454,7 +458,7 @@ function ParamInput({ param, value, onChange }: { param: MonitorParam; value: st
   );
 }
 
-const INPUT = "w-full rounded-xl bg-white px-3 py-2.5 text-[15px] text-ink ring-1 ring-line focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400";
+const INPUT = inputClass;
 
 function BpInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [sys, dia] = (value.split("/").map((s) => s.trim()) as [string?, string?]);
@@ -553,7 +557,7 @@ function MedicinesTab({ patientId, meds }: { patientId: string; meds: Medication
       </div>
 
       {meds.length === 0 ? (
-        <p className="rounded-2xl bg-white p-4 text-[14px] text-sage-600 shadow-card">No medicines in the plan yet.</p>
+        <EmptyState title="No medicines yet">The care team will add prescribed medicines here. Nothing to give right now.</EmptyState>
       ) : (
         <>
           {DAY_SLOTS.map((slot) => {

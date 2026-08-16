@@ -132,7 +132,7 @@ export default function RaiseConcern({ patientId }: { patientId: string }) {
         onChange={(e) => setText(e.target.value)}
         rows={3}
         placeholder="e.g. His left leg looks more swollen today — is that expected?"
-        className="mt-3 w-full resize-y rounded-xl bg-white px-3.5 py-2.5 text-[14px] text-ink ring-1 ring-ink/10 placeholder:text-sage-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+        className="mt-3 w-full resize-y rounded-xl bg-white px-3.5 py-2.5 text-[14px] text-ink ring-1 ring-ink/10 placeholder:text-sage-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
       />
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -194,7 +194,7 @@ export default function RaiseConcern({ patientId }: { patientId: string }) {
         type="button"
         onClick={submit}
         disabled={busy || transcribing || !text.trim()}
-        className="tap mt-3 w-full rounded-xl bg-brand-600 py-2.5 text-[14px] font-semibold text-white hover:bg-brand-500 disabled:opacity-50"
+        className="tap mt-3 w-full rounded-xl bg-brand-800 py-2.5 text-[14px] font-semibold text-white hover:bg-brand-900 disabled:opacity-50"
       >
         {busy ? "Sending…" : sent ? "Sent ✓" : "Send to the care team"}
       </button>

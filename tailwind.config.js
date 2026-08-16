@@ -14,20 +14,25 @@ export default {
         mist: { DEFAULT: "#F6F8F9", 100: "#EEF3F4", 200: "#E5EAEC" }, // app bg / subtle surfaces
         ink: "#172126", // primary text — charcoal-navy
         line: "#DCE4E7", // subtle grey-blue border
+        // PRIMARY = calm sky blue (theme: sky-blue + charcoal + white/soft-grey).
+        // Token NAME kept as `brand` so every primary surface flips here in one place.
+        // 600 = vibrant primary for graphics/heroes/rings; 800/900 = AA-safe button fills.
         brand: {
-          50: "#E9F6F4", // accent tint
-          100: "#CBEDE8",
-          200: "#9FDDD4",
-          300: "#6BCDC0",
-          400: "#3BBBAC",
-          500: "#17B3A1",
-          600: "#12A594", // primary accent / actions — emerald-teal
-          700: "#0E8C7E",
-          800: "#0B7064",
-          900: "#09564D",
+          50: "#F0F6FE", // accent tint
+          100: "#DDEBFB",
+          200: "#BFD9F7",
+          300: "#93BFF0",
+          400: "#5E9DE6",
+          500: "#3B82D9",
+          600: "#2A6FC7", // primary action / luminous clinical blue
+          700: "#215AA6",
+          800: "#1C4A85", // primary button fill (white text, AA)
+          900: "#183C6B", // button hover / strongest
         },
         // Secondary text starts at sage-600 (#526168). sage-400 is border/icon only.
-        sage: { 400: "#90A0A6", 500: "#6B7A80", 600: "#526168", 700: "#3A464B" },
+        // 500 nudged darker (#6B7A80→#667379) to clear WCAG AA (4.5:1) as caption
+        // text on white; 400 stays for borders/icons/decorative only (not text).
+        sage: { 400: "#90A0A6", 500: "#667379", 600: "#526168", 700: "#3A464B" },
         good: { 100: "#DDEDE4", 300: "#8CC7AC", 500: "#2C8761", 600: "#216E4E" }, // success / normal
         warn: { 100: "#F5ECD9", 300: "#DEC489", 500: "#A66E08", 600: "#8A5A00" }, // caution
         coral: { 100: "#FBEAE8", 200: "#F3CDC8", 500: "#C4392C", 600: "#B42318" }, // critical

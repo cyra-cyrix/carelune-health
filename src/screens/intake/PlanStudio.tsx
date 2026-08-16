@@ -314,7 +314,7 @@ function PreparePanel({
                 type="button"
                 onClick={generate}
                 disabled={!canGenerate}
-                className="tap flex w-full items-center justify-center gap-2 rounded-2xl bg-sky-600 px-5 py-3.5 text-[15px] font-semibold text-white shadow-sm transition-colors hover:bg-sky-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:opacity-50"
+                className="tap flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-800 px-5 py-3.5 text-[15px] font-semibold text-white shadow-sm transition-colors hover:bg-brand-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:opacity-50"
               >
                 {generating ? "Generating draft…" : "Generate recovery plan"}
               </button>
@@ -621,7 +621,7 @@ function PlanReview({
                     type="button"
                     onClick={() => setConfirmActivate(true)}
                     disabled={!!busy}
-                    className="tap w-full rounded-2xl bg-sky-600 px-4 py-3 text-[14.5px] font-semibold text-white shadow-sm transition-colors hover:bg-sky-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:opacity-50"
+                    className="tap w-full rounded-2xl bg-brand-800 px-4 py-3 text-[14.5px] font-semibold text-white shadow-sm transition-colors hover:bg-brand-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:opacity-50"
                   >
                     Approve &amp; activate care plan
                   </button>

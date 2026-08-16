@@ -1,26 +1,46 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import type { ReactNode } from "react";
 import { CareluneProvider } from "./store/carelune";
 import { useAuth } from "./auth/AuthProvider";
 import { BrandingProvider, useBranding } from "./branding/BrandingProvider";
 import { APP_ROLE_META, appRoleFromUser, type AppRole } from "./domain/appRoles";
 import { LoopMark } from "./components/ui";
-import OrgSetup from "./screens/admin/OrgSetup";
-import Team from "./screens/admin/Team";
-import RegistrationLink from "./screens/admin/RegistrationLink";
-import Programme from "./screens/admin/Programme";
-import SuperAdmin from "./screens/platform/SuperAdmin";
-import ForcePasswordReset from "./screens/auth/ForcePasswordReset";
 
-import CaregiverHome from "./screens/caregiver/CaregiverHome";
-import FamilyOverview from "./screens/family/FamilyOverview";
-import NursePatient from "./screens/nurse/NursePatient";
-import DutyPatient from "./screens/duty/DutyPatient";
-import Caseload from "./screens/pmr/Caseload";
-import PatientProgress from "./screens/pmr/PatientProgress";
-import Onboard from "./screens/intake/Onboard";
-import PatientSetup from "./screens/intake/PatientSetup";
-import PlanStudio from "./screens/intake/PlanStudio";
+// Route-level code-splitting: each role workspace + admin/setup screen loads on
+// demand so the initial bundle stays small. The heaviest deps (pdfjs in Onboard,
+// the plan studio) ship in their own chunks, fetched only when that screen opens.
+const OrgSetup = lazy(() => import("./screens/admin/OrgSetup"));
+const Team = lazy(() => import("./screens/admin/Team"));
+const RegistrationLink = lazy(() => import("./screens/admin/RegistrationLink"));
+const Programme = lazy(() => import("./screens/admin/Programme"));
+const SuperAdmin = lazy(() => import("./screens/platform/SuperAdmin"));
+const ForcePasswordReset = lazy(() => import("./screens/auth/ForcePasswordReset"));
+const CaregiverHome = lazy(() => import("./screens/caregiver/CaregiverHome"));
+const FamilyOverview = lazy(() => import("./screens/family/FamilyOverview"));
+const NursePatient = lazy(() => import("./screens/nurse/NursePatient"));
+const DutyPatient = lazy(() => import("./screens/duty/DutyPatient"));
+const Caseload = lazy(() => import("./screens/pmr/Caseload"));
+const PatientProgress = lazy(() => import("./screens/pmr/PatientProgress"));
+const Onboard = lazy(() => import("./screens/intake/Onboard"));
+const PatientSetup = lazy(() => import("./screens/intake/PatientSetup"));
+const PlanStudio = lazy(() => import("./screens/intake/PlanStudio"));
+
+/** Full-screen loader for a whole-page lazy route. */
+function PageLoader() {
+  return (
+    <div className="grid min-h-screen place-items-center bg-mist">
+      <div className="animate-pulse text-brand-600"><LoopMark size={28} /></div>
+    </div>
+  );
+}
+/** In-content loader that keeps the surrounding chrome (top bar / subnav). */
+function PanelLoader() {
+  return (
+    <div className="grid min-h-[45vh] place-items-center">
+      <div className="animate-pulse text-brand-600"><LoopMark size={24} /></div>
+    </div>
+  );
+}
 
 /**
  * v2 role router. The signed-in account's role (from Supabase user_metadata)
@@ -52,16 +72,16 @@ function Shell() {
   }
 
   // 1. Temporary password → must set your own before anything else.
-  if (profile?.must_reset_password) return <ForcePasswordReset />;
+  if (profile?.must_reset_password) return <Suspense fallback={<PageLoader />}><ForcePasswordReset /></Suspense>;
 
   // 2. Carelune platform super admin → the org console.
-  if (profile?.is_super_admin) return <SuperAdmin />;
+  if (profile?.is_super_admin) return <Suspense fallback={<PageLoader />}><SuperAdmin /></Suspense>;
 
   // 3. Institution paused by the super admin → suspend access (no data is lost).
   if (org?.status === "paused") return <InstitutionPaused />;
 
   // 3. Org admin first-run → name the platform.
-  if (profile?.is_admin && org && !org.setup_complete) return <OrgSetup />;
+  if (profile?.is_admin && org && !org.setup_complete) return <Suspense fallback={<PageLoader />}><OrgSetup /></Suspense>;
 
   // 4. Everyone else → their role workspace.
   const role = appRoleFromUser(user);
@@ -80,13 +100,17 @@ function RoleSurface({ role }: { role: AppRole }) {
     case "caregiver":
       return (
         <PhoneColumn>
-          <CaregiverHome />
+          <Suspense fallback={<PanelLoader />}>
+            <CaregiverHome />
+          </Suspense>
         </PhoneColumn>
       );
     case "family":
       return (
         <PhoneColumn>
-          <FamilyOverview />
+          <Suspense fallback={<PanelLoader />}>
+            <FamilyOverview />
+          </Suspense>
         </PhoneColumn>
       );
     case "nurse":
@@ -135,26 +159,28 @@ function PmrWorkspace() {
         </div>
       </div>
 
-      {screen === "caseload" && <Caseload onOpen={open} />}
-      {screen === "patient" && selectedId && (
-        <PatientProgress patientId={selectedId} onBack={() => setScreen("caseload")} />
-      )}
-      {screen === "setup" && selectedId && (
-        <PatientSetup
-          patientId={selectedId}
-          onExit={() => setScreen("caseload")}
-          onContinue={() => setScreen("planstudio")}
-        />
-      )}
-      {screen === "planstudio" && selectedId && (
-        <PlanStudio patientId={selectedId} onExit={() => setScreen("caseload")} />
-      )}
-      {screen === "onboard" && selectedId && (
-        <Onboard patientId={selectedId} onExit={() => setScreen("caseload")} />
-      )}
-      {screen === "team" && <Team />}
-      {screen === "programme" && <Programme onBack={() => setScreen("caseload")} />}
-      {screen === "reglink" && <RegistrationLink onBack={() => setScreen("caseload")} />}
+      <Suspense fallback={<PanelLoader />}>
+        {screen === "caseload" && <Caseload onOpen={open} />}
+        {screen === "patient" && selectedId && (
+          <PatientProgress patientId={selectedId} onBack={() => setScreen("caseload")} />
+        )}
+        {screen === "setup" && selectedId && (
+          <PatientSetup
+            patientId={selectedId}
+            onExit={() => setScreen("caseload")}
+            onContinue={() => setScreen("planstudio")}
+          />
+        )}
+        {screen === "planstudio" && selectedId && (
+          <PlanStudio patientId={selectedId} onExit={() => setScreen("caseload")} />
+        )}
+        {screen === "onboard" && selectedId && (
+          <Onboard patientId={selectedId} onExit={() => setScreen("caseload")} />
+        )}
+        {screen === "team" && <Team />}
+        {screen === "programme" && <Programme onBack={() => setScreen("caseload")} />}
+        {screen === "reglink" && <RegistrationLink onBack={() => setScreen("caseload")} />}
+      </Suspense>
     </>
   );
 }
@@ -182,17 +208,19 @@ function DutyWorkspace() {
           <RegLinkBtn active={screen === "reglink"} onClick={() => setScreen("reglink")} />
         </div>
       </div>
-      {screen === "patients" && (
-        <Caseload
-          onOpen={open}
-          heading="Patients"
-          subtitle="Confirm summaries, monitor vitals, and suggest changes to the doctor."
-          showPending={false}
-        />
-      )}
-      {screen === "patient" && selectedId && <DutyPatient patientId={selectedId} onBack={() => setScreen("patients")} />}
-      {screen === "onboard" && selectedId && <Onboard patientId={selectedId} onExit={() => setScreen("patients")} />}
-      {screen === "reglink" && <RegistrationLink onBack={() => setScreen("patients")} />}
+      <Suspense fallback={<PanelLoader />}>
+        {screen === "patients" && (
+          <Caseload
+            onOpen={open}
+            heading="Patients"
+            subtitle="Confirm summaries, monitor vitals, and suggest changes to the doctor."
+            showPending={false}
+          />
+        )}
+        {screen === "patient" && selectedId && <DutyPatient patientId={selectedId} onBack={() => setScreen("patients")} />}
+        {screen === "onboard" && selectedId && <Onboard patientId={selectedId} onExit={() => setScreen("patients")} />}
+        {screen === "reglink" && <RegistrationLink onBack={() => setScreen("patients")} />}
+      </Suspense>
     </>
   );
 }
@@ -218,17 +246,19 @@ function NurseWorkspace() {
           <RegLinkBtn active={screen === "reglink"} onClick={() => setScreen("reglink")} />
         </div>
       </div>
-      {screen === "patients" && (
-        <Caseload
-          onOpen={open}
-          heading="Patients"
-          subtitle="First point of contact — answer families, monitor the day, and raise queries to the doctors."
-          countType="family"
-        />
-      )}
-      {screen === "patient" && selectedId && <NursePatient patientId={selectedId} onBack={() => setScreen("patients")} />}
-      {screen === "onboard" && selectedId && <Onboard patientId={selectedId} onExit={() => setScreen("patients")} />}
-      {screen === "reglink" && <RegistrationLink onBack={() => setScreen("patients")} />}
+      <Suspense fallback={<PanelLoader />}>
+        {screen === "patients" && (
+          <Caseload
+            onOpen={open}
+            heading="Patients"
+            subtitle="First point of contact — answer families, monitor the day, and raise queries to the doctors."
+            countType="family"
+          />
+        )}
+        {screen === "patient" && selectedId && <NursePatient patientId={selectedId} onBack={() => setScreen("patients")} />}
+        {screen === "onboard" && selectedId && <Onboard patientId={selectedId} onExit={() => setScreen("patients")} />}
+        {screen === "reglink" && <RegistrationLink onBack={() => setScreen("patients")} />}
+      </Suspense>
     </>
   );
 }
@@ -239,7 +269,7 @@ function RegLinkBtn({ active, onClick }: { active: boolean; onClick: () => void 
       type="button"
       onClick={onClick}
       className={`tap ml-auto shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-[13px] font-medium ${
-        active ? "bg-brand-700 text-white" : "bg-brand-600 text-white hover:bg-brand-500"
+        active ? "bg-brand-900 text-white" : "bg-brand-800 text-white hover:bg-brand-900"
       }`}
     >
       Registration link
@@ -273,25 +303,25 @@ function SubnavBtn({
 
 function TopBar({ role }: { role: AppRole }) {
   const meta = APP_ROLE_META[role];
-  const { user, signOut } = useAuth();
+  const { signOut } = useAuth();
   const { org, profile, platformName } = useBranding();
-  const who = profile?.full_name?.trim() || user?.email || meta.label;
+  // Never a raw email — a real name, else the role. (No email-as-identity.)
+  const who = profile?.full_name?.trim() || meta.label;
   const roleLabel = profile?.is_admin ? "Admin" : meta.label;
+  const monogram = (platformName?.trim()?.[0] ?? "•").toUpperCase();
 
   return (
     <header className="sticky top-0 z-50 flex min-h-[3rem] items-center justify-between gap-3 border-b border-line bg-white px-4 py-2 sm:px-6">
-      <div className="flex min-w-0 items-center gap-2 text-brand-600">
+      {/* Institution branding only — dynamic logo or monogram, never a Carelune mark. */}
+      <div className="flex min-w-0 items-center gap-2.5">
         {org?.logo_url ? (
-          <img src={org.logo_url} alt="" className="h-[22px] w-[22px] shrink-0 rounded object-cover" />
+          <img src={org.logo_url} alt="" className="h-7 w-7 shrink-0 rounded-md object-cover ring-1 ring-ink/10" />
         ) : (
-          <LoopMark size={20} />
-        )}
-        <span className="flex min-w-0 flex-col justify-center leading-none">
-          <span className="truncate text-[14px] font-semibold tracking-tight text-ink">{platformName}</span>
-          <span className="mt-[3px] truncate text-[9.5px] font-medium uppercase tracking-[0.12em] text-sage-500">
-            Care continues
+          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-brand-600 text-[13px] font-bold text-white">
+            {monogram}
           </span>
-        </span>
+        )}
+        <span className="truncate text-[14px] font-semibold tracking-tight text-ink">{platformName}</span>
       </div>
       <div className="flex min-w-0 items-center gap-3">
         <span className="truncate text-[12px] text-sage-600">
@@ -326,7 +356,7 @@ function NoRole() {
         <button
           type="button"
           onClick={() => void signOut()}
-          className="tap mt-4 rounded-full bg-brand-600 px-5 py-2 text-[14px] font-semibold text-white"
+          className="tap mt-4 rounded-full bg-brand-800 px-5 py-2 text-[14px] font-semibold text-white"
         >
           Sign out
         </button>
@@ -352,7 +382,7 @@ function InstitutionPaused() {
         <button
           type="button"
           onClick={() => void signOut()}
-          className="tap mt-4 rounded-full bg-brand-600 px-5 py-2 text-[14px] font-semibold text-white"
+          className="tap mt-4 rounded-full bg-brand-800 px-5 py-2 text-[14px] font-semibold text-white"
         >
           Sign out
         </button>

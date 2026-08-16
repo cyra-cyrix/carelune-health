@@ -4,13 +4,20 @@
 # account is connected to this project (see the deployment blocker note in the
 # session report). Nothing here contains secrets; do not add any.
 #
-# The app uses HASH routing (`#<role>[/sub]`), so every URL resolves to
-# index.html on its own. No SPA rewrite rule is defined, and none should be
-# added unless testing on the deployed site proves it is required.
+# The app is a single-page Vite build. It uses hash routing (`#<role>[/sub]`)
+# INSIDE the app, plus two real paths: "/" (public landing) and "/login" (auth).
+# The SPA fallback below rewrites every non-asset path to index.html (200) so a
+# direct load of /login works; `?register=<token>` on "/" is unaffected.
 
 [build]
   command = "npm run build"
   publish = "dist"
+
+# SPA fallback — serve index.html for any route that isn't a real file.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
 
 [build.environment]
   # Matches the toolchain this build was verified against.

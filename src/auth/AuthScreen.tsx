@@ -1,6 +1,7 @@
-import { type FormEvent, type ReactNode, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { LoopMark } from "../components/ui";
 import { RecoveryTrajectory } from "../components/clinical";
+import Landing from "../screens/marketing/Landing";
 import { useAuth } from "./AuthProvider";
 
 type Mode = "signin" | "reset";
@@ -20,6 +21,25 @@ const SUBMIT =
  */
 export function AuthGate({ children }: { children: ReactNode }) {
   const { loading, session, passwordRecovery } = useAuth();
+  // Public path routing (no router lib): "/" = landing, "/login" = auth form.
+  // `?register=<token>` is handled earlier in main.tsx and never reaches here.
+  const [path, setPath] = useState(() => window.location.pathname);
+  useEffect(() => {
+    const onPop = () => setPath(window.location.pathname);
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+  const go = (to: string) => {
+    window.history.pushState({}, "", to);
+    setPath(to);
+  };
+  // Once signed in, normalise "/login" back to "/" (keep any in-app hash route).
+  useEffect(() => {
+    if (session && window.location.pathname === "/login") {
+      window.history.replaceState({}, "", "/" + window.location.hash);
+      setPath("/");
+    }
+  }, [session]);
 
   if (loading) {
     return (
@@ -32,7 +52,13 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }
 
   if (passwordRecovery) return <SetNewPassword />;
-  if (!session) return <AuthScreen />;
+  if (!session) {
+    return path === "/login" ? (
+      <AuthScreen onHome={() => go("/")} />
+    ) : (
+      <Landing onSignIn={() => go("/login")} />
+    );
+  }
 
   return <>{children}</>;
 }
@@ -111,7 +137,7 @@ function AuthShell({ children }: { children: ReactNode }) {
   );
 }
 
-export function AuthScreen() {
+export function AuthScreen({ onHome }: { onHome?: () => void } = {}) {
   const { signIn, sendPasswordReset } = useAuth();
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
@@ -152,6 +178,15 @@ export function AuthScreen() {
 
   return (
     <AuthShell>
+      {onHome && (
+        <button
+          type="button"
+          onClick={onHome}
+          className="tap mb-4 -mt-1 inline-flex items-center gap-1 text-[13px] font-medium text-sage-600 hover:text-ink"
+        >
+          ← Back to home
+        </button>
+      )}
       <h2 className="font-display text-[26px] font-semibold tracking-[-0.01em] text-ink">{title}</h2>
       <p className="mt-1.5 text-[13.5px] leading-relaxed text-sage-600">
         {mode === "reset"

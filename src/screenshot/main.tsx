@@ -6,6 +6,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import { BrandingProvider } from "../branding/BrandingProvider";
 import { AuthScreen } from "../auth/AuthScreen";
+import Landing from "../screens/marketing/Landing";
 import Caseload from "../screens/pmr/Caseload";
 import PatientProgress from "../screens/pmr/PatientProgress";
 import PlanStudio from "../screens/intake/PlanStudio";
@@ -23,6 +24,8 @@ function Harness() {
   switch (screen) {
     case "login":
       return <AuthScreen />;
+    case "landing":
+      return <Landing onSignIn={noop} />;
     case "cockpit":
       return <PatientProgress patientId="p1" onBack={noop} />;
     case "nurse":

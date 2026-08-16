@@ -2,6 +2,7 @@ import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { LoopMark } from "../components/ui";
 import { RecoveryTrajectory } from "../components/clinical";
 import Landing from "../screens/marketing/Landing";
+import LegalPage, { LEGAL_PATHS, LEGAL_READY, type LegalPath } from "../screens/marketing/legal";
 import { useAuth } from "./AuthProvider";
 
 type Mode = "signin" | "reset";
@@ -40,6 +41,18 @@ export function AuthGate({ children }: { children: ReactNode }) {
       setPath("/");
     }
   }, [session]);
+  // Until the legal layer is published, legal URLs must not expose placeholder pages —
+  // send them safely back to the landing page.
+  useEffect(() => {
+    if (!LEGAL_READY && (LEGAL_PATHS as readonly string[]).includes(window.location.pathname)) {
+      window.history.replaceState({}, "", "/");
+      setPath("/");
+    }
+  }, []);
+
+  // Public trust/legal pages render independently of auth (served via SPA fallback) —
+  // but only when published; otherwise the effect above has redirected to "/".
+  if (LEGAL_READY && (LEGAL_PATHS as readonly string[]).includes(path)) return <LegalPage path={path as LegalPath} />;
 
   if (loading) {
     return (

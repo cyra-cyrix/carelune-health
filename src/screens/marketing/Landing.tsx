@@ -1,4 +1,5 @@
 import { LoopMark } from "../../components/ui";
+import { LEGAL_READY } from "./legal";
 
 /**
  * Public, Carelune-branded conversion page for the people who buy the platform —
@@ -137,8 +138,15 @@ function Hero({ onSignIn }: { onSignIn: () => void }) {
           <BookCTA />
           <SignInCTA onSignIn={onSignIn} />
         </div>
+        <div className="mt-6 rounded-2xl px-4 py-3.5" style={{ background: SKY_WASH, border: `1px solid ${HAIR}` }}>
+          <div className="text-[13.5px] font-semibold" style={{ color: SKY_TEXT }}>Free for verified individual doctors</div>
+          <p className="mt-0.5 text-[13px] leading-relaxed text-sage-700">
+            One doctor, one nursing coordinator and unlimited eligible patients. Upgrade when your
+            team or institutional requirements grow.
+          </p>
+        </div>
         <p className="mt-6 text-[14px] font-semibold" style={{ color: INK }}>
-          Your clinical team. Your protocols. Your institution&rsquo;s identity.
+          Your practice or institution. Your team. Your clinical identity.
         </p>
         <p className="mt-1.5 text-[13px] text-sage-500">Now onboarding select care providers.</p>
       </div>
@@ -158,7 +166,7 @@ function FlowVisual() {
         <Connector />
         <Stage label="Nursing coordinator" detail="Answers routine questions, routes clinical matters." chip="2 routed to the doctor" />
         <Connector />
-        <Stage label="Doctor" detail="Sees only what needs a decision." highlight items={["Standing BP trend — review", "Medication change — approve"]} />
+        <Stage label="Doctor" detail="Sees only what needs a decision." highlight items={["Standing BP trend — review", "Medication query — review"]} />
       </div>
     </div>
   );
@@ -194,6 +202,41 @@ function Stage({ label, detail, chip, highlight, items }: { label: string; detai
   );
 }
 
+/** A restrained operations snapshot for the rehabilitation-centre / HOD narrative. */
+function CommandCentre() {
+  const stats: [string, string, "sky" | "amber" | "ink"][] = [
+    ["Active patients", "8", "ink"],
+    ["Needs attention", "2", "amber"],
+    ["Today’s completion", "82%", "sky"],
+    ["Family concerns", "1 open", "ink"],
+    ["Doctor decisions", "2 pending", "sky"],
+    ["Coordinator workload", "Routine", "ink"],
+  ];
+  return (
+    <div className="rounded-3xl bg-white p-6 shadow-lift" style={{ border: `1px solid ${HAIR}` }}>
+      <div className="flex items-center justify-between">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sage-500">
+          Your operations view · this morning
+        </div>
+        <span className="text-[11px] text-sage-400">Illustrative</span>
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {stats.map(([label, value, tone]) => (
+          <div key={label} className="rounded-2xl p-4" style={{ background: ICE }}>
+            <div className="text-[12px] text-sage-600">{label}</div>
+            <div
+              className="mt-1 font-display text-[22px] font-semibold"
+              style={{ color: tone === "amber" ? "#A66E08" : tone === "sky" ? SKY_TEXT : INK }}
+            >
+              {value}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* --------------------------------- pain ---------------------------------- */
 
 function Pain() {
@@ -209,6 +252,10 @@ function Pain() {
             often reach the doctor without structure or context. Carelune places a nursing
             coordinator between everyday communication and clinical decision-making—so the
             doctor is brought in when medical judgement is genuinely required.
+          </p>
+          <p className="mt-4 text-[14.5px] font-medium" style={{ color: INK }}>
+            Use your existing nurse or clinical assistant as the first point of coordination—Carelune
+            organises routine updates and brings clinical decisions to you.
           </p>
         </div>
         <div className="mt-12 grid gap-x-12 gap-y-9 sm:grid-cols-3">
@@ -284,6 +331,7 @@ function Institutional() {
           <RulePoint title="A structured post-discharge service">Convert informal follow-up into a clearly defined programme that the institution can offer under its own brand.</RulePoint>
           <RulePoint title="Better quality visibility">Review plan completion, patient-reported readings, milestones, concerns and communication in one place.</RulePoint>
         </div>
+        <div className="mt-12 max-w-3xl"><CommandCentre /></div>
       </div>
     </section>
   );
@@ -375,6 +423,10 @@ function Commercial() {
             continuity under your institution&rsquo;s identity. Carelune provides the operating
             layer; your institution retains the clinical relationship.
           </p>
+          <p className="mt-4 text-[14.5px] leading-relaxed text-sage-600">
+            Configure your existing HOD, doctors, nursing coordinators, duty doctors, caregivers and
+            families within one governed workflow—no hospital-system integration required.
+          </p>
         </div>
         <div className="mt-10 grid max-w-3xl gap-x-10 gap-y-3 sm:grid-cols-2">
           {items.map((it) => (
@@ -424,11 +476,21 @@ function Footer() {
           <span className="font-display text-[16px] font-semibold" style={{ color: INK }}>Carelune</span>
           <span className="text-[13px] text-sage-500">· Care continues after discharge.</span>
         </div>
-        <div className="text-[13px] text-sage-600">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-sage-600">
+          {LEGAL_READY && (
+            <>
+              <a href="/privacy" className="hover:text-ink" style={{ color: SKY_TEXT }}>Privacy</a>
+              <a href="/security" className="hover:text-ink" style={{ color: SKY_TEXT }}>Security</a>
+              <a href="/clinical-governance" className="hover:text-ink" style={{ color: SKY_TEXT }}>Clinical governance</a>
+              <a href="/terms" className="hover:text-ink" style={{ color: SKY_TEXT }}>Terms</a>
+              <a href="/contact" className="hover:text-ink" style={{ color: SKY_TEXT }}>Contact</a>
+              <span className="text-sage-400">·</span>
+            </>
+          )}
           <a href={CALENDLY} target="_blank" rel="noopener noreferrer" className="font-medium" style={{ color: SKY_TEXT }}>
             Book a 20-minute walkthrough
           </a>
-          <span className="mx-2 text-sage-400">·</span>
+          <span className="text-sage-400">·</span>
           <span className="text-sage-500">© 2026 Carelune Health</span>
         </div>
       </div>

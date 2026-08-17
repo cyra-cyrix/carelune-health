@@ -32,6 +32,10 @@ Continuum-Pitch.pptx
 .env
 .env.*
 !.env.example
+# `.env.marketing` holds only PUBLIC origins (no secrets) and is committed so the
+# marketing build deterministically resolves the app base URL. Netlify env vars
+# override it at build time.
+!.env.marketing
 *.pem
 *.key.json
 .netlify/

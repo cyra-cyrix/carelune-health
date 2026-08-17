@@ -3,6 +3,7 @@ import { Icon } from "../../components/ui";
 import { useBranding } from "../../branding/BrandingProvider";
 import { listTeamUsers, createTeamUser, resetTeamUserPassword, removeTeamUser, updateMyName, type TeamUser, type NewTeamUser } from "../../lib/db";
 import { credentialsText, shareOnWhatsApp, generatePassword } from "../../lib/share";
+import { loginUrl as appLoginUrl } from "../../config/urls";
 
 const ROLE_OPTIONS: { value: NewTeamUser["role"]; label: string }[] = [
   { value: "pmr", label: "Doctor" },
@@ -210,7 +211,7 @@ export default function Team() {
                       shareOnWhatsApp(
                         credentialsText({
                           platformName,
-                          loginUrl: window.location.origin,
+                          loginUrl: appLoginUrl(),
                           email: lastCreated.email,
                           password: lastCreated.password,
                           roleLabel: ROLE_OPTIONS.find((o) => o.value === lastCreated.role)?.label,
@@ -247,7 +248,7 @@ export default function Team() {
                   onClick={() =>
                     shareOnWhatsApp(
                       credentialsText({
-                        platformName, loginUrl: window.location.origin,
+                        platformName, loginUrl: appLoginUrl(),
                         email: resetInfo.email, password: resetInfo.password,
                         roleLabel: ROLE_OPTIONS.find((o) => o.value === resetInfo.role)?.label,
                       }),

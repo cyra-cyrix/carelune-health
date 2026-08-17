@@ -5,6 +5,7 @@ import { useAuth } from "./auth/AuthProvider";
 import { BrandingProvider, useBranding } from "./branding/BrandingProvider";
 import { APP_ROLE_META, appRoleFromUser, type AppRole } from "./domain/appRoles";
 import { LoopMark } from "./components/ui";
+import { InstallPrompt } from "./pwa/InstallPrompt";
 
 // Route-level code-splitting: each role workspace + admin/setup screen loads on
 // demand so the initial bundle stays small. The heaviest deps (pdfjs in Onboard,
@@ -93,6 +94,8 @@ function Shell() {
     <div className="min-h-screen bg-mist">
       <TopBar role={role} />
       <RoleSurface role={role} />
+      {/* Restrained install affordance — only ever mounted for a signed-in user. */}
+      <InstallPrompt />
     </div>
   );
 }

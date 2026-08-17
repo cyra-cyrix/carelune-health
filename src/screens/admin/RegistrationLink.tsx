@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Icon } from "../../components/ui";
 import { useBranding } from "../../branding/BrandingProvider";
 import { generateInviteToken } from "../../lib/db";
+import { registerUrl } from "../../config/urls";
 import { shareOnWhatsApp } from "../../lib/share";
 
 /**
@@ -18,7 +19,7 @@ export default function RegistrationLink({ onBack }: { onBack: () => void }) {
 
   const isAdmin = profile?.is_admin ?? false;
   const token = org?.invite_token ?? null;
-  const link = token ? `${window.location.origin}${window.location.pathname}?register=${token}` : null;
+  const link = token ? registerUrl(token) : null;
 
   const generate = async () => {
     if (!org) return;

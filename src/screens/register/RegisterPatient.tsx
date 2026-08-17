@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { registerPatient, getPublicOrgInfo, type PublicOrgInfo } from "../../lib/db";
+import { loginUrl } from "../../config/urls";
 import { CARE_PACKAGE } from "../../domain/carePackage";
 
 const inr = (n: number | null | undefined) => (n == null ? null : `₹${n.toLocaleString("en-IN")}`);
@@ -69,7 +70,7 @@ export default function RegisterPatient({ token }: { token: string }) {
   };
 
   const goToSignIn = () => {
-    window.location.href = window.location.origin + window.location.pathname;
+    window.location.href = loginUrl();
   };
 
   return (

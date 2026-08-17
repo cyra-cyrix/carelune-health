@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
+import { appUrl, passwordRecoveryRedirectUrl } from "../config/urls";
 
 export type AuthResult = { error: string | null; needsEmailConfirm?: boolean };
 
@@ -65,7 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email,
           password,
           // Public sign-up is the patient path; staff accounts are seeded with their role.
-          options: { emailRedirectTo: window.location.origin, data: { role: "patient" } },
+          options: { emailRedirectTo: appUrl("/"), data: { role: "patient" } },
         });
         if (error) return { error: error.message };
         // With "Confirm email" ON, Supabase returns a user but no session.
@@ -76,7 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       async sendPasswordReset(email) {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: `${window.location.origin}${window.location.pathname}`,
+          redirectTo: passwordRecoveryRedirectUrl(),
         });
         return { error: error?.message ?? null };
       },

@@ -29,19 +29,28 @@ const NAV = [
   { id: "organisations", label: "For organisations" },
 ];
 
+export type Route = "doctor" | "org";
+
 export default function LandingRedesign({ onSignIn }: { onSignIn: () => void }) {
+  const [route, setRoute] = useState<Route>("doctor");
+  // Send a visitor to the enquiry form with their adoption route pre-selected.
+  const goEnquiry = (r: Route) => {
+    setRoute(r);
+    document.getElementById("get-started")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
   return (
     <div className="clr">
-      <Header onSignIn={onSignIn} />
+      <Header onSignIn={onSignIn} onStart={() => goEnquiry("doctor")} />
       <main>
-        <Hero />
+        <Hero onStart={() => goEnquiry("doctor")} />
         <CareGap />
         <HowItWorks />
         <ProductExperience />
         <CareModel />
         <Visibility />
         <Trust />
-        <OrgCta />
+        <FreePlan onStart={() => goEnquiry("doctor")} onOrg={() => goEnquiry("org")} />
+        <OrgCta route={route} setRoute={setRoute} />
       </main>
       <Footer onSignIn={onSignIn} />
     </div>
@@ -49,7 +58,7 @@ export default function LandingRedesign({ onSignIn }: { onSignIn: () => void }) 
 }
 
 /* -------------------------------------------------------------------- header */
-function Header({ onSignIn }: { onSignIn: () => void }) {
+function Header({ onSignIn, onStart }: { onSignIn: () => void; onStart: () => void }) {
   const [open, setOpen] = useState(false);
   return (
     <header className="clr-hdr">
@@ -60,7 +69,7 @@ function Header({ onSignIn }: { onSignIn: () => void }) {
         </nav>
         <div className="clr-hdr-actions">
           <button type="button" className="clr-hdr-signin" onClick={onSignIn}>Sign in</button>
-          <a className="clr-btn pri sm" href="#get-started" onClick={scrollTo("get-started")}>Get started</a>
+          <button type="button" className="clr-btn pri sm" onClick={onStart}>Start free</button>
           <button
             type="button"
             className="clr-menu-btn"
@@ -86,7 +95,7 @@ function Header({ onSignIn }: { onSignIn: () => void }) {
 }
 
 /* ---------------------------------------------------------------------- hero */
-function Hero() {
+function Hero({ onStart }: { onStart: () => void }) {
   return (
     <section className="clr-hero" id="top">
       <div className="clr-wrap">
@@ -99,9 +108,9 @@ function Hero() {
               every patient connected to a structured plan.
             </p>
             <div className="clr-hero-cta">
-              <a className="clr-btn pri" href="#get-started" onClick={scrollTo("get-started")}>
-                Get started <Ico.arrow className="arw" width={17} height={17} />
-              </a>
+              <button type="button" className="clr-btn pri" onClick={onStart}>
+                Start free <Ico.arrow className="arw" width={17} height={17} />
+              </button>
               <a className="clr-textlink" href="#how" onClick={scrollTo("how")}>
                 See how it works <Ico.arrow className="arw" width={16} height={16} />
               </a>
@@ -333,8 +342,57 @@ function Trust() {
   );
 }
 
+/* --------------------------------------------------------------- free plan */
+const DOCTOR_INCLUDES = [
+  "One doctor account",
+  "One nursing coordinator",
+  "Unlimited eligible patients",
+  "Professional verification required",
+];
+const ORG_INCLUDES = [
+  "Configured around your care model",
+  "Institution-branded patient experience",
+  "Flexible care-team roles",
+];
+function FreePlan({ onStart, onOrg }: { onStart: () => void; onOrg: () => void }) {
+  return (
+    <section className="clr-sec clr-free" id="free" aria-labelledby="free-h">
+      <div className="clr-wrap">
+        <div className="clr-free-head">
+          <p className="clr-eyebrow">For individual doctors</p>
+          <h2 id="free-h" className="clr-h2" style={{ marginTop: 16, maxWidth: "20ch" }}>Start free. Continue care beyond discharge.</h2>
+          <p className="clr-lead" style={{ marginTop: 18 }}>
+            Verified individual doctors can use Carelune with one doctor account, one nursing
+            coordinator and unlimited eligible patients.
+          </p>
+          <p className="clr-free-verify">Professional verification is required before activation.</p>
+          <div className="clr-free-cta">
+            <button type="button" className="clr-btn pri" onClick={onStart}>Start free <Ico.arrow className="arw" width={17} height={17} /></button>
+            <a className="clr-textlink" href="#whats-included" onClick={scrollTo("whats-included")}>See what’s included <Ico.arrow className="arw" width={16} height={16} /></a>
+          </div>
+        </div>
+
+        <div className="clr-routes" id="whats-included">
+          <div className="clr-route feat">
+            <div className="clr-route-head"><span className="clr-route-tag">Free</span><h3>Individual doctors</h3></div>
+            <p>For a verified doctor guiding recovery at home.</p>
+            <ul>{DOCTOR_INCLUDES.map((x) => <li key={x}><span className="tick"><Ico.check width={16} height={16} /></span>{x}</li>)}</ul>
+            <button type="button" className="clr-btn pri" style={{ width: "100%" }} onClick={onStart}>Start free</button>
+          </div>
+          <div className="clr-route">
+            <div className="clr-route-head"><h3>Care organisations</h3></div>
+            <p>Configured around your organisation’s care model — pathways, roles, communication and escalation.</p>
+            <ul>{ORG_INCLUDES.map((x) => <li key={x}><span className="tick"><Ico.check width={16} height={16} /></span>{x}</li>)}</ul>
+            <button type="button" className="clr-btn ghost" style={{ width: "100%" }} onClick={onOrg}>Talk to our team</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /* ------------------------------------------------------------------- org cta */
-function OrgCta() {
+function OrgCta({ route, setRoute }: { route: Route; setRoute: (r: Route) => void }) {
   return (
     <section className="clr-sec tint" id="get-started" aria-labelledby="cta-h">
       <div className="clr-wrap">
@@ -343,35 +401,38 @@ function OrgCta() {
             <p className="clr-eyebrow">Get started</p>
             <h2 id="cta-h" className="clr-h2" style={{ marginTop: 16, maxWidth: "16ch" }}>Bring continuity to every care journey.</h2>
             <p className="clr-lead" style={{ marginTop: 18 }}>
-              Give your care team a structured way to guide patients, involve families and remain
-              connected beyond discharge.
+              Tell us a little about your practice or organisation. Individual doctors can start free;
+              organisations are configured around their own care model.
             </p>
             <a className="clr-btn ghost" style={{ marginTop: 26 }} href={CALENDLY} target="_blank" rel="noopener noreferrer">Book a walkthrough</a>
           </div>
-          <EnquiryForm />
+          <EnquiryForm route={route} setRoute={setRoute} />
         </div>
       </div>
     </section>
   );
 }
 
-function EnquiryForm() {
+function EnquiryForm({ route, setRoute }: { route: Route; setRoute: (r: Route) => void }) {
   const [sent, setSent] = useState(false);
   const submit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     const g = (k: string) => String(f.get(k) ?? "").trim();
+    const kind = route === "doctor" ? "Individual doctor" : "Care organisation";
     const body = [
+      `Enquiry type: ${kind}`,
       `Name: ${g("name")}`,
-      `Organisation: ${g("org")}`,
+      `Clinic / organisation: ${g("org")}`,
       `Role: ${g("role")}`,
       `Work email: ${g("email")}`,
       `Phone: ${g("phone")}`,
       `Continuing-care programme: ${g("programme")}`,
       `Approx. monthly patient volume: ${g("volume")}`,
     ].join("\n");
-    // Hand the details to the visitor's own email client — no silent backend POST.
-    window.location.href = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(`Carelune enquiry — ${g("org") || g("name")}`)}&body=${encodeURIComponent(body)}`;
+    // Hand the details to the visitor's own email client — no silent backend POST,
+    // and no false "submitted" claim (the visitor must still press send).
+    window.location.href = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(`Carelune enquiry (${kind}) — ${g("org") || g("name")}`)}&body=${encodeURIComponent(body)}`;
     setSent(true);
   };
 
@@ -379,16 +440,26 @@ function EnquiryForm() {
     return (
       <div className="clr-form clr-form-done" role="status">
         <span className="clr-form-tick"><Ico.check width={26} height={26} /></span>
-        <p>Thank you. Our team will contact you to understand your care model and configure the right starting pathway.</p>
+        <p><b>Your email app should now be open</b>, with your details ready to send. Please review and send that email to complete your enquiry — nothing is submitted until you send it.</p>
+        <button type="button" className="clr-textlink" style={{ marginTop: 14 }} onClick={() => setSent(false)}>Back to the form</button>
       </div>
     );
   }
 
   return (
     <form className="clr-form" onSubmit={submit} aria-labelledby="cta-h" noValidate>
+      <fieldset className="clr-routeselect">
+        <legend>I am a…</legend>
+        <label className={`clr-routeopt${route === "doctor" ? " on" : ""}`}>
+          <input type="radio" name="route" checked={route === "doctor"} onChange={() => setRoute("doctor")} /> Individual doctor
+        </label>
+        <label className={`clr-routeopt${route === "org" ? " on" : ""}`}>
+          <input type="radio" name="route" checked={route === "org"} onChange={() => setRoute("org")} /> Care organisation
+        </label>
+      </fieldset>
       <div className="clr-field-row">
         <Field name="name" label="Name" required />
-        <Field name="org" label="Organisation" required />
+        <Field name="org" label="Clinic / organisation" />
       </div>
       <div className="clr-field-row">
         <Field name="role" label="Role" />
@@ -400,9 +471,9 @@ function EnquiryForm() {
       </div>
       <Field name="programme" label="Your continuing-care programme" />
       <button type="submit" className="clr-btn pri" style={{ width: "100%", marginTop: 6 }}>
-        Get started <Ico.arrow className="arw" width={17} height={17} />
+        {route === "doctor" ? "Start free" : "Talk to our team"} <Ico.arrow className="arw" width={17} height={17} />
       </button>
-      <p className="clr-form-note">We’ll use these details only to contact you about Carelune.</p>
+      <p className="clr-form-note">Opening your email app pre-fills these details — you send the email to complete your enquiry. Professional verification is required before activation.</p>
     </form>
   );
 }

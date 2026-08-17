@@ -104,6 +104,15 @@ async function main() {
   mktRedir.includes("register=:token") && mktRedir.includes("app.carelune.in") ? ok("marketing _redirects forwards legacy register links to the app") : bad("marketing _redirects missing legacy register forwarding");
   mktRedir.includes("/login") && mktRedir.includes("app.carelune.in/login") ? ok("marketing _redirects forwards /login to the app") : bad("marketing _redirects missing /login forwarding");
 
+  // --- Netlify Forms: a detectable static form must survive into the built HTML ---
+  const mktIndex = (await read(path.join(MKT, "index.html"))) ?? "";
+  mktIndex.includes('name="carelune-enquiry"') ? ok("marketing HTML declares the carelune-enquiry form") : bad("marketing HTML is missing the carelune-enquiry form (Netlify won't detect it)");
+  /data-netlify="true"|netlify(=|\s|>)/.test(mktIndex) ? ok("marketing form is Netlify-enabled") : bad("marketing form lacks the netlify attribute");
+  mktIndex.includes('netlify-honeypot="bot-field"') && mktIndex.includes('name="bot-field"') ? ok("marketing form has a honeypot") : bad("marketing form is missing the bot-field honeypot");
+  ["route", "consent", "name", "email", "mobile", "mrn", "org", "purpose"].every((f) => mktIndex.includes(`name="${f}"`))
+    ? ok("marketing form declares the enquiry fields")
+    : bad("marketing form is missing one or more enquiry fields");
+
   // --- Report ---------------------------------------------------------------
   const fails = results.filter((r) => !r.pass);
   for (const r of results) console.log(`${r.pass ? "PASS" : "FAIL"}  ${r.m}`);

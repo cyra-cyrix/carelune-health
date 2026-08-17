@@ -368,9 +368,26 @@
   width: 100%; min-height: 46px; padding: 0 13px; font-family: var(--sans); font-size: 15px; color: var(--ink);
   background: #fff; border: 1px solid var(--line-strong); border-radius: 11px; transition: border-color .15s ease, box-shadow .15s ease;
 }
-.clr-field input:hover { border-color: #c3ceda; }
-.clr-field input:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(22,139,255,0.14); }
+.clr-field textarea {
+  width: 100%; min-height: 62px; padding: 10px 13px; font-family: var(--sans); font-size: 15px; color: var(--ink);
+  background: #fff; border: 1px solid var(--line-strong); border-radius: 11px; resize: vertical; transition: border-color .15s ease, box-shadow .15s ease;
+}
+.clr-field input:hover, .clr-field textarea:hover { border-color: #c3ceda; }
+.clr-field input:focus, .clr-field textarea:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(22,139,255,0.14); }
+.clr-field input[aria-invalid="true"], .clr-field textarea[aria-invalid="true"] { border-color: var(--coral, #c8402f); }
+.clr-field-err { display: block; margin-top: 5px; font-size: 12px; font-style: normal; color: #c8402f; }
 .clr-form-note { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.clr-form-err { font-size: 13.5px; color: #c8402f; background: #fdeeec; border: 1px solid #f4cfc9; border-radius: 10px; padding: 9px 12px; margin-top: 2px; }
+
+/* honeypot — off-screen, not display:none so bots still see + fill it */
+.clr-hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; margin: 0; }
+
+/* consent */
+.clr-consent { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: var(--body); line-height: 1.5; margin-top: 2px; }
+.clr-consent input { width: 17px; height: 17px; margin-top: 1px; accent-color: var(--blue); flex: none; }
+.clr-consent a { color: var(--blue-strong); font-weight: 600; text-decoration: underline; }
+.clr-consent.err { color: #c8402f; }
+.clr-consent.err input { outline: 2px solid #c8402f; outline-offset: 2px; }
 .clr-form-done { align-content: center; text-align: center; gap: 16px; min-height: 260px; padding: clamp(28px,4vw,44px); }
 .clr-form-tick { display: inline-grid; place-items: center; width: 52px; height: 52px; margin: 0 auto; border-radius: 50%; background: var(--good-wash); color: var(--good); }
 .clr-form-done p { font-size: 16px; color: var(--ink-soft); max-width: 34ch; margin: 0 auto; line-height: 1.55; }

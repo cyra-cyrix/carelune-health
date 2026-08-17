@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { LEGAL_READY } from "../legal";
 import { CoordinatorConsole, FamilyPhone, Ico, LoopMark, RecoveryDashboard } from "./mocks";
+import { buildBody, canSubmit, FORM_NAME, submitEnquiry, validateEnquiry, type SubmitStatus } from "./enquiry";
 import "./redesign.css";
 
 /* ============================================================================
@@ -11,11 +12,6 @@ import "./redesign.css";
    All product visuals are synthetic (mocks.tsx). Swapped in via src/marketing.tsx;
    the previous Landing.tsx stays on disk so this remains reversible.
    ========================================================================== */
-
-// No enquiry backend exists in this frontend-only marketing build. The form opens
-// the visitor's own email client (mailto) addressed to a monitored Carelune inbox
-// — it does not silently POST, and shows no false "submitted" message.
-const CONTACT_EMAIL = "hello@carelune.in";
 
 const scrollTo = (id: string) => (e: React.MouseEvent) => {
   e.preventDefault();
@@ -395,78 +391,109 @@ function OrgCta({ route, setRoute, onStart, onOrg }: { route: Route; setRoute: (
 }
 
 function EnquiryForm({ route, setRoute }: { route: Route; setRoute: (r: Route) => void }) {
-  const [sent, setSent] = useState(false);
-  const submit = (e: React.FormEvent<HTMLFormElement>) => {
+  const [status, setStatus] = useState<SubmitStatus>("idle");
+  const [done, setDone] = useState<Route | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const submit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const f = new FormData(e.currentTarget);
-    const g = (k: string) => String(f.get(k) ?? "").trim();
-    const kind = route === "doctor" ? "Individual doctor" : "Clinic or hospital";
-    const body = [
-      `Enquiry type: ${kind}`,
-      `Full name: ${g("name")}`,
-      `Medical registration number: ${g("mrn")}`,
-      `Hospital / clinic: ${g("org")}`,
-      `Role: ${g("role")}`,
-      `Work email: ${g("email")}`,
-      `Mobile number: ${g("mobile")}`,
-      `City: ${g("city")}`,
-      `Approx. patients per month: ${g("volume")}`,
-      `What would you like to use Carelune for?: ${g("purpose")}`,
-    ].join("\n");
-    window.location.href = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(`Carelune enquiry (${kind}) — ${g("org") || g("name")}`)}&body=${encodeURIComponent(body)}`;
-    setSent(true);
+    if (!canSubmit(status)) return; // prevent duplicate submissions
+    const formEl = e.currentTarget;
+    const fd = new FormData(formEl);
+    const values = Object.fromEntries([...fd.entries()].map(([k, v]) => [k, String(v)])) as Record<string, string>;
+    const consent = fd.get("consent") === "yes";
+    const { ok, errors: errs } = validateEnquiry(values, route, consent);
+    setErrors(errs);
+    if (!ok) {
+      formEl.querySelector<HTMLElement>(`[name="${Object.keys(errs)[0]}"]`)?.focus();
+      return;
+    }
+    setStatus("loading");
+    try {
+      await submitEnquiry(buildBody(values, route)); // success only on a confirmed OK response
+      setStatus("idle");
+      setDone(route);
+    } catch {
+      setStatus("error"); // entered data is preserved — uncontrolled inputs stay mounted
+    }
   };
 
-  if (sent) {
+  if (done) {
     return (
       <div className="clr-form clr-form-done" role="status">
         <span className="clr-form-tick"><Ico.check width={26} height={26} /></span>
-        <p><b>Your email app should now be open</b>, with your details ready to send to <b>{CONTACT_EMAIL}</b> — a monitored Carelune inbox. Please review and send that email to complete your enquiry. Nothing is submitted until you send it.</p>
-        <button type="button" className="clr-textlink" style={{ marginTop: 14 }} onClick={() => setSent(false)}>Back to the form</button>
+        <p><b>Thank you. We have received your enquiry.</b></p>
+        <p style={{ marginTop: 8, fontSize: "14.5px" }}>
+          {done === "doctor"
+            ? "Our team will verify your professional details and contact you regarding activation of your free Carelune account."
+            : "Our team will contact you to understand your requirements."}
+        </p>
       </div>
     );
   }
 
   return (
-    <form className="clr-form" onSubmit={submit} aria-labelledby="cta-h" noValidate>
+    <form className="clr-form" name={FORM_NAME} onSubmit={submit} aria-labelledby="cta-h" noValidate>
+      <input type="hidden" name="form-name" value={FORM_NAME} />
+      {/* Honeypot: hidden from people; a filled value tells Netlify it is spam. */}
+      <p className="clr-hp" aria-hidden="true"><label>Do not fill this field<input name="bot-field" tabIndex={-1} autoComplete="off" /></label></p>
+
       <fieldset className="clr-routeselect">
         <legend>I am a…</legend>
         <label className={`clr-routeopt${route === "doctor" ? " on" : ""}`}>
-          <input type="radio" name="route" checked={route === "doctor"} onChange={() => setRoute("doctor")} /> Individual doctor
+          <input type="radio" name="route" value="doctor" checked={route === "doctor"} onChange={() => setRoute("doctor")} /> Individual doctor
         </label>
         <label className={`clr-routeopt${route === "org" ? " on" : ""}`}>
-          <input type="radio" name="route" checked={route === "org"} onChange={() => setRoute("org")} /> Clinic or hospital
+          <input type="radio" name="route" value="org" checked={route === "org"} onChange={() => setRoute("org")} /> Clinic or hospital
         </label>
       </fieldset>
+
+      <Field name="name" label="Full name" required error={errors.name} />
+      {route === "doctor" ? (
+        <div className="clr-field-row">
+          <Field name="mrn" label="Medical registration number" required error={errors.mrn} />
+          <Field name="speciality" label="Speciality / department" />
+        </div>
+      ) : (
+        <div className="clr-field-row">
+          <Field name="org" label="Organisation" required error={errors.org} />
+          <Field name="role" label="Role / designation" />
+        </div>
+      )}
       <div className="clr-field-row">
-        <Field name="name" label="Full name" required />
-        <Field name="org" label="Hospital / clinic name" />
-      </div>
-      <div className="clr-field-row">
-        <Field name="role" label="Role" />
-        <Field name="mrn" label="Medical registration no." />
-      </div>
-      <div className="clr-field-row">
-        <Field name="email" label="Work email" type="email" required />
-        <Field name="mobile" label="Mobile number" type="tel" />
+        <Field name="email" label="Work email" type="email" required error={errors.email} />
+        <Field name="mobile" label="Mobile number" type="tel" required error={errors.mobile} />
       </div>
       <div className="clr-field-row">
         <Field name="city" label="City" />
-        <Field name="volume" label="Approx. patients / month" />
+        <Field name="volume" label="Approx. patients per month" />
       </div>
-      <Field name="purpose" label="What would you like to use Carelune for?" />
-      <button type="submit" className="clr-btn pri" style={{ width: "100%", marginTop: 6 }}>
-        {route === "doctor" ? "Start free" : "Talk to our team"} <Ico.arrow className="arw" width={17} height={17} />
+      <Field name="purpose" label="Intended use" textarea />
+
+      <label className={`clr-consent${errors.consent ? " err" : ""}`}>
+        <input type="checkbox" name="consent" value="yes" aria-invalid={errors.consent ? true : undefined} />
+        <span>I agree to be contacted about Carelune. See our <a href="/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.</span>
+      </label>
+      <p className="clr-form-note">Please do not enter any patient information in this form.</p>
+
+      {status === "error" && (
+        <p className="clr-form-err" role="alert">We couldn’t submit your enquiry. Please check your connection and try again.</p>
+      )}
+
+      <button type="submit" className="clr-btn pri" style={{ width: "100%", marginTop: 6 }} disabled={status === "loading"} aria-busy={status === "loading"}>
+        {status === "loading" ? "Submitting…" : <>{route === "doctor" ? "Start free" : "Talk to our team"} <Ico.arrow className="arw" width={17} height={17} /></>}
       </button>
-      <p className="clr-form-note">Opening your email app pre-fills these details for {CONTACT_EMAIL} — you send the email to complete your enquiry. Professional verification is required before activation.</p>
     </form>
   );
 }
-function Field({ name, label, type = "text", required }: { name: string; label: string; type?: string; required?: boolean }) {
+function Field({ name, label, type = "text", required, error, textarea }: { name: string; label: string; type?: string; required?: boolean; error?: string; textarea?: boolean }) {
   return (
     <label className="clr-field">
       <span>{label}{required && <em aria-hidden="true"> *</em>}</span>
-      <input name={name} type={type} required={required} autoComplete="off" />
+      {textarea
+        ? <textarea name={name} rows={2} aria-invalid={error ? true : undefined} autoComplete="off" />
+        : <input name={name} type={type} aria-invalid={error ? true : undefined} autoComplete="off" />}
+      {error && <em className="clr-field-err">{error}</em>}
     </label>
   );
 }

@@ -1,8 +1,9 @@
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { LoopMark } from "../components/ui";
 import { RecoveryTrajectory } from "../components/clinical";
-import Landing from "../screens/marketing/Landing";
 import LegalPage, { LEGAL_PATHS, LEGAL_READY, type LegalPath } from "../screens/marketing/legal";
+import { marketingBaseUrl } from "../config/urls";
+import { computeAuthView } from "./authView";
 import { useAuth } from "./AuthProvider";
 
 type Mode = "signin" | "reset";
@@ -22,18 +23,16 @@ const SUBMIT =
  */
 export function AuthGate({ children }: { children: ReactNode }) {
   const { loading, session, passwordRecovery } = useAuth();
-  // Public path routing (no router lib): "/" = landing, "/login" = auth form.
-  // `?register=<token>` is handled earlier in main.tsx and never reaches here.
+  // Path routing (no router lib) on the APPLICATION domain. Here "/" and "/login"
+  // both resolve to sign-in — the public marketing landing lives on the marketing
+  // origin and is intentionally NOT bundled into this build. `?register=<token>`
+  // is handled earlier in main.tsx and never reaches here.
   const [path, setPath] = useState(() => window.location.pathname);
   useEffect(() => {
     const onPop = () => setPath(window.location.pathname);
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
-  const go = (to: string) => {
-    window.history.pushState({}, "", to);
-    setPath(to);
-  };
   // Once signed in, normalise "/login" back to "/" (keep any in-app hash route).
   useEffect(() => {
     if (session && window.location.pathname === "/login") {
@@ -42,38 +41,54 @@ export function AuthGate({ children }: { children: ReactNode }) {
     }
   }, [session]);
   // Until the legal layer is published, legal URLs must not expose placeholder pages —
-  // send them safely back to the landing page.
+  // send them safely back to the app root.
   useEffect(() => {
     if (!LEGAL_READY && (LEGAL_PATHS as readonly string[]).includes(window.location.pathname)) {
       window.history.replaceState({}, "", "/");
       setPath("/");
     }
   }, []);
+  // Signed-out on the app domain: reflect the sign-in screen at "/login" so the URL
+  // matches what is shown (Unauthenticated "/" → "/login"), without a history entry.
+  useEffect(() => {
+    const p = window.location.pathname;
+    const onLegal = LEGAL_READY && (LEGAL_PATHS as readonly string[]).includes(p);
+    if (!loading && !session && !passwordRecovery && p !== "/login" && !onLegal) {
+      window.history.replaceState({}, "", "/login" + window.location.hash);
+      setPath("/login");
+    }
+  }, [loading, session, passwordRecovery]);
 
-  // Public trust/legal pages render independently of auth (served via SPA fallback) —
-  // but only when published; otherwise the effect above has redirected to "/".
-  if (LEGAL_READY && (LEGAL_PATHS as readonly string[]).includes(path)) return <LegalPage path={path as LegalPath} />;
+  // The routing decision is a pure helper (unit-tested in node); this component
+  // just renders the chosen view + runs the URL-normalisation effects above.
+  const view = computeAuthView({
+    loading,
+    hasSession: !!session,
+    passwordRecovery,
+    path,
+    legalReady: LEGAL_READY,
+    legalPaths: LEGAL_PATHS,
+  });
 
-  if (loading) {
-    return (
-      <div className="grid min-h-screen place-items-center bg-midnight-900 text-brand-400">
-        <div className="motion-safe:animate-breathe">
-          <LoopMark size={44} />
+  switch (view) {
+    case "legal":
+      return <LegalPage path={path as LegalPath} />;
+    case "loading":
+      return (
+        <div className="grid min-h-screen place-items-center bg-midnight-900 text-brand-400">
+          <div className="motion-safe:animate-breathe">
+            <LoopMark size={44} />
+          </div>
         </div>
-      </div>
-    );
+      );
+    case "recovery":
+      return <SetNewPassword />;
+    case "signin":
+      // No session → sign-in. "Back to home" leaves the app for the public marketing site.
+      return <AuthScreen onHome={() => { window.location.href = marketingBaseUrl(); }} />;
+    case "app":
+      return <>{children}</>;
   }
-
-  if (passwordRecovery) return <SetNewPassword />;
-  if (!session) {
-    return path === "/login" ? (
-      <AuthScreen onHome={() => go("/")} />
-    ) : (
-      <Landing onSignIn={() => go("/login")} />
-    );
-  }
-
-  return <>{children}</>;
 }
 
 /* ------------------------------ branded shell ----------------------------- */

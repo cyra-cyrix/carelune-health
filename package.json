@@ -5,10 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port 5173",
-    "build": "vite build",
-    "preview": "vite preview --port 5173",
+    "dev:marketing": "vite --mode marketing --config vite.marketing.config.ts --port 5175",
+    "build": "npm run build:app && npm run build:marketing",
+    "build:app": "vite build",
+    "build:marketing": "vite build --mode marketing --config vite.marketing.config.ts",
+    "preview:app": "vite preview --outDir dist/app --port 4180",
+    "preview:marketing": "vite preview --outDir dist/marketing --port 4181",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "verify:separation": "node scripts/verify-separation.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

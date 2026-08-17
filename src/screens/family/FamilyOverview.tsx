@@ -7,6 +7,7 @@ import {
 import RaiseConcern from "../../components/RaiseConcern";
 import { useBranding } from "../../branding/BrandingProvider";
 import { credentialsText, shareOnWhatsApp, generatePassword } from "../../lib/share";
+import { loginUrl as appLoginUrl } from "../../config/urls";
 import { familyParams, numericValue, statusFor, type MonitorParam } from "../../domain/monitoring";
 import {
   getMyPatient,
@@ -657,7 +658,7 @@ function AddCaregiverCard({ patientId }: { patientId: string }) {
               shareOnWhatsApp(
                 credentialsText({
                   platformName,
-                  loginUrl: window.location.origin + window.location.pathname,
+                  loginUrl: appLoginUrl(),
                   email: created.email,
                   password: created.password,
                   roleLabel: "Caregiver",

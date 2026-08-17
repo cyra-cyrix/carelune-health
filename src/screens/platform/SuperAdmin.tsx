@@ -12,6 +12,7 @@ import {
   type PathwayPackRow,
 } from "../../lib/db";
 import { credentialsText, shareOnWhatsApp, generatePassword } from "../../lib/share";
+import { loginUrl as appLoginUrl } from "../../config/urls";
 import {
   Card, Field, inputCls, PrimaryButton, PackCard, PathwayStatusBadge, Chip,
   EmptyState, Skeleton, ErrorNote, Kpi, SectionHeader,
@@ -109,7 +110,7 @@ export default function SuperAdmin() {
     if (!created) return;
     shareOnWhatsApp(
       credentialsText({
-        platformName: created.org_name, loginUrl: window.location.origin,
+        platformName: created.org_name, loginUrl: appLoginUrl(),
         email: created.admin_email, password: created.admin_password, roleLabel: "Admin",
       }),
     );

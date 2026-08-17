@@ -4,6 +4,7 @@ import {
   type Storefront, type SubscriptionRow,
 } from "../../lib/db";
 import { credentialsText, shareOnWhatsApp, generatePassword } from "../../lib/share";
+import { loginUrl as appLoginUrl } from "../../config/urls";
 import { useBranding } from "../../branding/BrandingProvider";
 import RaiseConcern from "../../components/RaiseConcern";
 import { useHc, BottomSheet, HcIcon } from "./hc-kit";
@@ -167,7 +168,7 @@ function AddCaregiver({ patientId }: { patientId: string }) {
           {created ? (
             <div>
               <p className="hc-muted" style={{ padding: 0 }}>Caregiver added — <b style={{ color: "var(--ink)" }}>{created.email}</b>. Temporary password <b style={{ color: "var(--ink)" }}>{created.password}</b>; they reset it on first sign-in.</p>
-              <button type="button" className="hc-save" onClick={() => shareOnWhatsApp(credentialsText({ platformName, loginUrl: window.location.origin + window.location.pathname, email: created.email, password: created.password, roleLabel: "Caregiver" }))}>
+              <button type="button" className="hc-save" onClick={() => shareOnWhatsApp(credentialsText({ platformName, loginUrl: appLoginUrl(), email: created.email, password: created.password, roleLabel: "Caregiver" }))}>
                 <HcIcon.Phone size={16} /> Share on WhatsApp
               </button>
               <button type="button" className="hc-help-link" onClick={() => { setCreated(null); setOpen(false); }}>Done</button>

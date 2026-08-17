@@ -1,6 +1,0 @@
-# Carelune Neuro Continuum — fictional stakeholder demonstration prototype.
-# Not approved for clinical use, and not intended for public discovery.
-# Copied into dist/ by Vite on every build, so it survives a drag-and-drop deploy.
-
-User-agent: *
-Disallow: /

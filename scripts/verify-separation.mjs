@@ -60,9 +60,9 @@ async function main() {
   for (const marker of ["createClient", "supabase", "resetPasswordForEmail", "AuthProvider", "serviceWorker"]) {
     mktJs.includes(marker) ? bad(`marketing bundle unexpectedly contains "${marker}"`) : ok(`marketing bundle excludes "${marker}"`);
   }
-  // A marker unique to the Landing component (NOT the shared legal/trust module,
+  // A marker unique to the marketing landing (NOT the shared legal/trust module,
   // which the app legitimately imports for its gated LEGAL_* constants).
-  const LANDING_MARKER = "Operations command centre";
+  const LANDING_MARKER = "One connected care journey";
   // Marketing SHOULD contain the landing (sanity that the right entry built).
   mktJs.includes(LANDING_MARKER) ? ok("marketing bundle contains the landing") : bad("marketing bundle is missing the landing");
 

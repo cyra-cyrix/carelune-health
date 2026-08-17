@@ -1,6 +1,6 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import Landing from "./screens/marketing/Landing";
+import LandingRedesign from "./screens/marketing/redesign/LandingRedesign";
 import LegalPage, { LEGAL_PATHS, LEGAL_READY, type LegalPath } from "./screens/marketing/legal";
 import { legacyForwardTarget, loginUrl } from "./config/urls";
 import "./index.css";
@@ -32,7 +32,7 @@ function Marketing() {
     return <LegalPage path={path as LegalPath} />;
   }
   // Sign-in leaves the marketing origin for the application sign-in page.
-  return <Landing onSignIn={() => { window.location.href = loginUrl(); }} />;
+  return <LandingRedesign onSignIn={() => { window.location.href = loginUrl(); }} />;
 }
 
 createRoot(document.getElementById("root")!).render(

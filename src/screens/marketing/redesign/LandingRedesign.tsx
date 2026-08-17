@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { LEGAL_READY } from "../legal";
-import { CoordinatorConsole, FamilyMini, FamilyPhone, Ico, LoopMark, RecoveryDashboard } from "./mocks";
+import { CoordinatorConsole, FamilyPhone, Ico, LoopMark, RecoveryDashboard } from "./mocks";
 import "./redesign.css";
 
 /* ============================================================================
@@ -109,7 +109,6 @@ function Hero({ onStart }: { onStart: () => void }) {
           </div>
           <div className="clr-hero-compose">
             <div className="clr-hero-dash"><RecoveryDashboard /></div>
-            <div className="clr-hero-fam"><FamilyMini /></div>
             <p className="clr-synthetic">Illustrative interface · synthetic data</p>
           </div>
         </div>

@@ -209,28 +209,8 @@
    dashboard's bottom corner, then stacks cleanly below on small screens. */
 .clr-hero-compose { position: relative; }
 .clr-hero-dash { position: relative; z-index: 1; }
-.clr-hero-fam { position: relative; z-index: 2; width: 244px; margin: -30px 0 0 auto; }
 .clr-hero-compose .clr-synthetic { text-align: right; }
-@media (max-width: 599px) {
-  .clr-hero-fam { margin: 16px auto 0; width: 100%; max-width: 300px; }
-  .clr-hero-compose .clr-synthetic { text-align: center; }
-}
-
-/* family daily-plan mini card */
-.fm { background: #fff; border: 1px solid var(--line); border-radius: 15px; padding: 14px; box-shadow: 0 1px 0 rgba(16,24,40,0.02), 0 18px 42px -30px rgba(16,32,64,0.28); font-family: var(--sans); }
-.fm-top { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--muted); font-weight: 500; }
-.fm-badge { font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--blue-strong); background: var(--blue-wash); padding: 3px 7px; border-radius: 999px; }
-.fm-plan { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
-.fm-ring { position: relative; width: 44px; height: 44px; flex: none; display: grid; place-items: center; }
-.fm-ring svg { position: absolute; inset: 0; width: 44px; height: 44px; }
-.fm-ring b { font-size: 12px; font-weight: 700; color: var(--ink); }
-.fm-plan-t b { display: block; font-size: 14px; letter-spacing: -0.02em; color: var(--ink); font-family: var(--display); font-weight: 700; }
-.fm-plan-t span { font-size: 12px; color: var(--muted); }
-.fm-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
-.fm-k { font-size: 12.5px; color: var(--body); font-weight: 500; }
-.fm-v { font-size: 12.5px; color: var(--ink); font-weight: 600; }
-.fm-row.concern .fm-k { color: var(--blue-strong); font-weight: 600; }
-.fm-ic { color: var(--blue-strong); display: inline-flex; }
+@media (max-width: 599px) { .clr-hero-compose .clr-synthetic { text-align: center; } }
 
 /* ----------------------------------------------------- doctor console mock */
 .dc { font-family: var(--sans); }

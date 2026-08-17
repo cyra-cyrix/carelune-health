@@ -94,27 +94,6 @@ export function RecoveryDashboard() {
   );
 }
 
-/* --------------------------------------------------- family daily-plan mini */
-export function FamilyMini() {
-  return (
-    <div className="fm" role="img" aria-label="Family daily care plan — synthetic preview">
-      <div className="fm-top"><span className="fm-badge">Family app</span> Today</div>
-      <div className="fm-plan">
-        <span className="fm-ring">
-          <svg viewBox="0 0 44 44" aria-hidden="true">
-            <circle cx="22" cy="22" r="18" fill="none" stroke="#e5eefb" strokeWidth="5" />
-            <circle cx="22" cy="22" r="18" fill="none" stroke="#168bff" strokeWidth="5" strokeLinecap="round" strokeDasharray={2 * Math.PI * 18} strokeDashoffset={2 * Math.PI * 18 * (1 - 2 / 5)} transform="rotate(-90 22 22)" />
-          </svg>
-          <b>2/5</b>
-        </span>
-        <div className="fm-plan-t"><b>Today’s care plan</b><span>2 of 5 completed</span></div>
-      </div>
-      <div className="fm-row"><span className="fm-k">Next activity</span><span className="fm-v">Morning walk · 10 min</span></div>
-      <div className="fm-row concern"><span className="fm-k">Raise a concern</span><span className="fm-ic"><Ico.arrow width={15} height={15} /></span></div>
-    </div>
-  );
-}
-
 /* --------------------------------------------------- coordinator console -- */
 type Update = { who: string; what: string; kind: "update" | "follow" | "escalate" };
 const UPDATES: Update[] = [

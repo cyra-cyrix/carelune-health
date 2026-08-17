@@ -1,9 +1,8 @@
 /* ============================================================================
-   Synthetic product-UI recreations for the marketing redesign concept.
-   Everything here is FICTIONAL demonstration data — no real patient names,
-   diagnoses, contact details or clinical records. These are hand-built DOM
-   recreations of the real Carelune surfaces (crisper + responsive than raster
-   screenshots), used purely as marketing visuals.
+   Synthetic product-UI recreations for the marketing site. FICTIONAL data only —
+   no real patient names, no named specialities, no clinical records. These are
+   hand-built DOM recreations of the Carelune surfaces used purely as marketing
+   visuals (crisper + responsive than raster screenshots).
    ========================================================================== */
 import type { ReactNode, SVGProps } from "react";
 
@@ -32,23 +31,11 @@ export const Ico = {
 /* --------------------------------------------------------------- sparkline */
 function Spark({ points, tone = "blue" }: { points: number[]; tone?: "blue" | "good" | "amber" }) {
   const stroke = tone === "good" ? "#1f7a54" : tone === "amber" ? "#b26a00" : "#0e6fdb";
-  const w = 66, h = 22, max = Math.max(...points), min = Math.min(...points), span = max - min || 1;
+  const w = 60, h = 20, max = Math.max(...points), min = Math.min(...points), span = max - min || 1;
   const d = points.map((v, i) => `${(i / (points.length - 1)) * w},${h - ((v - min) / span) * (h - 4) - 2}`).join(" ");
   return (
     <svg className="dc-spark" viewBox={`0 0 ${w} ${h}`} aria-hidden="true">
       <polyline points={d} fill="none" stroke={stroke} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-/* ------------------------------------------------------------ progress ring */
-function Ring({ pct }: { pct: number }) {
-  const r = 22, c = 2 * Math.PI * r;
-  return (
-    <svg className="fp-ring" viewBox="0 0 52 52" aria-hidden="true">
-      <circle cx="26" cy="26" r={r} fill="none" stroke="rgba(255,255,255,0.32)" strokeWidth="5" />
-      <circle cx="26" cy="26" r={r} fill="none" stroke="#fff" strokeWidth="5" strokeLinecap="round"
-        strokeDasharray={c} strokeDashoffset={c * (1 - pct / 100)} transform="rotate(-90 26 26)" />
     </svg>
   );
 }
@@ -66,38 +53,39 @@ export function Frame({ label, children, className }: { label: string; children:
   );
 }
 
-/* ---------------------------------------------------------- doctor console */
-type Case = { initials: string; name: string; meta: string; spark: number[]; tone: "good" | "amber"; tag: string; tagKind: "review" | "track" | "new" };
-const CASES: Case[] = [
-  { initials: "AM", name: "A. Menon", meta: "Day 12 · Recovering at home", spark: [3, 3.4, 3.2, 3.8, 4.1, 4.4], tone: "good", tag: "On track", tagKind: "track" },
-  { initials: "RI", name: "R. Iyer", meta: "Day 6 · Post-operative care", spark: [4, 3.6, 3.7, 3.2, 3.0, 3.3], tone: "amber", tag: "Needs review", tagKind: "review" },
-  { initials: "SK", name: "S. Kulkarni", meta: "Day 20 · Continuing care", spark: [2.6, 3.0, 3.1, 3.5, 3.6, 3.9], tone: "good", tag: "On track", tagKind: "track" },
+/* ------------------------------------------------------ recovery dashboard */
+type Row = { initials: string; name: string; day: string; status: string; tag: string; kind: "good" | "amber" | "blue" | "muted"; spark?: number[] };
+const PATIENTS: Row[] = [
+  { initials: "AM", name: "A. Menon", day: "Day 12", status: "Progressing as planned", tag: "On track", kind: "good", spark: [3, 3.4, 3.3, 3.8, 4.1, 4.4] },
+  { initials: "RI", name: "R. Iyer", day: "Day 6", status: "Concern raised", tag: "Review", kind: "amber" },
+  { initials: "SK", name: "S. Kulkarni", day: "Day 20", status: "Follow-up due", tag: "Follow-up", kind: "blue" },
+  { initials: "PN", name: "P. Nair", day: "Day 3", status: "Update received", tag: "Recovering", kind: "muted", spark: [2.6, 2.8, 3.1, 3.2, 3.5, 3.7] },
 ];
 
-export function DoctorConsole() {
+export function RecoveryDashboard() {
   return (
-    <Frame label="Care command centre">
+    <Frame label="Doctor’s recovery dashboard">
       <div className="dc">
         <div className="dc-top">
           <div>
-            <div className="k">Care command centre</div>
-            <h4>Good morning, Dr. Rao</h4>
-            <div className="sub">8 patients in continuing care</div>
+            <div className="k">Recovery dashboard</div>
+            <h4>Good morning, Dr Rao</h4>
+            <div className="sub">8 patients recovering at home · 2 require review</div>
           </div>
-          <span className="dc-pill attn">2 need attention</span>
+          <span className="dc-pill attn">2 require review</span>
         </div>
         <div className="dc-stats">
-          <div className="dc-stat"><div className="n">8</div><div className="l">Active</div></div>
-          <div className="dc-stat"><div className="n">2</div><div className="l">Needs attention</div></div>
-          <div className="dc-stat"><div className="n">2</div><div className="l">Awaiting decision</div></div>
+          <div className="dc-stat"><div className="n">8</div><div className="l">Recovering at home</div></div>
+          <div className="dc-stat"><div className="n">2</div><div className="l">Require review</div></div>
+          <div className="dc-stat"><div className="n">6</div><div className="l">Updates today</div></div>
         </div>
         <div className="dc-list">
-          {CASES.map((c) => (
-            <div className="dc-row" key={c.initials}>
-              <span className="dc-av">{c.initials}</span>
-              <span className="who"><b>{c.name}</b><span>{c.meta}</span></span>
-              <Spark points={c.spark} tone={c.tone} />
-              <span className={`dc-tag ${c.tagKind}`}>{c.tag}</span>
+          {PATIENTS.map((p) => (
+            <div className="dc-row" key={p.initials}>
+              <span className="dc-av">{p.initials}</span>
+              <span className="who"><b>{p.name}</b><span>{p.day} · {p.status}</span></span>
+              {p.spark && <Spark points={p.spark} tone={p.kind === "good" ? "good" : "blue"} />}
+              <span className={`dc-tag ${p.kind}`}>{p.tag}</span>
             </div>
           ))}
         </div>
@@ -106,23 +94,44 @@ export function DoctorConsole() {
   );
 }
 
-/* ---------------------------------------------------- coordinator console */
+/* --------------------------------------------------- family daily-plan mini */
+export function FamilyMini() {
+  return (
+    <div className="fm" role="img" aria-label="Family daily care plan — synthetic preview">
+      <div className="fm-top"><span className="fm-badge">Family app</span> Today</div>
+      <div className="fm-plan">
+        <span className="fm-ring">
+          <svg viewBox="0 0 44 44" aria-hidden="true">
+            <circle cx="22" cy="22" r="18" fill="none" stroke="#e5eefb" strokeWidth="5" />
+            <circle cx="22" cy="22" r="18" fill="none" stroke="#168bff" strokeWidth="5" strokeLinecap="round" strokeDasharray={2 * Math.PI * 18} strokeDashoffset={2 * Math.PI * 18 * (1 - 2 / 5)} transform="rotate(-90 22 22)" />
+          </svg>
+          <b>2/5</b>
+        </span>
+        <div className="fm-plan-t"><b>Today’s care plan</b><span>2 of 5 completed</span></div>
+      </div>
+      <div className="fm-row"><span className="fm-k">Next activity</span><span className="fm-v">Morning walk · 10 min</span></div>
+      <div className="fm-row concern"><span className="fm-k">Raise a concern</span><span className="fm-ic"><Ico.arrow width={15} height={15} /></span></div>
+    </div>
+  );
+}
+
+/* --------------------------------------------------- coordinator console -- */
 type Update = { who: string; what: string; kind: "update" | "follow" | "escalate" };
 const UPDATES: Update[] = [
-  { who: "A. Menon · family", what: "Logged morning medicines & blood pressure", kind: "update" },
-  { who: "R. Iyer · family", what: "Reported swelling above expected range — raised a concern", kind: "escalate" },
-  { who: "S. Kulkarni · nurse", what: "Follow-up call scheduled for this afternoon", kind: "follow" },
-  { who: "A. Menon · family", what: "Completed physiotherapy activity for the day", kind: "update" },
+  { who: "A. Menon · family", what: "Logged today’s medicines and morning reading", kind: "update" },
+  { who: "R. Iyer · family", what: "Raised a concern — swelling more than expected", kind: "escalate" },
+  { who: "S. Kulkarni · nurse", what: "Follow-up call scheduled for the afternoon", kind: "follow" },
+  { who: "P. Nair · family", what: "Completed today’s activity at home", kind: "update" },
 ];
 export function CoordinatorConsole() {
   return (
-    <Frame label="Coordinator — daily updates">
+    <Frame label="Nursing coordinator — daily updates">
       <div className="dc">
         <div className="dc-top">
           <div>
             <div className="k">Care coordination</div>
             <h4>Today’s updates</h4>
-            <div className="sub">Routine first · escalations surfaced</div>
+            <div className="sub">Routine first · concerns raised to the doctor</div>
           </div>
           <span className="dc-pill attn">1 to escalate</span>
         </div>
@@ -133,8 +142,8 @@ export function CoordinatorConsole() {
                 {u.kind === "escalate" ? "!" : u.kind === "follow" ? "↻" : "✓"}
               </span>
               <span className="who"><b>{u.who}</b><span>{u.what}</span></span>
-              {u.kind === "escalate" && <span className="dc-tag review">Escalate</span>}
-              {u.kind === "follow" && <span className="dc-tag new">Follow-up</span>}
+              {u.kind === "escalate" && <span className="dc-tag amber">Escalate</span>}
+              {u.kind === "follow" && <span className="dc-tag blue">Follow-up</span>}
             </div>
           ))}
         </div>
@@ -143,21 +152,24 @@ export function CoordinatorConsole() {
   );
 }
 
-/* -------------------------------------------------------------- family phone */
+/* --------------------------------------------- family app (role demo) ----- */
 export function FamilyPhone({ className }: { className?: string }) {
   return (
-    <Frame label="Family — today" className={className}>
+    <Frame label="Family app — today" className={className}>
       <div className="fp">
         <div className="fp-top">
           <span className="logo">S</span>
-          <span className="t"><b>Sunrise Care Institute</b><span>Home recovery · Day 12</span></span>
+          <span className="t"><b>Sunrise Care Institute</b><span>Recovery at home · Day 12</span></span>
         </div>
         <div className="fp-hero">
           <div className="r">
-            <Ring pct={40} />
+            <svg className="fp-ring" viewBox="0 0 52 52" aria-hidden="true">
+              <circle cx="26" cy="26" r="22" fill="none" stroke="rgba(255,255,255,0.32)" strokeWidth="5" />
+              <circle cx="26" cy="26" r="22" fill="none" stroke="#fff" strokeWidth="5" strokeLinecap="round" strokeDasharray={2 * Math.PI * 22} strokeDashoffset={2 * Math.PI * 22 * (1 - 2 / 5)} transform="rotate(-90 26 26)" />
+            </svg>
             <div>
               <div className="big">2 of 5 done</div>
-              <div className="cap">Up next · 8:00 · Record blood pressure</div>
+              <div className="cap">Next · Morning walk, 10 minutes</div>
             </div>
           </div>
         </div>
@@ -167,12 +179,9 @@ export function FamilyPhone({ className }: { className?: string }) {
           <div className="fp-per"><div className="l">Evening</div><div className="v">0 / 1</div></div>
         </div>
         <div className="fp-task">
-          <div className="k">Reading</div>
-          <h5>Record blood pressure &amp; sugar</h5>
-          <div className="vals">
-            <div className="fp-chip"><div className="n">128/82</div><div className="u">mmHg</div></div>
-            <div className="fp-chip"><div className="n">126</div><div className="u">mg/dL</div></div>
-          </div>
+          <div className="k">Today’s activity</div>
+          <h5>Short walk and prescribed medicines</h5>
+          <p className="fp-p">Follow the steps shared by your doctor. Raise a concern any time.</p>
         </div>
         <div className="fp-tabs">
           <span className="fp-tab on"><i><Ico.home /></i>Today</span>

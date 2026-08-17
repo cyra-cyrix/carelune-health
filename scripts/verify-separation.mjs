@@ -62,7 +62,7 @@ async function main() {
   }
   // A marker unique to the marketing landing (NOT the shared legal/trust module,
   // which the app legitimately imports for its gated LEGAL_* constants).
-  const LANDING_MARKER = "One connected care journey";
+  const LANDING_MARKER = "One connected recovery journey";
   // Marketing SHOULD contain the landing (sanity that the right entry built).
   mktJs.includes(LANDING_MARKER) ? ok("marketing bundle contains the landing") : bad("marketing bundle is missing the landing");
 

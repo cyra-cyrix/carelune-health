@@ -203,9 +203,34 @@
 .clr-synthetic { margin-top: 12px; font-size: 11.5px; color: var(--muted); letter-spacing: .02em; }
 
 /* Hero composition: doctor console with a floating family phone */
+/* Dominant doctor dashboard + a small, subordinate family preview. Normal flow
+   (no absolute positioning) so nothing is ever clipped or hidden under the header:
+   the family mini is right-aligned and pulled up a little to overlap the
+   dashboard's bottom corner, then stacks cleanly below on small screens. */
 .clr-hero-compose { position: relative; }
-.clr-hero-compose .phone { position: absolute; right: -6px; bottom: -34px; width: 200px; z-index: 2; }
-@media (max-width: 560px) { .clr-hero-compose .phone { position: static; width: 100%; max-width: 260px; margin: 18px auto 0; display: block; } }
+.clr-hero-dash { position: relative; z-index: 1; }
+.clr-hero-fam { position: relative; z-index: 2; width: 244px; margin: -30px 0 0 auto; }
+.clr-hero-compose .clr-synthetic { text-align: right; }
+@media (max-width: 599px) {
+  .clr-hero-fam { margin: 16px auto 0; width: 100%; max-width: 300px; }
+  .clr-hero-compose .clr-synthetic { text-align: center; }
+}
+
+/* family daily-plan mini card */
+.fm { background: #fff; border: 1px solid var(--line); border-radius: 15px; padding: 14px; box-shadow: 0 1px 0 rgba(16,24,40,0.02), 0 18px 42px -30px rgba(16,32,64,0.28); font-family: var(--sans); }
+.fm-top { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--muted); font-weight: 500; }
+.fm-badge { font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--blue-strong); background: var(--blue-wash); padding: 3px 7px; border-radius: 999px; }
+.fm-plan { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+.fm-ring { position: relative; width: 44px; height: 44px; flex: none; display: grid; place-items: center; }
+.fm-ring svg { position: absolute; inset: 0; width: 44px; height: 44px; }
+.fm-ring b { font-size: 12px; font-weight: 700; color: var(--ink); }
+.fm-plan-t b { display: block; font-size: 14px; letter-spacing: -0.02em; color: var(--ink); font-family: var(--display); font-weight: 700; }
+.fm-plan-t span { font-size: 12px; color: var(--muted); }
+.fm-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.fm-k { font-size: 12.5px; color: var(--body); font-weight: 500; }
+.fm-v { font-size: 12.5px; color: var(--ink); font-weight: 600; }
+.fm-row.concern .fm-k { color: var(--blue-strong); font-weight: 600; }
+.fm-ic { color: var(--blue-strong); display: inline-flex; }
 
 /* ----------------------------------------------------- doctor console mock */
 .dc { font-family: var(--sans); }
@@ -229,9 +254,10 @@
 .dc-row .who span { display: block; font-size: 12px; color: var(--muted); margin-top: 1px; }
 .dc-spark { width: 66px; height: 22px; flex: none; }
 .dc-tag { font-size: 11px; font-weight: 600; padding: 4px 9px; border-radius: 999px; white-space: nowrap; flex: none; }
-.dc-tag.review { background: var(--amber-wash); color: var(--amber); }
-.dc-tag.track { background: var(--good-wash); color: var(--good); }
-.dc-tag.new { background: var(--blue-wash); color: var(--blue-strong); }
+.dc-tag.review, .dc-tag.amber { background: var(--amber-wash); color: var(--amber); }
+.dc-tag.track, .dc-tag.good { background: var(--good-wash); color: var(--good); }
+.dc-tag.new, .dc-tag.blue { background: var(--blue-wash); color: var(--blue-strong); }
+.dc-tag.muted { background: #eef2f7; color: var(--slate, #607080); }
 
 /* ------------------------------------------------------- family phone mock */
 .fp { font-family: var(--sans); background: #fff; }
@@ -252,6 +278,7 @@
 .fp-task { margin: 14px; padding: 13px 14px; border: 1px solid var(--line); border-radius: 13px; }
 .fp-task .k { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--blue-strong); font-weight: 700; }
 .fp-task h5 { font-size: 14px; color: var(--ink); margin: 5px 0 0; letter-spacing: -0.02em; font-family: var(--display); font-weight: 700; }
+.fp-p { font-size: 12px; color: var(--body); margin-top: 6px; line-height: 1.5; }
 .fp-task .vals { display: flex; gap: 8px; margin-top: 9px; }
 .fp-chip { flex: 1; border: 1px solid var(--line); border-radius: 9px; padding: 7px; text-align: center; }
 .fp-chip .n { font-size: 15px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
@@ -372,21 +399,27 @@
 /* Restrained commercial band: subtle blue-wash canvas, blue-bordered emphasis
    card. No gradients, no heavy shadows — consistent with the system. */
 .clr-free { background: var(--blue-wash); }
-.clr-free-head { max-width: 720px; }
-.clr-free-verify { margin-top: 12px; font-size: 13.5px; color: var(--blue-strong); font-weight: 500; }
-.clr-free-cta { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-top: 28px; }
-.clr-routes { display: grid; grid-template-columns: 1fr; gap: 18px; margin-top: clamp(36px, 5vw, 52px); }
-@media (min-width: 760px) { .clr-routes { grid-template-columns: 1fr 1fr; gap: 20px; align-items: stretch; } }
-.clr-route { background: #fff; border: 1px solid var(--line-strong); border-radius: var(--r-frame); padding: clamp(22px, 3vw, 30px); display: flex; flex-direction: column; }
-.clr-route.feat { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue); }
-.clr-route-head { display: flex; align-items: center; gap: 10px; }
-.clr-route-head h3 { font-size: clamp(20px, 2.2vw, 24px); letter-spacing: -0.03em; }
-.clr-route-tag { font-size: 11.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #fff; background: var(--blue); padding: 4px 9px; border-radius: 999px; }
-.clr-route > p { color: var(--body); font-size: 15px; margin-top: 10px; }
-.clr-route ul { list-style: none; margin: 18px 0 22px; padding: 0; display: grid; gap: 11px; }
-.clr-route li { display: flex; gap: 10px; align-items: flex-start; font-size: 14.5px; color: var(--ink-soft); }
-.clr-route li .tick { color: var(--blue-strong); flex: none; margin-top: 1px; }
-.clr-route .clr-btn { margin-top: auto; }
+.clr-free-grid { display: grid; grid-template-columns: 1fr; gap: clamp(30px, 5vw, 52px); align-items: center; }
+@media (min-width: 900px) { .clr-free-grid { grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.88fr); } }
+.clr-free-copy .clr-lead { max-width: 46ch; }
+.clr-free-explain { margin-top: 16px; font-size: 15px; color: var(--ink-soft); max-width: 52ch; line-height: 1.6; }
+.clr-free-verify { margin-top: 14px; font-size: 13.5px; color: var(--blue-strong); font-weight: 500; }
+.clr-free-cta { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-top: 26px; }
+.clr-note { margin-top: 22px; font-size: 13px; color: var(--muted); max-width: 58ch; line-height: 1.6; }
+.clr-free-card { background: #fff; border: 1px solid var(--blue); box-shadow: 0 0 0 1px var(--blue), 0 24px 60px -40px rgba(16,32,64,0.28); border-radius: var(--r-frame); padding: clamp(22px, 3vw, 30px); }
+.clr-free-card ul { list-style: none; margin: 16px 0 22px; padding: 0; display: grid; gap: 12px; }
+.clr-free-card li { display: flex; gap: 10px; align-items: flex-start; font-size: 15px; color: var(--ink-soft); }
+.clr-free-card li .tick { color: var(--blue-strong); flex: none; margin-top: 1px; }
+.clr-route-tag { font-size: 11.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #fff; background: var(--blue); padding: 4px 10px; border-radius: 999px; }
+
+/* --------------------------------------------------------------------- pro */
+.clr-procaps { display: grid; grid-template-columns: 1fr; gap: 0; margin-top: clamp(30px, 4vw, 44px); border-top: 1px solid var(--line); }
+@media (min-width: 620px) { .clr-procaps { grid-template-columns: 1fr 1fr; column-gap: 40px; } }
+@media (min-width: 960px) { .clr-procaps { grid-template-columns: 1fr 1fr 1fr; } }
+.clr-procap { display: flex; gap: 11px; align-items: center; padding: 14px 2px; border-bottom: 1px solid var(--line); font-size: 15px; color: var(--ink-soft); }
+.clr-procap .tick { color: var(--blue-strong); flex: none; }
+.clr-pro-cta { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-top: 32px; }
+.clr-pro-note { font-size: 13px; color: var(--muted); }
 
 /* enquiry route selector */
 .clr-routeselect { border: 0; padding: 0; margin: 0; display: grid; gap: 8px; }

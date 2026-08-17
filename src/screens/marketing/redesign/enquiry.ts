@@ -23,6 +23,9 @@ export const ALL_FIELDS = [
 export type EnquiryValues = Partial<Record<string, string>>;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// A mobile number: digits with optional leading + and space/hyphen separators,
+// and at least 10 actual digits. Rejects non-numeric values such as "test".
+const MOBILE_SHAPE_RE = /^\+?[\d\s-]{8,16}$/;
 
 /** Validate a submission. Returns field-keyed error messages ({} when valid). */
 export function validateEnquiry(v: EnquiryValues, route: Route, consent: boolean): { ok: boolean; errors: Record<string, string> } {
@@ -30,7 +33,15 @@ export function validateEnquiry(v: EnquiryValues, route: Route, consent: boolean
   if (!v.name?.trim()) errors.name = "Please enter your full name.";
   if (!v.email?.trim()) errors.email = "Please enter your work email.";
   else if (!EMAIL_RE.test(v.email.trim())) errors.email = "Please enter a valid email address.";
-  if (!v.mobile?.trim()) errors.mobile = "Please enter your mobile number.";
+
+  const mobile = v.mobile?.trim() ?? "";
+  if (!mobile) errors.mobile = "Please enter your mobile number.";
+  else if (!MOBILE_SHAPE_RE.test(mobile) || mobile.replace(/\D/g, "").length < 10) errors.mobile = "Please enter a valid mobile number (digits only).";
+
+  const volume = v.volume?.trim() ?? "";
+  if (!volume) errors.volume = "Please enter an approximate number of patients per month.";
+  else if (!/^\d+$/.test(volume) || Number(volume) <= 0) errors.volume = "Please enter a positive number.";
+
   if (route === "doctor" && !v.mrn?.trim()) errors.mrn = "Please enter your medical registration number.";
   if (route === "org" && !v.org?.trim()) errors.org = "Please enter your organisation.";
   if (!consent) errors.consent = "Please confirm you agree to be contacted.";

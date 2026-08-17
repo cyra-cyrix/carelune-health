@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { buildBody, canSubmit, encodeForm, FORM_NAME, submitEnquiry, validateEnquiry } from "./enquiry";
 
-const okDoctor = { name: "Dr A", email: "a@clinic.in", mobile: "9000000000", mrn: "KA/12345" };
-const okOrg = { name: "Ms B", email: "b@hospital.in", mobile: "9000000000", org: "City Hospital" };
+const okDoctor = { name: "Dr A", email: "a@clinic.in", mobile: "9000000000", volume: "20", mrn: "KA/12345" };
+const okOrg = { name: "Ms B", email: "b@hospital.in", mobile: "9000000000", volume: "40", org: "City Hospital" };
 
 describe("enquiry — Netlify form naming", () => {
   it("uses the required form name in the config and the POST body", () => {
@@ -24,6 +24,18 @@ describe("enquiry — validation", () => {
   });
   it("rejects a malformed email", () => {
     expect(validateEnquiry({ ...okDoctor, email: "not-an-email" }, "doctor", true).errors).toHaveProperty("email");
+  });
+  it("rejects a non-numeric mobile number such as 'test'", () => {
+    expect(validateEnquiry({ ...okDoctor, mobile: "test" }, "doctor", true).errors).toHaveProperty("mobile");
+    expect(validateEnquiry({ ...okDoctor, mobile: "12345" }, "doctor", true).errors).toHaveProperty("mobile"); // too short
+    expect(validateEnquiry({ ...okDoctor, mobile: "+91 90000 00000" }, "doctor", true).errors).not.toHaveProperty("mobile");
+  });
+  it("requires a positive number of patients per month", () => {
+    expect(validateEnquiry({ ...okDoctor, volume: "" }, "doctor", true).errors).toHaveProperty("volume");
+    expect(validateEnquiry({ ...okDoctor, volume: "test" }, "doctor", true).errors).toHaveProperty("volume");
+    expect(validateEnquiry({ ...okDoctor, volume: "0" }, "doctor", true).errors).toHaveProperty("volume");
+    expect(validateEnquiry({ ...okDoctor, volume: "-5" }, "doctor", true).errors).toHaveProperty("volume");
+    expect(validateEnquiry({ ...okDoctor, volume: "25" }, "doctor", true).errors).not.toHaveProperty("volume");
   });
   it("requires the medical registration number for an individual doctor", () => {
     expect(validateEnquiry({ ...okDoctor, mrn: "" }, "doctor", true).errors).toHaveProperty("mrn");

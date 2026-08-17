@@ -427,6 +427,16 @@
 .clr-routeopt.on { border-color: var(--blue); background: var(--blue-wash); color: var(--ink); font-weight: 600; }
 .clr-routeopt input { accent-color: var(--blue); width: 16px; height: 16px; }
 
+/* --------------------------------------------------------- legal / privacy -- */
+.clr-legal { padding-top: clamp(48px, 7vw, 80px); }
+.clr-legal .clr-wrap { max-width: 760px; }
+.clr-legal-h1 { font-family: var(--display); font-weight: 800; letter-spacing: -0.04em; font-size: clamp(2.2rem, 5vw, 3.2rem); color: var(--ink); margin: 14px 0 0; }
+.clr-legal-date { font-size: 13.5px; color: var(--muted); margin-top: 10px; }
+.clr-legal p { color: var(--body); font-size: 16px; line-height: 1.7; margin-top: 16px; max-width: 68ch; }
+.clr-legal p b { color: var(--ink-soft); }
+.clr-legal h2 { font-family: var(--display); font-weight: 700; letter-spacing: -0.03em; font-size: clamp(1.25rem, 2.4vw, 1.6rem); color: var(--ink); margin-top: 36px; }
+.clr-legal a { color: var(--blue-strong); font-weight: 500; text-decoration: underline; }
+
 /* ----------------------------------------------------------------- footer -- */
 .clr-foot { border-top: 1px solid var(--line); padding: clamp(48px,6vw,72px) 0 40px; }
 .clr-foot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 34px 24px; }

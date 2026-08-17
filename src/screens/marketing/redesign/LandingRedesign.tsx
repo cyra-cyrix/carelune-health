@@ -466,7 +466,7 @@ function EnquiryForm({ route, setRoute }: { route: Route; setRoute: (r: Route) =
       </div>
       <div className="clr-field-row">
         <Field name="city" label="City" />
-        <Field name="volume" label="Approx. patients per month" />
+        <Field name="volume" label="Approx. patients per month" type="number" required error={errors.volume} />
       </div>
       <Field name="purpose" label="Intended use" textarea />
 

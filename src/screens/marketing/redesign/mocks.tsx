@@ -69,20 +69,20 @@ export function Frame({ label, children, className }: { label: string; children:
 /* ---------------------------------------------------------- doctor console */
 type Case = { initials: string; name: string; meta: string; spark: number[]; tone: "good" | "amber"; tag: string; tagKind: "review" | "track" | "new" };
 const CASES: Case[] = [
-  { initials: "AM", name: "A. Menon", meta: "Day 12 · Spine fusion L4–L5", spark: [3, 3.4, 3.2, 3.8, 4.1, 4.4], tone: "good", tag: "On track", tagKind: "track" },
-  { initials: "RI", name: "R. Iyer", meta: "Day 6 · TKR — right knee", spark: [4, 3.6, 3.7, 3.2, 3.0, 3.3], tone: "amber", tag: "Needs review", tagKind: "review" },
-  { initials: "SK", name: "S. Kulkarni", meta: "Day 20 · Neuro-rehab", spark: [2.6, 3.0, 3.1, 3.5, 3.6, 3.9], tone: "good", tag: "On track", tagKind: "track" },
+  { initials: "AM", name: "A. Menon", meta: "Day 12 · Recovering at home", spark: [3, 3.4, 3.2, 3.8, 4.1, 4.4], tone: "good", tag: "On track", tagKind: "track" },
+  { initials: "RI", name: "R. Iyer", meta: "Day 6 · Post-operative care", spark: [4, 3.6, 3.7, 3.2, 3.0, 3.3], tone: "amber", tag: "Needs review", tagKind: "review" },
+  { initials: "SK", name: "S. Kulkarni", meta: "Day 20 · Continuing care", spark: [2.6, 3.0, 3.1, 3.5, 3.6, 3.9], tone: "good", tag: "On track", tagKind: "track" },
 ];
 
 export function DoctorConsole() {
   return (
-    <Frame label="Recovery command centre">
+    <Frame label="Care command centre">
       <div className="dc">
         <div className="dc-top">
           <div>
-            <div className="k">Recovery command centre</div>
+            <div className="k">Care command centre</div>
             <h4>Good morning, Dr. Rao</h4>
-            <div className="sub">8 patients recovering at home</div>
+            <div className="sub">8 patients in continuing care</div>
           </div>
           <span className="dc-pill attn">2 need attention</span>
         </div>
@@ -150,7 +150,7 @@ export function FamilyPhone({ className }: { className?: string }) {
       <div className="fp">
         <div className="fp-top">
           <span className="logo">S</span>
-          <span className="t"><b>Sunrise Spine &amp; Neuro</b><span>Home recovery · Day 12</span></span>
+          <span className="t"><b>Sunrise Care Institute</b><span>Home recovery · Day 12</span></span>
         </div>
         <div className="fp-hero">
           <div className="r">

@@ -4,11 +4,11 @@ import { loginUrl } from "./config/urls";
 afterEach(() => vi.unstubAllEnvs());
 
 describe("marketing separation", () => {
-  it("imports the landing WITHOUT pulling in Supabase/auth", async () => {
+  it("imports the landing (redesign concept) WITHOUT pulling in Supabase/auth", async () => {
     // src/lib/supabase throws at import time when VITE_SUPABASE_* is unset. This
     // test runs with no such env, so a clean import proves the landing's module
     // graph contains no Supabase/auth/application code.
-    const mod = await import("./screens/marketing/Landing");
+    const mod = await import("./screens/marketing/redesign/LandingRedesign");
     expect(typeof mod.default).toBe("function");
   });
 

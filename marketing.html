@@ -38,6 +38,30 @@
   </head>
   <body>
     <div id="root"></div>
+
+    <!-- Static, Netlify-detectable enquiry form. Netlify scans built HTML at
+         deploy time, so the React SPA form is invisible to it; this hidden form
+         declares the `carelune-enquiry` form, its honeypot and every field name
+         (union of both visitor routes). The React form submits a same-origin
+         url-encoded POST that Netlify matches to this declaration. No patient
+         fields are collected. -->
+    <form name="carelune-enquiry" data-netlify="true" netlify-honeypot="bot-field" hidden>
+      <input type="hidden" name="form-name" value="carelune-enquiry" />
+      <input name="bot-field" />
+      <input name="route" />
+      <input name="consent" />
+      <input name="name" />
+      <input name="email" />
+      <input name="mobile" />
+      <input name="city" />
+      <input name="volume" />
+      <textarea name="purpose"></textarea>
+      <input name="mrn" />
+      <input name="speciality" />
+      <input name="org" />
+      <input name="role" />
+    </form>
+
     <script type="module" src="/src/marketing.tsx"></script>
   </body>
 </html>

@@ -23,6 +23,28 @@
 @layer base {
   :root {
     color-scheme: light;
+    --cl-canvas: #f7f9fc;
+    --cl-surface: #ffffff;
+    --cl-ink: #0a0d12;
+    --cl-muted: #5f6b78;
+    --cl-muted-soft: #7b8794;
+    --cl-line: #e2e9f1;
+    --cl-line-strong: #d4deea;
+    --cl-blue: #168bff;
+    --cl-blue-strong: #0e6fdb;
+    --cl-blue-wash: #eef5ff;
+    --cl-positive: #167a58;
+    --cl-positive-wash: #e7f5ef;
+    --cl-attention: #9a5b00;
+    --cl-attention-wash: #fff3df;
+    --cl-danger: #c9372c;
+    --cl-danger-wash: #fdeceb;
+    --cl-radius-sm: 10px;
+    --cl-radius-md: 14px;
+    --cl-radius-lg: 16px;
+    --cl-shadow-surface: 0 1px 2px rgba(16, 32, 56, 0.04), 0 8px 24px -18px rgba(16, 40, 78, 0.22);
+    --cl-shadow-lifted: 0 2px 5px -2px rgba(16, 32, 56, 0.08), 0 18px 40px -24px rgba(16, 40, 78, 0.3);
+    --cl-target: 44px;
   }
   html,
   body,

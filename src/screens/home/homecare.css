@@ -13,31 +13,31 @@
    ========================================================================== */
 
 .hc {
-  --white: #ffffff;
-  --ice: #f5faff;
+  --white: var(--cl-surface);
+  --ice: var(--cl-canvas);
   --ice-2: #eaf3fe;
-  --sky: #168bff;
+  --sky: var(--cl-blue);
   --sky-2: #4db8ff;
-  --sky-ink: #0e6fdb; /* button fill / links — AA with white text */
-  --sky-wash: #eef6ff;
-  --ink: #111820;
-  --slate: #607080;
-  --slate-2: #8090a0;
-  --hair: #e2ecf8; /* the signature thin blue hairline */
-  --hair-2: #d5e4f6;
-  --ok: #12a57a;
-  --ok-wash: #e7f7f1;
-  --amber: #b26a00;
-  --amber-wash: #fff4e2;
-  --danger: #d13b2e;
-  --danger-wash: #fdeceb;
+  --sky-ink: var(--cl-blue-strong);
+  --sky-wash: var(--cl-blue-wash);
+  --ink: var(--cl-ink);
+  --slate: var(--cl-muted);
+  --slate-2: var(--cl-muted-soft);
+  --hair: var(--cl-line);
+  --hair-2: var(--cl-line-strong);
+  --ok: var(--cl-positive);
+  --ok-wash: var(--cl-positive-wash);
+  --amber: var(--cl-attention);
+  --amber-wash: var(--cl-attention-wash);
+  --danger: var(--cl-danger);
+  --danger-wash: var(--cl-danger-wash);
 
-  --r-sm: 10px;
-  --r-md: 14px;
-  --r-lg: 20px;
-  --r-xl: 26px;
-  --shadow: 0 1px 2px rgba(16, 32, 56, 0.04), 0 8px 24px -16px rgba(16, 40, 78, 0.18);
-  --shadow-lift: 0 2px 6px -2px rgba(16, 32, 56, 0.08), 0 18px 40px -22px rgba(16, 40, 78, 0.28);
+  --r-sm: var(--cl-radius-sm);
+  --r-md: var(--cl-radius-md);
+  --r-lg: var(--cl-radius-lg);
+  --r-xl: var(--cl-radius-lg);
+  --shadow: var(--cl-shadow-surface);
+  --shadow-lift: var(--cl-shadow-lifted);
 
   font-family: "Manrope", system-ui, -apple-system, sans-serif;
   color: var(--ink);
@@ -81,24 +81,6 @@
   .hc-app { max-width: 720px; padding-left: 24px; padding-right: 24px; }
 }
 
-/* Header: institution identity + recovery day. */
-.hc-top {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 18px 2px 12px;
-}
-.hc-logo {
-  width: 38px; height: 38px; border-radius: 11px; flex: none;
-  display: grid; place-items: center;
-  background: linear-gradient(150deg, var(--sky) 0%, var(--sky-ink) 100%);
-  color: #fff; font-weight: 800; font-size: 16px;
-  box-shadow: 0 4px 12px -4px rgba(20, 110, 220, 0.5);
-  object-fit: cover;
-}
-.hc-org { min-width: 0; flex: 1; }
-.hc-org b { display: block; font-size: 15px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hc-org span { display: block; font-size: 12.5px; color: var(--slate); margin-top: 1px; }
 .hc-daychip {
   flex: none; align-self: flex-start;
   font-size: 11px; font-weight: 800; letter-spacing: 0.02em;
@@ -134,20 +116,6 @@
 .hc-rule { height: 1px; background: linear-gradient(90deg, var(--sky) 0%, var(--hair) 60%, transparent 100%); border: 0; margin: 4px 0; opacity: 0.55; }
 .hc-muted { font-size: 12px; line-height: 1.55; color: var(--slate); padding: 0 2px; }
 
-/* ---- Completion summary ---------------------------------------------- */
-
-.hc-prog {
-  display: flex; align-items: center; gap: 16px;
-  background: var(--white); border: 1px solid var(--hair);
-  border-radius: var(--r-lg); padding: 16px 18px; box-shadow: var(--shadow);
-  margin-top: 4px;
-}
-.hc-ring { flex: none; }
-.hc-prog .lede { min-width: 0; flex: 1; }
-.hc-prog .big { font-size: 21px; font-weight: 800; letter-spacing: -0.02em; }
-.hc-prog .big small { font-weight: 700; color: var(--slate); font-size: 14px; }
-.hc-prog .sub { font-size: 13px; color: var(--slate); margin-top: 2px; line-height: 1.4; }
-
 /* ---- Action Stage ---------------------------------------------------- */
 
 .hc-stage-wrap { margin-top: 12px; }
@@ -181,8 +149,6 @@
   background: var(--ok-wash); padding: 6px 11px; border-radius: 999px; margin-top: 12px;
 }
 
-/* stage step nav (prev / view all / next) */
-.hc-stage-nav { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
 .hc-stepbtn {
   width: 44px; height: 44px; flex: none; border-radius: 12px;
   border: 1px solid var(--hair); background: var(--white); color: var(--sky-ink);
@@ -191,9 +157,6 @@
 }
 .hc-stepbtn:hover:not(:disabled) { background: var(--sky-wash); border-color: var(--hair-2); }
 .hc-stepbtn:disabled { opacity: 0.4; cursor: default; }
-.hc-viewall { flex: 1; text-align: center; font-size: 13px; font-weight: 700; color: var(--slate); background: none; border: 0; cursor: pointer; font-family: inherit; padding: 12px; border-radius: 12px; }
-.hc-viewall:hover { color: var(--sky-ink); }
-
 /* stage transition (respecting reduced-motion below) */
 .hc-stage-anim { animation: hc-slide 340ms cubic-bezier(0.16, 1, 0.3, 1) both; }
 @keyframes hc-slide { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
@@ -215,6 +178,7 @@
 .hc-num-in:focus { border-color: var(--sky); outline: none; }
 
 .hc-bp { display: flex; align-items: center; gap: 12px; }
+.hc-bp .hc-num-in { width: 0; min-width: 0; flex: 1; }
 .hc-bp .sep { font-size: 22px; font-weight: 700; color: var(--slate-2); }
 
 /* stepper (quantity) */
@@ -299,34 +263,6 @@
 .hc-tag.route { background: var(--sky-wash); color: var(--sky-ink); }
 .hc-tag.prn { background: var(--amber-wash); color: var(--amber); }
 .hc-tag.dose { background: transparent; color: var(--slate); font-weight: 700; font-size: 13px; padding: 0; }
-
-/* ---- Compact day timeline -------------------------------------------- */
-
-.hc-timeline { position: relative; margin-top: 4px; }
-.hc-tl-group { margin-top: 14px; }
-.hc-tl-label { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--slate); margin: 0 2px 8px; }
-.hc-tl-label::after { content: ""; flex: 1; height: 1px; background: var(--hair); }
-.hc-tl {
-  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
-  background: none; border: 0; border-top: 1px solid var(--hair);
-  padding: 12px 14px; cursor: pointer; font: inherit;
-  transition: background 120ms;
-}
-.hc-mlist .hc-tl:first-child { border-top: 0; }
-.hc-tl:hover { background: var(--ice); }
-.hc-tl.current { background: var(--sky-wash); }
-.hc-tl.current .tl-title { color: var(--sky-ink); }
-.hc-tl .tl-time { font-size: 12px; font-weight: 800; color: var(--slate); width: 48px; flex: none; font-variant-numeric: tabular-nums; }
-.hc-tl .tl-ic { width: 30px; height: 30px; flex: none; border-radius: 9px; display: grid; place-items: center; background: var(--sky-wash); color: var(--sky-ink); }
-.hc-tl .tl-body { min-width: 0; flex: 1; display: block; }
-.hc-tl .tl-title { display: block; font-size: 14px; font-weight: 700; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hc-tl.recorded .tl-title { color: var(--slate); }
-.hc-tl .tl-state { display: block; font-size: 12px; color: var(--slate); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hc-tl .tl-chip { flex: none; font-size: 11px; font-weight: 800; padding: 3px 9px; border-radius: 999px; }
-.hc-tl .tl-chip.done { background: var(--ok-wash); color: var(--ok); }
-.hc-tl .tl-chip.unable { background: var(--amber-wash); color: var(--amber); }
-.hc-tl .tl-chip.refused { background: var(--danger-wash); color: var(--danger); }
-.hc-tl .tl-chip.na { background: var(--ice-2); color: var(--slate); }
 
 /* ---- Medicine queue -------------------------------------------------- */
 
@@ -660,6 +596,74 @@
 .hc-med-help { display: block; width: 100%; text-align: center; margin-top: 12px; font-size: 12.5px; font-weight: 700; color: var(--slate); background: none; border: 0; cursor: pointer; padding: 8px; font-family: inherit; }
 .hc-med-help:hover { color: var(--sky-ink); }
 .hc-med-help:disabled { color: var(--ok); cursor: default; }
+
+/* ---- Today: one summary, one active action, one daily sequence ---------- */
+
+.hc-today { padding-top: 22px; }
+.hc-today-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  padding: 0 2px;
+}
+.hc-today-head h1 {
+  margin: 0; color: var(--ink); font-size: clamp(30px, 7vw, 38px);
+  font-weight: 800; letter-spacing: -0.04em; line-height: 1.05;
+}
+.hc-today-head p { margin: 5px 0 0; color: var(--slate); font-size: 13.5px; line-height: 1.45; }
+.hc-today-head .hc-daychip { margin-top: 2px; align-self: auto; }
+
+.hc-today-summary {
+  margin-top: 20px; padding: 18px 18px 15px;
+  border: 1px solid var(--hair); border-radius: var(--r-lg); background: var(--white);
+}
+.hc-summary-copy h2 { margin: 0; font-size: 19px; font-weight: 800; line-height: 1.25; color: var(--ink); }
+.hc-summary-copy p { margin: 5px 0 0; color: var(--slate); font-size: 13px; line-height: 1.45; }
+.hc-summary-progress { height: 5px; margin-top: 15px; overflow: hidden; border-radius: 999px; background: var(--hair); }
+.hc-summary-progress span { display: block; height: 100%; border-radius: inherit; background: var(--sky); transition: width 240ms cubic-bezier(.2,.8,.2,1); }
+
+.hc-active-action, .hc-day-list { margin-top: 24px; }
+.hc-section-title { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 2px 9px; }
+.hc-section-title h2 { margin: 0; color: var(--ink); font-size: 15px; font-weight: 800; letter-spacing: -0.015em; }
+.hc-section-title > span { flex: none; color: var(--slate); font-size: 12px; font-weight: 650; }
+.hc-active-action .hc-stage-wrap { margin-top: 0; }
+.hc-active-action .hc-stage { border-color: var(--hair); border-radius: var(--r-lg); box-shadow: none; }
+.hc-active-action .hc-stage::before { height: 2px; }
+
+.hc-today-complete {
+  display: flex; align-items: flex-start; gap: 12px; margin-top: 24px; padding: 16px;
+  border: 1px solid var(--hair); border-radius: var(--r-lg); background: var(--white);
+}
+.hc-complete-icon { display: grid; width: 38px; height: 38px; flex: none; place-items: center; border-radius: 50%; color: var(--ok); background: var(--ok-wash); }
+.hc-today-complete b { display: block; color: var(--ink); font-size: 14.5px; }
+.hc-today-complete p { margin: 3px 0 0; color: var(--slate); font-size: 12.5px; line-height: 1.45; }
+
+.hc-schedule { overflow: hidden; border: 1px solid var(--hair); border-radius: var(--r-lg); background: var(--white); }
+.hc-schedule-row {
+  display: grid; grid-template-columns: 48px 34px minmax(0, 1fr) auto 16px;
+  align-items: center; gap: 10px; width: 100%; min-height: 64px; padding: 10px 13px;
+  border: 0; border-top: 1px solid var(--hair); background: var(--white); color: var(--ink);
+  cursor: pointer; font: inherit; text-align: left; transition: background-color 120ms ease;
+}
+.hc-schedule-row:first-child { border-top: 0; }
+.hc-schedule-row:hover { background: var(--sky-wash); }
+.hc-schedule-row.recorded { background: #fbfcfe; }
+.hc-schedule-time { color: var(--slate); font-size: 12px; font-weight: 750; }
+.hc-schedule-icon { display: grid; width: 32px; height: 32px; place-items: center; border-radius: var(--r-sm); color: var(--sky-ink); background: var(--sky-wash); }
+.hc-schedule-row.recorded .hc-schedule-icon { color: var(--ok); background: var(--ok-wash); }
+.hc-schedule-copy { min-width: 0; }
+.hc-schedule-copy b { display: block; overflow: hidden; color: var(--ink); font-size: 14px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+.hc-schedule-copy small { display: block; overflow: hidden; margin-top: 2px; color: var(--slate); font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
+.hc-schedule-state { color: var(--slate); font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+.hc-schedule-state.recorded { color: var(--ok); }
+.hc-schedule-row > svg { color: var(--slate-2); }
+.hc-plan-source { margin: 18px 2px 0; color: var(--slate); font-size: 12px; line-height: 1.5; }
+
+@media (max-width: 480px) {
+  .hc-schedule-row { grid-template-columns: 42px 32px minmax(0, 1fr) 16px; gap: 9px; padding-inline: 11px; }
+  .hc-schedule-state { grid-column: 3; margin-top: -7px; white-space: normal; }
+  .hc-schedule-row > svg { grid-column: 4; grid-row: 1 / span 2; }
+  .hc-scale { grid-template-columns: repeat(6, 1fr); }
+  .hc-scale button { aspect-ratio: auto; min-height: var(--cl-target); }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .hc *, .hc *::before, .hc *::after {

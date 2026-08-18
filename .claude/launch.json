@@ -55,6 +55,15 @@
         "vite.screenshot.config.ts"
       ],
       "port": 5182
+    },
+    {
+      "name": "carelune-marketing",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev:marketing"
+      ],
+      "port": 5175
     }
   ]
 }

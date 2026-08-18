@@ -212,6 +212,76 @@
 .clr-hero-compose .clr-synthetic { text-align: right; }
 @media (max-width: 599px) { .clr-hero-compose .clr-synthetic { text-align: center; } }
 
+/* ------------------------------------------------- hero photograph (real) --
+   The hero's right column carries a photograph instead of a mock. On desktop it
+   bleeds to the viewport edge and its own negative space — the plain wall on the
+   left of the frame — sits behind the live headline, so the copy keeps paper
+   contrast and nothing is baked into the image. Colours, type and spacing tokens
+   are untouched; only the media changed. */
+.clr-hero-photo {
+  display: block;
+  overflow: hidden;
+  border-radius: var(--r-frame);
+  background: var(--paper-2);
+  box-shadow: 0 1px 0 rgba(16, 24, 40, 0.02), 0 24px 60px -34px rgba(16, 32, 64, 0.24);
+}
+.clr-hero-photo img {
+  display: block;
+  width: 100%;
+  height: auto;
+  /* Reserved before load — no layout shift. The crop keeps both faces and the
+     knee support inside the frame at every width. */
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  object-position: 58% 44%;
+}
+
+@media (min-width: 600px) {
+  .clr-hero-photo img { aspect-ratio: 16 / 10; }
+}
+
+@media (min-width: 1000px) {
+  .clr-hero-grid { align-items: center; }
+  .clr-hero-photo img { aspect-ratio: 5 / 4; object-position: 54% 44%; }
+}
+
+@media (min-width: 1024px) {
+  /* Run the photograph off the right edge of the viewport, and let its left
+     side — the plain wall the frame already contains — dissolve into the page
+     behind the headline instead of stopping at a hard border. The copy still
+     sits on paper, so contrast is untouched. */
+  .clr-hero-photo {
+    margin-right: calc((min(var(--wrap), 100vw) - 100vw) / 2 - 56px);
+    margin-left: -14%;
+    border-radius: var(--r-frame) 0 0 var(--r-frame);
+    box-shadow: none;
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 26%);
+    mask-image: linear-gradient(90deg, transparent 0, #000 26%);
+  }
+  .clr-hero-photo img { object-position: 60% 44%; }
+}
+
+@media (min-width: 1280px) {
+  .clr-hero-photo img { aspect-ratio: 4 / 3; object-position: 58% 44%; }
+}
+
+/* A bleeding child must never widen the page. */
+.clr-hero { overflow-x: clip; }
+
+/* --------------------------------------------- real product screenshots ---- */
+.clr-shot img { display: block; width: 100%; height: auto; }
+
+/* Restrained phone bezel — hairlines and radii from the existing system. */
+.clr-shot-phone {
+  border: 1px solid var(--line-strong);
+  border-radius: 26px;
+  padding: 8px;
+  background: #fff;
+  box-shadow: 0 1px 0 rgba(16, 24, 40, 0.02), 0 24px 60px -34px rgba(16, 32, 64, 0.24);
+}
+.clr-shot-phone picture { display: block; overflow: hidden; border-radius: 19px; }
+.clr-shot-phone img { display: block; width: 100%; height: auto; }
+
 /* ----------------------------------------------------- doctor console mock */
 .dc { font-family: var(--sans); }
 .dc-top { padding: 16px 18px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; border-bottom: 1px solid var(--line); }

@@ -1,7 +1,16 @@
 import { useState } from "react";
 import { LEGAL_READY } from "../legal";
-import { CoordinatorConsole, FamilyPhone, Ico, LoopMark, RecoveryDashboard } from "./mocks";
+import { CoordinatorConsole, Ico, LoopMark } from "./mocks";
 import { buildBody, canSubmit, FORM_NAME, submitEnquiry, validateEnquiry, type SubmitStatus } from "./enquiry";
+import heroWebp1672 from "../../../assets/marketing/hero-home-recovery-1672.webp";
+import heroWebp1200 from "../../../assets/marketing/hero-home-recovery-1200.webp";
+import heroWebp840 from "../../../assets/marketing/hero-home-recovery-840.webp";
+import heroWebp560 from "../../../assets/marketing/hero-home-recovery-560.webp";
+import heroPng from "../../../assets/marketing/hero-home-recovery-840.png";
+import shotDoctorWebp from "../../../assets/marketing/product-doctor-attention.webp";
+import shotDoctorPng from "../../../assets/marketing/product-doctor-attention-fallback.png";
+import shotFamilyWebp from "../../../assets/marketing/product-family-today.webp";
+import shotFamilyPng from "../../../assets/marketing/product-family-today-fallback.png";
 import "./redesign.css";
 
 /* ============================================================================
@@ -9,8 +18,11 @@ import "./redesign.css";
    B2B continuum-care platform for doctors, clinics, hospitals and rehabilitation
    centres. Not patient-directed. Indian English throughout. Editorial white
    canvas · monumental Manrope display · one blue accent · product UI as the hero.
-   All product visuals are synthetic (mocks.tsx). Swapped in via src/marketing.tsx;
-   the previous Landing.tsx stays on disk so this remains reversible.
+   The hero photograph and the doctor/family visuals are real: the photograph is a
+   local optimized asset, and the two product shots are captured from the actual
+   application. The coordinator console remains an illustration (mocks.tsx) and
+   says so. Swapped in via src/marketing.tsx; the previous Landing.tsx stays on
+   disk so this remains reversible.
    ========================================================================== */
 
 const scrollTo = (id: string) => (e: React.MouseEvent) => {
@@ -80,6 +92,11 @@ function Header({ onSignIn, onStart }: { onSignIn: () => void; onStart: () => vo
   );
 }
 
+/* React 18 does not recognise the camelCase `fetchPriority` prop, so spread the
+   real lowercase attribute: the hero photograph is the LCP element and should be
+   fetched at high priority. It is deliberately not lazy-loaded. */
+const HERO_FETCH_PRIORITY = { fetchpriority: "high" } as Record<string, string>;
+
 /* ---------------------------------------------------------------------- hero */
 function Hero({ onStart }: { onStart: () => void }) {
   return (
@@ -104,8 +121,25 @@ function Hero({ onStart }: { onStart: () => void }) {
             <p className="clr-hero-note"><span className="dot" /> Institution-led · Doctor-approved · Family-connected</p>
           </div>
           <div className="clr-hero-compose">
-            <div className="clr-hero-dash"><RecoveryDashboard /></div>
-            <p className="clr-synthetic">Illustrative interface · synthetic data</p>
+            {/* The photograph carries the promise the copy makes: recovery
+                continuing at home, with the family alongside the patient and the
+                plan in hand. Explicit width/height + aspect-ratio in CSS reserve
+                the box before it loads, so the headline never shifts. */}
+            <picture className="clr-hero-photo">
+              <source
+                type="image/webp"
+                srcSet={`${heroWebp560} 560w, ${heroWebp840} 840w, ${heroWebp1200} 1200w, ${heroWebp1672} 1672w`}
+                sizes="(min-width: 1000px) 52vw, (min-width: 600px) 92vw, calc(100vw - 40px)"
+              />
+              <img
+                src={heroPng}
+                width={1672}
+                height={941}
+                alt="A man recovering at home sits on a sofa with a knee brace while a family member beside him looks at his recovery plan on a phone."
+                {...HERO_FETCH_PRIORITY}
+                decoding="async"
+              />
+            </picture>
           </div>
         </div>
       </div>
@@ -183,7 +217,7 @@ function ExperienceByRole() {
             title="Stay connected to every patient at home."
             body="See who is recovering at home and who may need a follow-up, review reported concerns, and remain in clinical control throughout."
             points={["View patients recovering at home", "Review progress and reported concerns", "See who may require follow-up", "Remain in clinical control"]}
-            media={<RecoveryDashboard />}
+            media={<BrowserShot webp={shotDoctorWebp} png={shotDoctorPng} width={1400} height={573} label="app.carelune.in" alt="The Carelune doctor dashboard grouping patients by needs decision, clinical change, new concerns and stable, with the reason, what changed and the pending action on each row." />}
           />
           <ExpRow
             flip
@@ -192,13 +226,14 @@ function ExperienceByRole() {
             body="Review daily patient updates, follow up on incomplete activities, and escalate concerns to the doctor according to your hospital’s workflow."
             points={["Review daily patient updates", "Follow up on incomplete activities", "Coordinate communication", "Escalate concerns to the doctor"]}
             media={<CoordinatorConsole />}
+            caption="Illustrative interface · synthetic data"
           />
           <ExpRow
             eyebrow="For the hospital or clinic"
             title="A consistent experience for every patient."
             body="Deliver a consistent post-discharge experience under your institution’s identity, with clear roles and institution-approved workflows. Patients and families follow the plan your doctors set."
             points={["Use institution-approved workflows", "Maintain clear roles for doctors and nurses", "Support multiple doctors and departments through Pro", "Provide a consistent post-discharge experience"]}
-            media={<div className="clr-media-phone"><FamilyPhone /></div>}
+            media={<PhoneShot webp={shotFamilyWebp} png={shotFamilyPng} width={700} height={1400} alt="The Carelune family app showing today’s recovery day, the next care activity to record, and the rest of the day’s schedule." />}
             caption="What your patients and families receive"
           />
         </div>
@@ -206,6 +241,37 @@ function ExperienceByRole() {
     </section>
   );
 }
+/** A real product screenshot inside the site's existing browser frame. */
+function BrowserShot({ webp, png, width, height, label, alt }: {
+  webp: string; png: string; width: number; height: number; label: string; alt: string;
+}) {
+  return (
+    <div className="clr-frame clr-shot">
+      <div className="clr-frame-bar"><span className="tl"><i /><i /><i /></span>{label}</div>
+      <picture>
+        <source type="image/webp" srcSet={webp} />
+        <img src={png} width={width} height={height} alt={alt} loading="lazy" decoding="async" />
+      </picture>
+    </div>
+  );
+}
+
+/** A real product screenshot inside a restrained phone bezel. */
+function PhoneShot({ webp, png, width, height, alt }: {
+  webp: string; png: string; width: number; height: number; alt: string;
+}) {
+  return (
+    <div className="clr-media-phone">
+      <div className="clr-shot-phone">
+        <picture>
+          <source type="image/webp" srcSet={webp} />
+          <img src={png} width={width} height={height} alt={alt} loading="lazy" decoding="async" />
+        </picture>
+      </div>
+    </div>
+  );
+}
+
 function ExpRow({ eyebrow, title, body, points, media, flip, caption }: { eyebrow: string; title: string; body: string; points: string[]; media: React.ReactNode; flip?: boolean; caption?: string }) {
   return (
     <div className={`clr-exp-row${flip ? " flip" : ""}`}>

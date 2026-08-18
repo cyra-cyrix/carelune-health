@@ -133,19 +133,155 @@ describe("who may approve a patient plan", () => {
   });
 });
 
-/* --------------------------- activation, unchanged ------------------------ */
+/* ------------------------- activation, by actor --------------------------- */
 
-describe("activation authority is deliberately untouched by this patch", () => {
-  it("still admits pmr and duty_doctor at the RPC", () => {
-    const rpc = migration("0018_activation_idempotent.sql");
-    expect(rpc).toContain("my_role() not in ('pmr','duty_doctor')");
+/** The last `create or replace function <name>` body in migration order. */
+function effectiveFunction(name: string): string {
+  let found: string | null = null;
+  for (const key of Object.keys(MIGRATIONS).sort()) {
+    const matches = MIGRATIONS[key].match(
+      new RegExp(`create or replace function ${name}\\([^)]*\\)[\\s\\S]*?end \\$\\$;`, "gi"),
+    );
+    if (matches) found = matches[matches.length - 1];
+  }
+  if (!found) throw new Error(`No function named ${name} found in the migration chain`);
+  return found;
+}
+
+describe("activate_patient_plan — the effective function", () => {
+  const fn = effectiveFunction("public\\.activate_patient_plan");
+
+  it("admits the treating doctor only", () => {
+    expect(fn).toContain("public.my_role() is distinct from 'pmr'");
   });
 
-  it("records the duty-doctor first-plan/subsequent-plan inconsistency as an open decision", () => {
-    const patch = migration("0025_clinical_approval_authority.sql");
-    expect(patch).toMatch(/remaining role-policy decision/i);
-    // The patch must not quietly redefine activation while fixing approval.
-    expect(patch).not.toMatch(/create or replace function public\.activate_patient_plan/i);
-    expect(patch).not.toMatch(/create trigger/i);
+  it("no longer admits a duty doctor", () => {
+    expect(fn).not.toContain("not in ('pmr','duty_doctor')");
+    expect(fn).not.toContain("duty_doctor");
+  });
+
+  it("keeps the institution and plan-state checks", () => {
+    expect(fn).toContain("v_centre is distinct from public.my_centre()");
+    expect(fn).toContain("v_status <> 'approved'");
+    expect(fn).toContain("Plan not found");
+  });
+
+  it("keeps the idempotent same-plan branch", () => {
+    expect(fn).toContain("'already_active'");
+  });
+
+  it("still never deletes a care task, medication or task log", () => {
+    expect(fn.toLowerCase()).not.toContain("delete from");
+  });
+
+  it("keeps the activation audit stamp", () => {
+    expect(fn).toContain("activated_at = now(), activated_by = auth.uid()");
+  });
+
+  it("keeps its security configuration and grants", () => {
+    const patch = migration("0026_activation_treating_doctor_only.sql");
+    expect(fn).toContain("security definer set search_path = ''");
+    expect(patch).toContain("revoke execute on function public.activate_patient_plan(uuid) from public, anon;");
+    expect(patch).toContain("grant execute on function public.activate_patient_plan(uuid) to authenticated, service_role;");
+  });
+
+  it("leaves the patients_activation_guard trigger alone", () => {
+    const patch = migration("0026_activation_treating_doctor_only.sql");
+    expect(patch).not.toMatch(/create (or replace )?trigger/i);
+    expect(patch).not.toMatch(/create or replace function enforce_plan_activation/i);
+  });
+});
+
+/* The rule, modelled. `plan` carries whether this patient already has an active
+   plan, which is what used to make a duty doctor's authority differ between a
+   first plan and a later version. */
+type Plan = { centreId: string; approved: boolean; alreadyActiveForThisPlan?: boolean };
+
+function canActivatePlan(actor: Actor, plan: Plan): boolean {
+  if (actor.role !== "pmr") return false;
+  if (!canSeePatient(actor, { centreId: plan.centreId })) return false;
+  return plan.approved;
+}
+
+const FIRST_PLAN: Plan = { centreId: "centre-a", approved: true };
+const LATER_VERSION: Plan = { centreId: "centre-a", approved: true, alreadyActiveForThisPlan: false };
+
+describe("who may activate a care plan", () => {
+  const pmr: Actor = { role: "pmr", isAdmin: false, centreId: "centre-a" };
+  const duty: Actor = { role: "duty_doctor", isAdmin: false, centreId: "centre-a" };
+
+  it("the treating doctor can activate a plan for a patient they can see", () => {
+    expect(canActivatePlan(pmr, FIRST_PLAN)).toBe(true);
+  });
+
+  it("a duty doctor cannot activate a first plan", () => {
+    expect(canActivatePlan(duty, FIRST_PLAN)).toBe(false);
+  });
+
+  it("a duty doctor cannot activate a later plan version either", () => {
+    expect(canActivatePlan(duty, LATER_VERSION)).toBe(false);
+  });
+
+  it("a duty doctor's authority no longer depends on whether the patient is already active", () => {
+    expect(canActivatePlan(duty, FIRST_PLAN)).toBe(canActivatePlan(duty, LATER_VERSION));
+  });
+
+  it("an admin without the treating-doctor role cannot activate", () => {
+    for (const role of ["nurse", "duty_doctor", "caregiver", "family"] as Role[]) {
+      expect(canActivatePlan({ role, isAdmin: true, centreId: "centre-a" }, FIRST_PLAN)).toBe(false);
+    }
+  });
+
+  it("a nurse cannot activate", () => {
+    expect(canActivatePlan({ role: "nurse", isAdmin: false, centreId: "centre-a" }, FIRST_PLAN)).toBe(false);
+  });
+
+  it("an admin who is also the treating doctor keeps authority through the clinical role", () => {
+    expect(canActivatePlan({ role: "pmr", isAdmin: true, centreId: "centre-a" }, FIRST_PLAN)).toBe(true);
+  });
+
+  it("a treating doctor from another institution is still denied", () => {
+    expect(canActivatePlan(pmr, { centreId: "centre-b", approved: true })).toBe(false);
+  });
+
+  it("an unapproved plan cannot be activated by anyone", () => {
+    expect(canActivatePlan(pmr, { centreId: "centre-a", approved: false })).toBe(false);
+  });
+});
+
+/* Idempotency, modelled on the function's own branch: once this plan's runtime
+   rows are active, a repeat call reports already_active and mutates nothing. */
+type RuntimeState = { activePlanId: string | null; activations: number };
+
+function activate(state: RuntimeState, actor: Actor, plan: Plan, planId: string): { status: string; state: RuntimeState } {
+  if (!canActivatePlan(actor, plan)) throw new Error("Only the treating doctor can activate a care plan");
+  if (state.activePlanId === planId) return { status: "already_active", state };
+  return { status: "activated", state: { activePlanId: planId, activations: state.activations + 1 } };
+}
+
+describe("repeated activation by the treating doctor", () => {
+  const pmr: Actor = { role: "pmr", isAdmin: false, centreId: "centre-a" };
+
+  it("is idempotent — the second call changes nothing", () => {
+    const first = activate({ activePlanId: null, activations: 0 }, pmr, FIRST_PLAN, "plan-1");
+    expect(first.status).toBe("activated");
+
+    const second = activate(first.state, pmr, FIRST_PLAN, "plan-1");
+    expect(second.status).toBe("already_active");
+    expect(second.state).toBe(first.state);
+    expect(second.state.activations).toBe(1);
+  });
+
+  it("still switches cleanly to a new plan version", () => {
+    const first = activate({ activePlanId: null, activations: 0 }, pmr, FIRST_PLAN, "plan-1");
+    const next = activate(first.state, pmr, LATER_VERSION, "plan-2");
+    expect(next.status).toBe("activated");
+    expect(next.state.activePlanId).toBe("plan-2");
+  });
+
+  it("refuses a duty doctor at every attempt, first or repeat", () => {
+    const duty: Actor = { role: "duty_doctor", isAdmin: true, centreId: "centre-a" };
+    expect(() => activate({ activePlanId: null, activations: 0 }, duty, FIRST_PLAN, "plan-1")).toThrow();
+    expect(() => activate({ activePlanId: "plan-1", activations: 1 }, duty, LATER_VERSION, "plan-2")).toThrow();
   });
 });

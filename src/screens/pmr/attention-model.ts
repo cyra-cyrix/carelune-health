@@ -38,7 +38,16 @@ export type AttentionInput = {
 };
 
 export type Attention = {
+  /** The one band a patient is LISTED under. Never use it to count conditions:
+   *  a patient with a pending decision and a deteriorating trend has both, and
+   *  is listed under "decision" only. Use `signals` for any count. */
   band: Band;
+  /** Every condition that applies, independent of the listing band. Summary
+   *  counts and filters read this, so "Clinical change 0" can never hide a
+   *  deteriorating patient who is listed elsewhere. */
+  signals: Band[];
+  /** True when a worsening trend applies but the patient is listed elsewhere. */
+  alsoClinicalChange: boolean;
   /** Why this patient is surfaced at all. */
   reason: string;
   /** What changed since the clinician last looked. */
@@ -92,6 +101,14 @@ export function deriveAttention(input: AttentionInput): Attention {
     : concerns > 0 ? "concern"
     : "stable";
 
+  // Conditions are counted from the patient's actual signals, not from the row
+  // they happen to be listed under.
+  const signals: Band[] = [];
+  if (isNew || decisions > 0) signals.push("decision");
+  if (worsening) signals.push("change");
+  if (concerns > 0) signals.push("concern");
+  if (signals.length === 0) signals.push("stable");
+
   const reason = isNew ? "Registered and has no recovery plan yet"
     : decisions > 0 ? `${decisions} item${decisions === 1 ? "" : "s"} awaiting your decision`
     : worsening ? `${signal?.label} is trending the wrong way`
@@ -111,6 +128,8 @@ export function deriveAttention(input: AttentionInput): Attention {
 
   return {
     band,
+    signals,
+    alsoClinicalChange: worsening && band !== "change",
     reason,
     changed,
     action,

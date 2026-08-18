@@ -254,7 +254,7 @@
 .hc-save:disabled { opacity: 0.5; cursor: default; box-shadow: none; }
 .hc-save.saved { background: var(--ok); box-shadow: none; }
 
-.hc-help-link { display: block; width: 100%; text-align: center; margin-top: 10px; font-size: 13px; font-weight: 700; color: var(--slate); background: none; border: 0; cursor: pointer; font-family: inherit; padding: 6px; }
+.hc-help-link { display: block; width: 100%; min-height: var(--cl-target); text-align: center; margin-top: 10px; font-size: 13px; font-weight: 700; color: var(--slate); background: none; border: 0; cursor: pointer; font-family: inherit; padding: 6px; }
 .hc-help-link:hover { color: var(--sky-ink); }
 
 /* food / med meta tags */
@@ -558,8 +558,10 @@
 
 /* ---- Medicines: Apple-Health-style grouped rows ---------------------- */
 
-.hc-mprog { height: 4px; border-radius: 999px; background: var(--hair); overflow: hidden; margin: 8px 2px 2px; }
-.hc-mprog span { display: block; height: 100%; background: var(--sky); border-radius: 999px; transition: width 350ms cubic-bezier(0.16, 1, 0.3, 1); }
+.hc-mprog { display: flex; height: 4px; border-radius: 999px; background: var(--hair); overflow: hidden; margin: 8px 2px 2px; }
+.hc-mprog span { display: block; height: 100%; background: var(--sky); transition: width 350ms cubic-bezier(0.16, 1, 0.3, 1); }
+/* A skipped dose is shown as its own amber segment — never folded into taken. */
+.hc-mprog span.skipped { background: var(--amber); }
 
 .hc-mgrp-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 20px 2px 8px; }
 .hc-mgrp-head .mg-label { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; color: var(--slate); }
@@ -725,7 +727,8 @@
 .hc-concern-foot time { font-size: 11.5px; color: var(--slate-2); }
 
 /* Numbered install / how-to steps. */
-.hc-steps { margin: 6px 0 0; padding-left: 20px; }
+.hc-steps { margin: 6px 0 0; padding-left: 22px; list-style: decimal outside; }
+.hc-steps li::marker { color: var(--slate); font-weight: 700; }
 .hc-steps li { padding: 5px 0; font-size: 14px; line-height: 1.5; color: var(--ink); }
 
 /* Back out of a section opened from More. */

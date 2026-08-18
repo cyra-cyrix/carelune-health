@@ -156,7 +156,10 @@ export default function Caseload({
     });
   }, [patients, pending, queries, signals, showPending, countType]);
 
+  // Listed under this band (one row per patient, no duplicates in the page).
   const bandOf = (key: Band) => enrich.filter((e) => e.band === key);
+  // Has this condition at all — the honest number for a counter or a filter.
+  const withSignal = (key: Band) => enrich.filter((e) => e.signals.includes(key));
   const activeCount = enrich.filter((e) => e.isActive).length;
   const newCount = enrich.filter((e) => e.isNew).length;
   const attentionCount = enrich.filter((e) => e.band !== "stable").length;
@@ -170,6 +173,9 @@ export default function Caseload({
     () => (filter === "all" ? BANDS : BANDS.filter((b) => b.key === filter)),
     [filter],
   );
+  // Filtering to a condition shows every patient who HAS it, including those
+  // listed under a higher-priority band.
+  const rowsFor = (key: Band) => (filter === key ? withSignal(key) : bandOf(key));
 
   const greetName = useMemo(() => {
     const raw = profile?.full_name?.trim();
@@ -271,12 +277,12 @@ export default function Caseload({
             <div className="mb-5 flex flex-wrap items-center gap-2" role="group" aria-label="Filter by attention">
               <FilterChip active={filter === "all"} onClick={() => setFilter("all")} label="All patients" count={enrich.length} />
               {BANDS.map((b) => (
-                <FilterChip key={b.key} active={filter === b.key} onClick={() => setFilter(b.key)} label={b.label} count={bandOf(b.key).length} tone={BAND_TONE[b.key]} />
+                <FilterChip key={b.key} active={filter === b.key} onClick={() => setFilter(b.key)} label={b.label} count={withSignal(b.key).length} tone={BAND_TONE[b.key]} />
               ))}
             </div>
 
             {visibleBands.map((band) => {
-              const rows = bandOf(band.key);
+              const rows = rowsFor(band.key);
               if (rows.length === 0 && filter === "all") return null;
               return (
                 <section key={band.key} className="mb-7" aria-labelledby={`band-${band.key}`}>
@@ -366,6 +372,14 @@ function AttentionRow({ e, onOpen }: { e: Enriched; onOpen: () => void }) {
             <SignalDot tone={reasonTone} pulse={urgent} />
             {e.reason}
           </div>
+
+          {/* Listed elsewhere, but a recorded trend is still moving the wrong way. */}
+          {e.alsoClinicalChange && (
+            <div className="mt-1 inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-warn-600">
+              <SignalDot tone="attention" />
+              Also has clinical change
+            </div>
+          )}
 
           {/* what changed · pending action · last update */}
           <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[12.5px] text-sage-600">

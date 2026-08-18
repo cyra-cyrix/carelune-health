@@ -18,7 +18,7 @@ vi.mock("../../branding/BrandingProvider", () => ({
 }));
 
 const { HomeCareMessages } = await import("./HomeCareMessages");
-const { HomeCareMedicines } = await import("./HomeCareMedicines");
+const { HomeCareMedicines, summariseDoses, doseSummaryLine } = await import("./HomeCareMedicines");
 
 afterEach(cleanup);
 beforeEach(() => raiseApproval.mockClear());
@@ -141,5 +141,55 @@ describe("Medicines", () => {
 
     expect(value.markMed).toHaveBeenCalledTimes(1);
     expect(value.clearMed).not.toHaveBeenCalled();
+  });
+});
+
+describe("dose reporting", () => {
+  it("counts a taken dose as taken and nothing else", () => {
+    expect(summariseDoses(["given", undefined, undefined])).toEqual({ total: 3, taken: 1, skipped: 0, remaining: 2 });
+  });
+
+  it("counts a skipped dose as skipped and never as taken", () => {
+    const d = summariseDoses(["skipped", undefined, undefined]);
+    expect(d.skipped).toBe(1);
+    expect(d.taken).toBe(0);
+    expect(d.remaining).toBe(2);
+  });
+
+  it("treats a missed dose the same way — not taken", () => {
+    expect(summariseDoses(["missed"])).toEqual({ total: 1, taken: 0, skipped: 1, remaining: 0 });
+  });
+
+  it("keeps the remaining count correct as doses are recorded", () => {
+    expect(summariseDoses(["given", "skipped", undefined, undefined, undefined]).remaining).toBe(3);
+    expect(summariseDoses(["given", "skipped", "given", "given", "skipped"]).remaining).toBe(0);
+  });
+
+  it("says taken and skipped separately, never one blended number", () => {
+    expect(doseSummaryLine(summariseDoses(["given", "skipped", undefined, undefined, undefined])))
+      .toBe("1 of 5 taken · 1 skipped · 3 still to record");
+    expect(doseSummaryLine(summariseDoses(["given", "given"]))).toBe("2 of 2 taken");
+    expect(doseSummaryLine(summariseDoses([]))).toBe("No scheduled doses today.");
+  });
+
+  it("does not report a skipped dose as taken on the Medicines screen", async () => {
+    const value = data();
+    render(<HcProvider value={value}><HomeCareMedicines /></HcProvider>);
+
+    fireEvent.click(screen.getByRole("button", { name: /^Aspirin/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Skipped" }));
+    fireEvent.click(screen.getByRole("button", { name: "Record as skipped" }));
+
+    await waitFor(() => expect(value.markMed).toHaveBeenCalledWith("med-1", "morning", "skipped"));
+    // The shell reconciles the optimistic map; re-render with the stored status.
+    cleanup();
+    render(
+      <HcProvider value={data({ medAdmin: new Map([["med-1|morning", "skipped" as const]]) })}>
+        <HomeCareMedicines />
+      </HcProvider>,
+    );
+    expect(screen.getByText("0 of 1 taken · 1 skipped")).toBeTruthy();
+    expect(screen.queryByText(/1 of 1 taken/)).toBeNull();
+    expect(screen.getByText("0/1 taken")).toBeTruthy();
   });
 });

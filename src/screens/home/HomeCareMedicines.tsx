@@ -47,6 +47,26 @@ function parseMed(m: MedicationRow): MedPlan {
 
 const foodLabel = (f: MedPlan["food"]) => (f === "before" ? "Before food" : f === "after" ? "After food" : null);
 
+export type DoseSummary = { total: number; taken: number; skipped: number; remaining: number };
+
+/** Count today's scheduled doses honestly. A dose that was skipped (or missed)
+ *  is NOT a dose that was taken — the two are reported separately, and the
+ *  remainder is what still has no record at all. */
+export function summariseDoses(statuses: (MedAdminStatus | undefined)[]): DoseSummary {
+  const taken = statuses.filter((s) => s === "given").length;
+  const skipped = statuses.filter((s) => s === "skipped" || s === "missed").length;
+  return { total: statuses.length, taken, skipped, remaining: statuses.length - taken - skipped };
+}
+
+/** "1 of 5 taken · 1 skipped · 3 still to record" — never a single blended count. */
+export function doseSummaryLine(d: DoseSummary): string {
+  if (d.total === 0) return "No scheduled doses today.";
+  const parts = [`${d.taken} of ${d.total} taken`];
+  if (d.skipped > 0) parts.push(`${d.skipped} skipped`);
+  if (d.remaining > 0) parts.push(`${d.remaining} still to record`);
+  return parts.join(" · ");
+}
+
 type Row = { med: MedicationRow; plan: MedPlan };
 type Focus = { med: MedicationRow; plan: MedPlan; slot: string };
 
@@ -63,9 +83,9 @@ export function HomeCareMedicines() {
   const statusOf = (medId: string, slot: string) => medAdmin.get(`${medId}|${slot}`);
 
   const nowPeriod = currentPeriod();
-  const scheduledTotal = parsed.reduce((n, r) => n + r.plan.slots.length, 0);
-  const scheduledDone = parsed.reduce((n, r) => n + r.plan.slots.filter((s) => statusOf(r.med.id, s)).length, 0);
-  const pct = scheduledTotal ? Math.round((scheduledDone / scheduledTotal) * 100) : 0;
+  const summary = summariseDoses(parsed.flatMap((r) => r.plan.slots.map((s) => statusOf(r.med.id, s))));
+  const takenPct = summary.total ? Math.round((summary.taken / summary.total) * 100) : 0;
+  const skippedPct = summary.total ? Math.round((summary.skipped / summary.total) * 100) : 0;
 
   // One dose = one record. The lock swallows a second tap arriving inside the
   // settle window, so a double tap can never mark-then-unmark the same slot.
@@ -110,18 +130,21 @@ export function HomeCareMedicines() {
 
   return (
     <div style={{ paddingTop: 8 }}>
-      <TabHead title="Medicines" sub={`${scheduledDone} of ${scheduledTotal} doses taken today`} />
-      <div className="hc-mprog" aria-hidden="true"><span style={{ width: `${pct}%` }} /></div>
+      <TabHead title="Medicines" sub={doseSummaryLine(summary)} />
+      <div className="hc-mprog" aria-hidden="true">
+        <span style={{ width: `${takenPct}%` }} />
+        {summary.skipped > 0 && <span className="skipped" style={{ width: `${skippedPct}%` }} />}
+      </div>
 
       {PERIODS.map((p) => {
         const rows = parsed.filter((r) => r.plan.slots.includes(p.key));
         if (rows.length === 0) return null;
-        const done = rows.filter((r) => statusOf(r.med.id, p.key)).length;
+        const taken = rows.filter((r) => statusOf(r.med.id, p.key) === "given").length;
         return (
           <section key={p.key}>
             <div className="hc-mgrp-head">
               <span className="mg-label">{PERIOD_ICON[p.key]} {p.label}{p.key === nowPeriod && <span className="mg-now">Now</span>}</span>
-              <span className={`mg-count${done === rows.length ? " done" : ""}`}>{done}/{rows.length}</span>
+              <span className={`mg-count${taken === rows.length ? " done" : ""}`}>{taken}/{rows.length} taken</span>
             </div>
             <div className="hc-mlist">{rows.map((r) => renderRow(r, p.key))}</div>
           </section>

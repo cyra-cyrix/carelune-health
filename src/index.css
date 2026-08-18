@@ -129,7 +129,7 @@
 .cl-install-copy { flex: 1; min-width: 150px; }
 .cl-install-steps { flex: 1; min-width: 180px; }
 .cl-install-steps b { display: block; font-weight: 700; }
-.cl-install-steps ol { margin: 6px 0 0; padding-left: 18px; }
+.cl-install-steps ol { margin: 6px 0 0; padding-left: 20px; list-style: decimal outside; }
 .cl-install-steps li { padding: 2px 0; }
 .cl-install-go {
   min-height: var(--cl-target); padding: 0 14px; border: 0; border-radius: var(--cl-radius-sm);

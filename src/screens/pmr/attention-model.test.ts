@@ -116,3 +116,55 @@ describe("lastUpdateLabel", () => {
     expect(lastUpdateLabel(null, NOW)).toBe("No readings recorded yet");
   });
 });
+
+describe("condition counting is independent of the listing band", () => {
+  const bothConditions = {
+    ...base,
+    patient: patient(),
+    allPending: { pending: 2, urgent: 0 },
+    concerns: { pending: 0, urgent: 0 },
+    signal: { label: "BP", change: "BP 128 → 146", improving: false, lastRecorded: "2026-08-18" },
+  };
+
+  it("lists a patient once, under the most actionable band", () => {
+    expect(deriveAttention(bothConditions).band).toBe("decision");
+  });
+
+  it("still counts the clinical change, so a summary cannot read a false zero", () => {
+    const a = deriveAttention(bothConditions);
+    expect(a.signals).toContain("decision");
+    expect(a.signals).toContain("change");
+    expect(a.signals).not.toContain("stable");
+  });
+
+  it("marks the row so the clinical change is visible where the patient is listed", () => {
+    expect(deriveAttention(bothConditions).alsoClinicalChange).toBe(true);
+  });
+
+  it("does not mark a patient who is already listed under Clinical change", () => {
+    const a = deriveAttention({
+      ...base,
+      patient: patient(),
+      signal: { label: "BP", change: "BP 128 → 146", improving: false, lastRecorded: "2026-08-18" },
+    });
+    expect(a.band).toBe("change");
+    expect(a.alsoClinicalChange).toBe(false);
+    expect(a.signals).toEqual(["change"]);
+  });
+
+  it("counts a decision, a clinical change and an unanswered concern all at once", () => {
+    const a = deriveAttention({
+      ...bothConditions,
+      concerns: { pending: 1, urgent: 0 },
+      allPending: { pending: 3, urgent: 0 },
+    });
+    expect(a.band).toBe("decision");
+    expect(a.signals.sort()).toEqual(["change", "concern", "decision"]);
+  });
+
+  it("gives a settled patient exactly one signal", () => {
+    const a = deriveAttention({ ...base, patient: patient() });
+    expect(a.signals).toEqual(["stable"]);
+    expect(a.alsoClinicalChange).toBe(false);
+  });
+});

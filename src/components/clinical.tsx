@@ -328,10 +328,11 @@ const BTN_VARIANT: Record<ButtonVariant, string> = {
   danger: "bg-coral-600 text-white hover:bg-coral-500 focus-visible:ring-coral-600 disabled:bg-coral-600/60",
 };
 
+// Every size clears the 44px minimum target, on a mouse and on a tablet.
 const BTN_SIZE: Record<ButtonSize, string> = {
-  sm: "gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px]",
-  md: "gap-2 rounded-xl px-4 py-2.5 text-[14px]",
-  lg: "gap-2 rounded-xl px-5 py-3 text-[15px]",
+  sm: "min-h-[44px] gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px]",
+  md: "min-h-[44px] gap-2 rounded-xl px-4 py-2.5 text-[14px]",
+  lg: "min-h-[48px] gap-2 rounded-xl px-5 py-3 text-[15px]",
 };
 
 /** The one button. `busy` shows a spinner and disables; `full` stretches. */
@@ -368,7 +369,7 @@ export function Button({
 
 /** Shared field surface — reuse on any bespoke control so borders/focus match. */
 export const inputClass =
-  "w-full rounded-xl bg-white px-3.5 py-2.5 text-[14px] text-ink ring-1 ring-line placeholder:text-sage-400 transition-shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:bg-mist-100 disabled:text-sage-500";
+  "w-full min-h-[44px] rounded-xl bg-white px-3.5 py-2.5 text-[14px] text-ink ring-1 ring-line placeholder:text-sage-400 transition-shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:bg-mist-100 disabled:text-sage-500";
 
 export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={`${inputClass} ${props.className ?? ""}`} />;

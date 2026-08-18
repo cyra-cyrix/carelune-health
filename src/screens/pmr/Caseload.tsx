@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { Icon } from "../../components/ui";
 import { useBranding } from "../../branding/BrandingProvider";
 import {
-  RecoveryTrajectory, SegmentedFilter, StatusTag, SignalDot, Avatar, SectionLabel, Reveal,
+  RecoveryTrajectory, StatusTag, SignalDot, Avatar, SectionLabel, Reveal,
   type Tone,
 } from "../../components/clinical";
+import { deriveAttention, BANDS, type Attention, type Band } from "./attention-model";
 import {
   listPatients,
   getPendingApprovalCounts,
@@ -34,6 +35,8 @@ type Signal = {
   change: string;
   tone: Tone;
   improving: boolean | null;
+  /** The most recent day the home team recorded anything (ISO yyyy-mm-dd). */
+  lastRecorded: string | null;
 };
 
 function computeSignal(readings: ReadingRow[]): Signal | null {
@@ -43,8 +46,10 @@ function computeSignal(readings: ReadingRow[]): Signal | null {
     { label: "GRBS", values: readings.map((r) => num(r.grbs)).filter(Number.isFinite), goodDir: "down" },
     { label: "Urine", values: readings.map((r) => num(r.urine_ml)).filter(Number.isFinite), goodDir: "up" },
   ];
+  const dates = readings.map((r) => r.reading_date).sort();
+  const lastRecorded = dates.length ? dates[dates.length - 1] : null;
   const pick = series.find((s) => s.values.length >= 2);
-  if (!pick) return null;
+  if (!pick) return lastRecorded ? { values: [], label: "", change: "", tone: "neutral", improving: null, lastRecorded } : null;
   const first = pick.values[0];
   const last = pick.values[pick.values.length - 1];
   const improving = pick.goodDir === "down" ? last < first : last > first;
@@ -55,15 +60,23 @@ function computeSignal(readings: ReadingRow[]): Signal | null {
     change: `${pick.label} ${first} → ${last}`,
     tone: steady ? "neutral" : improving ? "recovery" : "attention",
     improving: steady ? null : improving,
+    lastRecorded,
   };
 }
 
-type FilterKey = "attention" | "new" | "active" | "improving" | "all";
+type Enriched = Attention & { p: PatientRow; isNew: boolean; isActive: boolean; sig: Signal | null | undefined };
+
+const BAND_TONE: Record<Band, Tone> = {
+  decision: "escalation", change: "attention", concern: "calm", stable: "recovery",
+};
+
+type FilterKey = Band | "all";
 
 /**
- * Doctor Recovery Command Centre — the first screen answers, in five seconds,
- * who needs attention, who is progressing, and what decision is waiting. Real
- * computable data only; neutral language where a signal isn't available yet.
+ * Doctor Recovery Command Centre — attention first. The list is not a directory:
+ * it is ordered by what is waiting on the clinician, and every surfaced patient
+ * states why they are there, what changed, how urgent it is, what action is
+ * pending, and when the home team last recorded anything.
  * (Shared with the nurse/duty caseload via props — labels adapt, layout holds.)
  */
 export default function Caseload({
@@ -83,10 +96,11 @@ export default function Caseload({
   const { profile } = useBranding();
   const [patients, setPatients] = useState<PatientRow[]>([]);
   const [pending, setPending] = useState<Record<string, PendingCount>>({});
+  const [queries, setQueries] = useState<Record<string, PendingCount>>({});
   const [signals, setSignals] = useState<Record<string, Signal | null>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<FilterKey>("attention");
+  const [filter, setFilter] = useState<FilterKey>("all");
 
   useEffect(() => {
     let active = true;
@@ -96,13 +110,17 @@ export default function Caseload({
         if (!active) return;
         setPatients(ps);
         const ids = ps.map((p) => p.id);
-        const counts = !showPending
-          ? ({} as Record<string, PendingCount>)
-          : countType === "family"
-            ? await getFamilyQueryCounts(ids)
-            : await getPendingApprovalCounts(ids);
+        // The doctor view needs both totals so family concerns can be separated
+        // from the approvals that are actually theirs to decide.
+        const [allCounts, familyCounts] = showPending
+          ? await Promise.all([
+              countType === "family" ? Promise.resolve({} as Record<string, PendingCount>) : getPendingApprovalCounts(ids),
+              getFamilyQueryCounts(ids),
+            ])
+          : [{} as Record<string, PendingCount>, {} as Record<string, PendingCount>];
         if (!active) return;
-        setPending(counts);
+        setPending(allCounts);
+        setQueries(familyCounts);
         setLoading(false);
         // Trajectories load progressively — a slow/failed read never blocks the list.
         for (const p of ps.filter((x) => x.status === "active").slice(0, 24)) {
@@ -122,49 +140,36 @@ export default function Caseload({
     };
   }, [showPending, countType]);
 
-  /* ---- derived groupings (real data) ---- */
-  const enrich = useMemo(() => {
+  /* ---- derived attention model (real data only) ---- */
+  const enrich = useMemo<Enriched[]>(() => {
     return patients.map((p) => {
-      const c = pending[p.id];
-      const urgent = c?.urgent ?? 0;
-      const count = c?.pending ?? 0;
-      const isNew = p.status === "pending";
-      const isActive = p.status === "active";
       const sig = signals[p.id];
-      const needsAttention = isNew || (showPending && (urgent > 0 || count > 0));
-      const improving = isActive && sig?.improving === true;
-      const attentionReason = isNew
-        ? "New — needs a recovery plan"
-        : urgent > 0
-          ? `${urgent} urgent to review`
-          : count > 0
-            ? countType === "family"
-              ? `${count} to answer`
-              : `${count} awaiting your decision`
-            : sig?.improving === false
-              ? `${sig.label} trending the wrong way`
-              : "";
-      return { p, urgent, count, isNew, isActive, sig, needsAttention, improving, attentionReason };
+      const attention = deriveAttention({
+        patient: p,
+        allPending: pending[p.id] ?? { pending: 0, urgent: 0 },
+        concerns: queries[p.id] ?? { pending: 0, urgent: 0 },
+        signal: sig ? { label: sig.label, change: sig.change, improving: sig.improving, lastRecorded: sig.lastRecorded } : null,
+        showPending,
+        countType,
+      });
+      return { ...attention, p, isNew: p.status === "pending", isActive: p.status === "active", sig };
     });
-  }, [patients, pending, signals, showPending, countType]);
+  }, [patients, pending, queries, signals, showPending, countType]);
 
+  const bandOf = (key: Band) => enrich.filter((e) => e.band === key);
   const activeCount = enrich.filter((e) => e.isActive).length;
   const newCount = enrich.filter((e) => e.isNew).length;
-  const attentionList = enrich.filter((e) => e.needsAttention);
-  const improvingCount = enrich.filter((e) => e.improving).length;
-  const progressingCount = enrich.filter((e) => e.isActive && !e.needsAttention).length;
-  const totalPending = Object.values(pending).reduce((a, b) => a + b.pending, 0);
-  const totalUrgent = Object.values(pending).reduce((a, b) => a + b.urgent, 0);
+  const attentionCount = enrich.filter((e) => e.band !== "stable").length;
+  const stableCount = bandOf("stable").length;
+  const totalPending = Object.values(pending).reduce((a, b) => a + b.pending, 0)
+    || Object.values(queries).reduce((a, b) => a + b.pending, 0);
+  const totalUrgent = Object.values(pending).reduce((a, b) => a + b.urgent, 0)
+    || Object.values(queries).reduce((a, b) => a + b.urgent, 0);
 
-  const filtered = useMemo(() => {
-    switch (filter) {
-      case "attention": return attentionList;
-      case "new": return enrich.filter((e) => e.isNew);
-      case "active": return enrich.filter((e) => e.isActive);
-      case "improving": return enrich.filter((e) => e.improving);
-      default: return enrich;
-    }
-  }, [filter, enrich, attentionList]);
+  const visibleBands = useMemo(
+    () => (filter === "all" ? BANDS : BANDS.filter((b) => b.key === filter)),
+    [filter],
+  );
 
   const greetName = useMemo(() => {
     const raw = profile?.full_name?.trim();
@@ -182,7 +187,7 @@ export default function Caseload({
     <div className="min-h-full bg-mist">
       {/* ---- Dominant recovery overview (midnight hero) ---- */}
       <div className="bg-midnight-900">
-        <div className="relative mx-auto max-w-[1120px] overflow-hidden px-5 py-8 lg:px-8 lg:py-10">
+        <div className="relative mx-auto max-w-[1120px] overflow-hidden px-5 py-7 lg:px-8 lg:py-8">
           <div
             aria-hidden
             className="pointer-events-none absolute inset-0"
@@ -198,14 +203,11 @@ export default function Caseload({
                 <div className="mt-3 h-5 w-64 animate-pulse rounded bg-white/10" />
               ) : (
                 <p className="mt-2 max-w-xl text-[15px] leading-relaxed text-haze-300">
-                  {activeCount > 0 ? (
-                    <>
-                      <span className="font-semibold text-haze-100">{activeCount} patient{activeCount === 1 ? "" : "s"}</span> recovering at home
-                      {attentionList.length > 0 || progressingCount > 0 ? " · " : ""}
-                      {attentionList.length > 0 && <span className="font-semibold text-warn-300">{attentionList.length} need{attentionList.length === 1 ? "s" : ""} attention</span>}
-                      {attentionList.length > 0 && progressingCount > 0 && " · "}
-                      {progressingCount > 0 && <span className="text-brand-300">{progressingCount} progressing as expected</span>}
-                    </>
+                  {attentionCount > 0 ? (
+                    <><span className="font-semibold text-warn-300">{attentionCount} patient{attentionCount === 1 ? "" : "s"} need{attentionCount === 1 ? "s" : ""} attention</span>
+                      {stableCount > 0 && <> · <span className="text-brand-300">{stableCount} stable</span></>}</>
+                  ) : activeCount > 0 ? (
+                    <>All <span className="font-semibold text-haze-100">{activeCount} patient{activeCount === 1 ? "" : "s"}</span> are progressing as expected.</>
                   ) : newCount > 0 ? (
                     <><span className="font-semibold text-haze-100">{newCount} new registration{newCount === 1 ? "" : "s"}</span> waiting for a recovery plan.</>
                   ) : (
@@ -234,22 +236,6 @@ export default function Caseload({
               </div>
             )}
           </div>
-
-          {/* slim recovery distribution — one composed overview, not KPI cards */}
-          {!loading && activeCount + newCount > 0 && (
-            <div className="relative mt-7">
-              <div className="flex h-2 w-full overflow-hidden rounded-full bg-white/10">
-                {attentionList.length > 0 && <div className="h-full bg-warn-400" style={{ width: `${(attentionList.length / (activeCount + newCount)) * 100}%` }} />}
-                {progressingCount > 0 && <div className="h-full bg-brand-400" style={{ width: `${(progressingCount / (activeCount + newCount)) * 100}%` }} />}
-                {newCount > 0 && <div className="h-full bg-sky-500" style={{ width: `${(newCount / (activeCount + newCount)) * 100}%` }} />}
-              </div>
-              <div className="mt-2.5 flex flex-wrap gap-x-5 gap-y-1 text-[12px] text-haze-300">
-                {attentionList.length > 0 && <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-warn-400" />Needs attention</span>}
-                {progressingCount > 0 && <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-brand-400" />Progressing</span>}
-                {newCount > 0 && <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-sky-500" />New registration</span>}
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
@@ -259,7 +245,7 @@ export default function Caseload({
 
         {loading && (
           <ul className="space-y-3">
-            {[0, 1, 2].map((i) => <li key={i} className="h-[84px] animate-pulse rounded-2xl bg-white/70" />)}
+            {[0, 1, 2].map((i) => <li key={i} className="h-[92px] animate-pulse rounded-2xl bg-white/70" />)}
           </ul>
         )}
 
@@ -282,45 +268,41 @@ export default function Caseload({
 
         {!loading && !error && patients.length > 0 && (
           <>
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <div className="-mb-1 min-w-0 flex-1 overflow-x-auto pb-1">
-                <SegmentedFilter<FilterKey>
-                  value={filter}
-                  onChange={setFilter}
-                  options={[
-                    { key: "attention", label: "Attention", count: attentionList.length, tone: "attention" },
-                    { key: "new", label: "New", count: newCount, tone: "calm" },
-                    { key: "active", label: "Active", count: activeCount },
-                    { key: "improving", label: "Improving", count: improvingCount, tone: "recovery" },
-                    { key: "all", label: "All" },
-                  ]}
-                />
-              </div>
-              <span className="hidden shrink-0 text-[12.5px] text-sage-500 sm:block">{filtered.length} shown</span>
+            <div className="mb-5 flex flex-wrap items-center gap-2" role="group" aria-label="Filter by attention">
+              <FilterChip active={filter === "all"} onClick={() => setFilter("all")} label="All patients" count={enrich.length} />
+              {BANDS.map((b) => (
+                <FilterChip key={b.key} active={filter === b.key} onClick={() => setFilter(b.key)} label={b.label} count={bandOf(b.key).length} tone={BAND_TONE[b.key]} />
+              ))}
             </div>
 
-            {filtered.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-line bg-white/60 p-8 text-center">
-                <p className="text-[14px] font-semibold text-ink">
-                  {filter === "attention" ? "Nothing needs your attention" : filter === "improving" ? "No improving trends recorded yet" : "No patients in this view"}
-                </p>
-                <p className="mt-1 text-[13px] text-sage-500">
-                  {filter === "attention" ? "Every active patient is progressing as expected." : "Trends appear here as the home team records daily readings."}
-                </p>
-              </div>
-            ) : (
-              <ul className="space-y-2.5">
-                {filtered.map((e, i) => (
-                  <Reveal key={e.p.id} index={i}>
-                    <PatientRow
-                      e={e}
-                      onOpen={() => onOpen(e.p.id, e.p.status)}
-                      showPending={showPending}
-                    />
-                  </Reveal>
-                ))}
-              </ul>
-            )}
+            {visibleBands.map((band) => {
+              const rows = bandOf(band.key);
+              if (rows.length === 0 && filter === "all") return null;
+              return (
+                <section key={band.key} className="mb-7" aria-labelledby={`band-${band.key}`}>
+                  <div className="mb-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <h2 id={`band-${band.key}`} className="font-display text-[15px] font-semibold tracking-[-0.01em] text-ink">
+                      {band.label}
+                    </h2>
+                    <span className="text-[12.5px] tabular-nums text-sage-500">{rows.length}</span>
+                    <span className="text-[12.5px] text-sage-500">{band.blurb}</span>
+                  </div>
+                  {rows.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-line bg-white/60 p-6 text-center text-[13px] text-sage-500">
+                      Nothing in this group.
+                    </div>
+                  ) : (
+                    <ul className="space-y-2.5">
+                      {rows.map((e, i) => (
+                        <Reveal key={e.p.id} index={i}>
+                          <AttentionRow e={e} onOpen={() => onOpen(e.p.id, e.p.status)} />
+                        </Reveal>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              );
+            })}
           </>
         )}
       </div>
@@ -328,64 +310,69 @@ export default function Caseload({
   );
 }
 
+function FilterChip({ active, onClick, label, count, tone }: {
+  active: boolean; onClick: () => void; label: string; count: number; tone?: Tone;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`tap inline-flex min-h-[44px] items-center gap-2 rounded-full px-4 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${
+        active ? "bg-brand-800 text-white" : "bg-white text-sage-600 ring-1 ring-line hover:text-ink"
+      }`}
+    >
+      {tone && !active && <SignalDot tone={tone} />}
+      {label}
+      <span className="tabular-nums opacity-70">{count}</span>
+    </button>
+  );
+}
+
 /* ------------------------------- patient row ------------------------------ */
 
-function PatientRow({
-  e, onOpen,
-}: {
-  e: {
-    p: PatientRow; urgent: number; count: number; isNew: boolean; isActive: boolean;
-    sig: Signal | null | undefined; needsAttention: boolean; improving: boolean; attentionReason: string;
-  };
-  onOpen: () => void;
-  showPending: boolean;
-}) {
-  const { p, urgent, sig, isNew, needsAttention, attentionReason } = e;
-  const headline = p.diagnosis[0] ?? "Recovery at home";
-  const avatarTone: Tone = isNew ? "calm" : urgent > 0 ? "escalation" : needsAttention ? "attention" : "recovery";
+/** One surfaced patient: why · what changed · urgency · pending action · last update. */
+function AttentionRow({ e, onOpen }: { e: Enriched; onOpen: () => void }) {
+  const { p, sig, isNew, band, urgent } = e;
+  const avatarTone: Tone = isNew ? "calm" : urgent ? "escalation" : band === "stable" ? "recovery" : "attention";
+  const reasonTone: Tone = urgent ? "escalation" : band === "stable" ? "recovery" : band === "concern" ? "calm" : "attention";
 
   return (
     <li>
       <button
         type="button"
         onClick={onOpen}
-        className={`tap group flex w-full items-center gap-4 rounded-2xl bg-white p-4 text-left shadow-panel ring-1 transition-all hover:shadow-lift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${
-          urgent > 0 ? "ring-coral-500/25" : isNew ? "ring-sky-500/25" : "ring-ink/[0.05]"
+        className={`tap group flex w-full items-start gap-4 rounded-2xl bg-white p-4 text-left shadow-panel ring-1 transition-all hover:shadow-lift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${
+          urgent ? "ring-coral-500/25" : isNew ? "ring-sky-500/25" : "ring-ink/[0.05]"
         }`}
       >
-        <Avatar name={p.full_name} tone={avatarTone} size={46} />
+        <Avatar name={p.full_name} tone={avatarTone} size={44} />
 
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="truncate font-display text-[16px] font-semibold tracking-[-0.01em] text-ink">{p.full_name}</span>
-            {isNew ? (
-              <StatusTag tone="calm">New</StatusTag>
-            ) : p.status === "active" ? (
-              needsAttention ? <StatusTag tone={urgent > 0 ? "escalation" : "attention"}>Needs review</StatusTag>
-                : <StatusTag tone="recovery">On track</StatusTag>
-            ) : (
-              <StatusTag tone="neutral">{p.status === "in_review" ? "In review" : "Discharged"}</StatusTag>
-            )}
+            {urgent && <StatusTag tone="escalation">Urgent</StatusTag>}
+            {isNew && <StatusTag tone="calm">New</StatusTag>}
+            <span className="text-[12.5px] text-sage-500">
+              {isNew ? "Registered" : `Day ${dayAtHome(p)}`}
+              {p.diagnosis[0] ? ` · ${p.diagnosis[0]}` : ""}
+            </span>
           </div>
-          <div className="mt-0.5 truncate text-[13px] text-sage-500">
-            {isNew
-              ? `${p.age ?? "—"}${p.sex ? " " + p.sex : ""} · registered · tap to build the plan`
-              : `${p.age ?? "—"}${p.sex ? " " + p.sex : ""} · Day ${dayAtHome(p)} · ${headline}`}
+
+          {/* why attention is required */}
+          <div className={`mt-1.5 inline-flex items-center gap-1.5 text-[13px] font-semibold ${
+            urgent ? "text-coral-600" : band === "stable" ? "text-brand-700" : band === "concern" ? "text-sky-700" : "text-warn-600"
+          }`}>
+            <SignalDot tone={reasonTone} pulse={urgent} />
+            {e.reason}
           </div>
-          {/* meaningful change since yesterday */}
-          {!isNew && (needsAttention && attentionReason ? (
-            <div className={`mt-1.5 inline-flex items-center gap-1.5 text-[12.5px] font-medium ${urgent > 0 ? "text-coral-600" : "text-warn-600"}`}>
-              <SignalDot tone={urgent > 0 ? "escalation" : "attention"} pulse={urgent > 0} />
-              {attentionReason}
-            </div>
-          ) : sig ? (
-            <div className={`mt-1.5 inline-flex items-center gap-1.5 text-[12.5px] font-medium ${sig.tone === "recovery" ? "text-brand-700" : "text-sage-600"}`}>
-              <SignalDot tone={sig.tone} />
-              {sig.change}{sig.improving === true ? " · improving" : sig.improving === false ? " · watch" : " · steady"}
-            </div>
-          ) : (
-            <div className="mt-1.5 text-[12.5px] text-sage-400">Awaiting today&rsquo;s readings</div>
-          ))}
+
+          {/* what changed · pending action · last update */}
+          <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[12.5px] text-sage-600">
+            <div className="flex gap-1.5"><dt className="font-semibold text-sage-500">Changed</dt><dd>{e.changed}</dd></div>
+            <div className="flex gap-1.5"><dt className="font-semibold text-sage-500">Pending</dt><dd>{e.action}</dd></div>
+            <div className="flex gap-1.5"><dt className="font-semibold text-sage-500">Updated</dt><dd>{e.lastUpdate}</dd></div>
+          </dl>
         </div>
 
         {/* trajectory */}
@@ -395,7 +382,7 @@ function PatientRow({
           </div>
         )}
 
-        <Icon.ChevronRight width={18} height={18} className="shrink-0 text-sage-400 transition-colors group-hover:text-sky-600" />
+        <Icon.ChevronRight width={18} height={18} className="mt-1 shrink-0 text-sage-400 transition-colors group-hover:text-sky-600" />
       </button>
     </li>
   );

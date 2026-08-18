@@ -45,6 +45,16 @@
         "3100"
       ],
       "port": 3100
+    },
+    {
+      "name": "carelune-screenshot-harness",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "vite",
+        "--config",
+        "vite.screenshot.config.ts"
+      ],
+      "port": 5182
     }
   ]
 }

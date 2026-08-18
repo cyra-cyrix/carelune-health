@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import ConcernInbox from "../../components/ConcernInbox";
+import { useBranding } from "../../branding/BrandingProvider";
 import {
   RecoveryTrajectory, StatusTag, SignalDot, Avatar, SectionLabel, Panel, Reveal, ProvenanceTag,
   type Tone,
@@ -50,6 +51,7 @@ export default function PatientProgress({ patientId, onBack }: { patientId: stri
   const [plan, setPlan] = useState<PatientPlanRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [view, setView] = useState<PatientView>("overview");
 
   useEffect(() => {
     let active = true;
@@ -89,7 +91,7 @@ export default function PatientProgress({ patientId, onBack }: { patientId: stri
   if (error || !patient) {
     return (
       <div className="min-h-full bg-mist p-6">
-        <button type="button" onClick={onBack} className="tap text-[13px] font-semibold text-sky-700">← Command centre</button>
+        <button type="button" onClick={onBack} className="tap inline-flex min-h-[44px] items-center pr-3 text-[13px] font-semibold text-sky-700">← Command centre</button>
         <div className="mt-4 rounded-2xl bg-white p-5 shadow-panel ring-1 ring-ink/[0.05]">
           <p className="text-[14px] font-semibold text-ink">Couldn&rsquo;t load this patient</p>
           <p className="mt-1 text-[13px] text-sage-600">{error ?? "Not found."}</p>
@@ -98,32 +100,161 @@ export default function PatientProgress({ patientId, onBack }: { patientId: stri
     );
   }
 
+  const decisionsPending = approvals.filter((a) => a.status === "pending" && a.type !== "patient_query").length;
+  const concernsPending = approvals.filter((a) => a.status === "pending" && a.type === "patient_query").length;
+
   return (
     <div className="min-h-full bg-mist">
       <CockpitHero patient={patient} readings={readings} approvals={approvals} plan={plan} onBack={onBack} />
 
-      <main className="mx-auto max-w-[1120px] px-5 py-6 lg:px-8">
-        <div className="grid gap-5 lg:grid-cols-[1.55fr_1fr]">
-          {/* PRIMARY column — Now → Change → Detail */}
-          <div className="space-y-5">
-            <Reveal index={0}><ChangedSinceYesterday readings={readings} approvals={approvals} updates={updates} doneToday={doneToday} tasks={tasks} /></Reveal>
-            <Reveal index={1}><VitalsPanel readings={readings} /></Reveal>
-            <Reveal index={2}><DailyCarePanel tasks={tasks} doneToday={doneToday} /></Reveal>
-            <Reveal index={3}><Medicines patientId={patientId} rows={meds} onChange={setMeds} /></Reveal>
-            {plan && <Reveal index={4}><DietDetail plan={plan} /></Reveal>}
-          </div>
+      <SectionNav
+        value={view}
+        onChange={setView}
+        badges={{ communication: decisionsPending + concernsPending }}
+      />
 
-          {/* SECONDARY column — decisions & context */}
-          <div className="space-y-5">
-            <Reveal index={0}><ConcernInbox patientId={patientId} /></Reveal>
-            <Reveal index={1}><ApprovalsInbox patientId={patientId} rows={approvals.filter((a) => a.type !== "patient_query")} /></Reveal>
-            {plan && <Reveal index={2}><MilestonesPanel plan={plan} day={dayAtHome(patient)} /></Reveal>}
-            <Reveal index={3}><CareTeamPanel team={team} /></Reveal>
-            <Reveal index={4}><ClinicalTimeline rows={updates} /></Reveal>
+      <main className="mx-auto max-w-[1120px] px-5 py-6 lg:px-8">
+        {view === "overview" && (
+          <div className="grid gap-5 lg:grid-cols-[1.55fr_1fr]">
+            <div className="space-y-5">
+              <Reveal index={0}><ChangedSinceYesterday readings={readings} approvals={approvals} updates={updates} doneToday={doneToday} tasks={tasks} /></Reveal>
+              <Reveal index={1}><VitalsPanel readings={readings} /></Reveal>
+            </div>
+            <div className="space-y-5">
+              <Reveal index={0}><PendingDecisions decisions={decisionsPending} concerns={concernsPending} onOpen={() => setView("communication")} /></Reveal>
+              <Reveal index={1}><DailyCarePanel tasks={tasks} doneToday={doneToday} /></Reveal>
+            </div>
           </div>
-        </div>
+        )}
+
+        {view === "changes" && (
+          <div className="grid gap-5 lg:grid-cols-[1.55fr_1fr]">
+            <div className="space-y-5">
+              <Reveal index={0}><ChangedSinceYesterday readings={readings} approvals={approvals} updates={updates} doneToday={doneToday} tasks={tasks} /></Reveal>
+              <Reveal index={1}><VitalsPanel readings={readings} /></Reveal>
+            </div>
+            <div className="space-y-5">
+              <Reveal index={0}><DailyCarePanel tasks={tasks} doneToday={doneToday} /></Reveal>
+            </div>
+          </div>
+        )}
+
+        {view === "plan" && (
+          <div className="grid gap-5 lg:grid-cols-[1.55fr_1fr]">
+            <div className="space-y-5">
+              <Reveal index={0}><Medicines patientId={patientId} rows={meds} onChange={setMeds} /></Reveal>
+              {plan && <Reveal index={1}><DietDetail plan={plan} /></Reveal>}
+            </div>
+            <div className="space-y-5">
+              {plan && <Reveal index={0}><MilestonesPanel plan={plan} day={dayAtHome(patient)} /></Reveal>}
+              <Reveal index={1}><DailyCarePanel tasks={tasks} doneToday={doneToday} /></Reveal>
+            </div>
+          </div>
+        )}
+
+        {view === "communication" && (
+          <div className="grid gap-5 lg:grid-cols-[1.55fr_1fr]">
+            <div className="space-y-5">
+              <Reveal index={0}><ApprovalsInbox patientId={patientId} rows={approvals.filter((a) => a.type !== "patient_query")} /></Reveal>
+              <Reveal index={1}><ConcernInbox patientId={patientId} /></Reveal>
+            </div>
+            <div className="space-y-5">
+              <Reveal index={0}><CareTeamPanel team={team} /></Reveal>
+            </div>
+          </div>
+        )}
+
+        {view === "history" && (
+          <div className="max-w-[720px]">
+            <Reveal index={0}><ClinicalTimeline rows={updates} /></Reveal>
+          </div>
+        )}
       </main>
     </div>
+  );
+}
+
+/* ------------------------------ section nav -------------------------------- */
+
+type PatientView = "overview" | "changes" | "plan" | "communication" | "history";
+
+const VIEWS: { key: PatientView; label: string }[] = [
+  { key: "overview", label: "Overview" },
+  { key: "changes", label: "Changes" },
+  { key: "plan", label: "Plan" },
+  { key: "communication", label: "Communication" },
+  { key: "history", label: "History" },
+];
+
+/** One row of sections instead of ten stacked panels — the clinician chooses the
+ *  altitude, and each section is reachable in one click on tablet and desktop. */
+function SectionNav({ value, onChange, badges }: {
+  value: PatientView; onChange: (v: PatientView) => void; badges?: Partial<Record<PatientView, number>>;
+}) {
+  return (
+    <div className="border-b border-line bg-white px-5 lg:px-8">
+      <div className="mx-auto flex max-w-[1120px] items-center gap-1 overflow-x-auto" role="tablist" aria-label="Patient sections">
+        {VIEWS.map((v) => {
+          const on = value === v.key;
+          const badge = badges?.[v.key] ?? 0;
+          return (
+            <button
+              key={v.key}
+              type="button"
+              role="tab"
+              aria-selected={on}
+              onClick={() => onChange(v.key)}
+              className={`-mb-px inline-flex min-h-[44px] shrink-0 items-center gap-2 whitespace-nowrap border-b-2 px-3 text-[13.5px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${
+                on ? "border-brand-600 text-ink" : "border-transparent text-sage-600 hover:text-ink"
+              }`}
+            >
+              {v.label}
+              {badge > 0 && (
+                <span className="rounded-full bg-warn-100 px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-warn-600">{badge}</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------- pending decisions ---------------------------- */
+
+/** The clinician's own queue, stated plainly at the top of Overview. */
+function PendingDecisions({ decisions, concerns, onOpen }: { decisions: number; concerns: number; onOpen: () => void }) {
+  const total = decisions + concerns;
+  return (
+    <Panel
+      label="Decision"
+      title="Waiting on you"
+      aside={<StatusTag tone={total > 0 ? "attention" : "recovery"}>{total} pending</StatusTag>}
+    >
+      {total === 0 ? (
+        <p className="text-[13.5px] text-sage-500">Nothing is waiting on your decision for this patient.</p>
+      ) : (
+        <>
+          <ul className="space-y-2">
+            {decisions > 0 && (
+              <li className="flex items-center gap-2.5 text-[13.5px] text-ink">
+                <SignalDot tone="attention" />
+                <span><span className="font-semibold">{decisions}</span> clinical item{decisions === 1 ? "" : "s"} to approve, suggest on, or decline</span>
+              </li>
+            )}
+            {concerns > 0 && (
+              <li className="flex items-center gap-2.5 text-[13.5px] text-ink">
+                <SignalDot tone="calm" />
+                <span><span className="font-semibold">{concerns}</span> concern{concerns === 1 ? "" : "s"} raised from home, unanswered</span>
+              </li>
+            )}
+          </ul>
+          <button type="button" onClick={onOpen} className="tap mt-3 inline-flex min-h-[44px] items-center rounded-full bg-brand-800 px-4 text-[12.5px] font-semibold text-white hover:bg-brand-900">
+            Open Communication
+          </button>
+        </>
+      )}
+    </Panel>
   );
 }
 
@@ -158,8 +289,6 @@ function CockpitHero({
 }) {
   const day = dayAtHome(patient);
   const total = patient.journey_total_days || 30;
-  const week = Math.max(1, Math.ceil(day / 7));
-  const totalWeeks = Math.max(1, Math.ceil(total / 7));
 
   const urgentOpen = approvals.filter((a) => a.status === "pending" && a.urgency === "urgent").length;
   const pendingOpen = approvals.filter((a) => a.status === "pending").length;
@@ -181,8 +310,11 @@ function CockpitHero({
           ? { tone: "recovery", label: "Recovery progressing as expected" }
           : { tone: "calm", label: "Awaiting recovery plan" };
 
-  const condition = plan?.content?.clinical_summary?.trim()
-    || (patient.diagnosis.length ? patient.diagnosis.join(", ") : "Recovery at home");
+  const summary = plan?.content?.clinical_summary?.trim();
+  const condition = summary || (patient.diagnosis.length ? patient.diagnosis.join(", ") : "Recovery at home");
+  // Diagnoses are chips only when the condition line is the clinician's summary —
+  // otherwise the line already IS the diagnosis list.
+  const showDiagnosisChips = !!summary && patient.diagnosis.length > 0;
 
   const nextMilestone = useMemo(() => {
     const ms = (plan?.content?.milestones ?? []).filter((m) => m.by_day != null).sort((a, b) => (a.by_day! - b.by_day!));
@@ -195,7 +327,7 @@ function CockpitHero({
       <div className="relative mx-auto max-w-[1120px] overflow-hidden px-5 py-7 lg:px-8 lg:py-9">
         <div aria-hidden className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(80% 120% at 100% 0%, rgba(42,111,199,0.20), transparent 60%)" }} />
         <div className="relative">
-          <button type="button" onClick={onBack} className="tap text-[13px] font-semibold text-haze-300 hover:text-haze-100">← Command centre</button>
+          <button type="button" onClick={onBack} className="tap inline-flex min-h-[44px] items-center pr-3 text-[13px] font-semibold text-haze-300 hover:text-haze-100">← Command centre</button>
 
           <div className="mt-4 flex flex-wrap items-start justify-between gap-6">
             {/* identity + condition */}
@@ -206,20 +338,21 @@ function CockpitHero({
                   <h1 className="font-display text-[22px] font-semibold tracking-[-0.02em] text-haze-100 sm:text-[26px]">{patient.full_name}</h1>
                   <StatusTag tone={attention.tone}>{attention.label}</StatusTag>
                 </div>
+                {/* Identity said once: age/sex, where, and where they are in the
+                    journey. Week is derivable from the day, and the diagnosis
+                    already leads the condition line, so neither is repeated. */}
                 <p className="mt-1 text-[13px] text-haze-400">
                   {patient.age ?? "—"}{patient.sex ? " " + patient.sex : ""}{patient.location ? ` · ${patient.location}` : ""}
-                  {" · "}Day {day} of {total} · Week {week} of {totalWeeks}
+                  {" · "}Day {day} of {total}
                 </p>
                 <p className="mt-2.5 max-w-xl text-[14.5px] leading-relaxed text-haze-200">{condition}</p>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-2.5 py-1 text-[12px] font-medium text-haze-200 ring-1 ring-white/10">
-                    <span className="h-1.5 w-1.5 rounded-full bg-brand-400" />
-                    {plan ? "Spine & neuro recovery pathway" : "Pathway pending"}
-                  </span>
-                  {patient.diagnosis.slice(0, 2).map((dx) => (
-                    <span key={dx} className="rounded-full bg-white/[0.06] px-2.5 py-1 text-[12px] font-medium text-haze-200 ring-1 ring-white/10">{dx}</span>
-                  ))}
-                </div>
+                {showDiagnosisChips && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {patient.diagnosis.slice(0, 3).map((dx) => (
+                      <span key={dx} className="rounded-full bg-white/[0.06] px-2.5 py-1 text-[12px] font-medium text-haze-200 ring-1 ring-white/10">{dx}</span>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -282,7 +415,7 @@ function ChangedSinceYesterday({
   const newUpdates = updates.filter((u) => within24h(u.created_at)).length;
   const doneCount = tasks.filter((t) => doneToday.has(t.id)).length;
 
-  if (newConcerns > 0) changes.push({ tone: "attention", text: <><span className="font-semibold">{newConcerns}</span> new famil{newConcerns === 1 ? "y concern" : "y concerns"} raised</> });
+  if (newConcerns > 0) changes.push({ tone: "attention", text: <><span className="font-semibold">{newConcerns}</span> new concern{newConcerns === 1 ? "" : "s"} raised from home</> });
   if (newApprovals > 0) changes.push({ tone: "attention", text: <><span className="font-semibold">{newApprovals}</span> new item{newApprovals === 1 ? "" : "s"} awaiting your decision</> });
   if (tasks.length > 0) changes.push({ tone: doneCount >= tasks.length ? "recovery" : "neutral", text: <><span className="font-semibold">{doneCount}/{tasks.length}</span> care tasks completed today</> });
   if (newUpdates > 0 && changes.length < 5) changes.push({ tone: "calm", text: <><span className="font-semibold">{newUpdates}</span> update{newUpdates === 1 ? "" : "s"} from the care team today</> });
@@ -322,11 +455,11 @@ function VitalsPanel({ readings }: { readings: ReadingRow[] }) {
   return (
     <Panel label="Detail" title={`Vitals · last ${readings.length || 0} day${readings.length === 1 ? "" : "s"}`}>
       {cards.length === 0 ? (
-        <p className="text-[13.5px] text-sage-500">No readings recorded yet. They appear here as the caregiver logs them daily.</p>
+        <p className="text-[13.5px] text-sage-500">No readings recorded yet. They appear here as the home team logs them daily.</p>
       ) : (
         <>
           <div className="grid gap-3 sm:grid-cols-3">{cards}</div>
-          <p className="mt-3 text-[12px] text-sage-500">Recorded at home by the caregiver — a {readings.length}-day trend, not a single reading.</p>
+          <p className="mt-3 text-[12px] text-sage-500">Recorded at home by the family or caregiver — a {readings.length}-day trend, not a single reading.</p>
         </>
       )}
     </Panel>
@@ -475,6 +608,12 @@ function CareTeamPanel({ team }: { team: CareTeamMember[] }) {
 /* --------------------------- approvals inbox ------------------------------ */
 
 type LocalStatus = ApprovalRow["status"];
+
+/** Used only when a staff account has no name on file — never a clinical title
+ *  the signed-in person does not hold. */
+const STAFF_FALLBACK: Record<string, string> = {
+  pmr: "Doctor", duty_doctor: "Duty doctor", nurse: "Nurse",
+};
 const A_META: Record<ApprovalRow["type"], { label: string; tone: Tone }> = {
   duty_med: { label: "Medicine suggestion", tone: "calm" },
   nurse_query: { label: "Nurse query", tone: "recovery" },
@@ -482,6 +621,10 @@ const A_META: Record<ApprovalRow["type"], { label: string; tone: Tone }> = {
 };
 
 function ApprovalsInbox({ patientId, rows }: { patientId: string; rows: ApprovalRow[] }) {
+  // A note written here is attributed to the person who actually wrote it. It
+  // used to be stamped "Lead clinician" for whoever was signed in, which would
+  // read as a doctor's note even when an admin account wrote it.
+  const { profile } = useBranding();
   const [items, setItems] = useState(rows);
   const [noteFor, setNoteFor] = useState<string | null>(null);
   const [note, setNote] = useState("");
@@ -498,7 +641,13 @@ function ApprovalsInbox({ patientId, rows }: { patientId: string; rows: Approval
     const text = note.trim(); setNote("");
     try {
       await decideApproval(it.id, "suggested");
-      if (text) await addUpdate(patientId, { source: "pmr", author_name: "Lead clinician", body: `Re: ${it.from_name ?? "query"} — ${text}` });
+      if (text) {
+        await addUpdate(patientId, {
+          source: (profile?.role as UpdateRow["source"]) ?? "pmr",
+          author_name: profile?.full_name?.trim() || STAFF_FALLBACK[profile?.role ?? ""] || "Care team",
+          body: `Re: ${it.from_name ?? "query"} — ${text}`,
+        });
+      }
     } catch { setItems(prev); } finally { setBusy(null); }
   };
 
@@ -628,8 +777,8 @@ function Medicines({ patientId, rows, onChange }: { patientId: string; rows: Med
                 <span className="block text-[11px] text-sage-400">{m.timing}{m.note ? ` · ${m.note}` : ""}</span>
               </span>
               <span className="shrink-0 rounded-md bg-mist px-1.5 py-0.5 text-[12px] font-semibold tabular-nums text-ink ring-1 ring-ink/[0.04]">{m.freq}</span>
-              <button type="button" onClick={() => startEdit(m)} className="tap shrink-0 text-[12px] font-semibold text-sky-700">Edit</button>
-              <button type="button" onClick={() => remove(m.id)} aria-label={`Remove ${m.name}`} className="tap shrink-0 px-1 text-[16px] leading-none text-sage-400 hover:text-coral-500">×</button>
+              <button type="button" onClick={() => startEdit(m)} className="tap inline-flex min-h-[44px] shrink-0 items-center px-2 text-[12.5px] font-semibold text-sky-700">Edit</button>
+              <button type="button" onClick={() => remove(m.id)} aria-label={`Remove ${m.name}`} className="tap inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center text-[18px] leading-none text-sage-400 hover:text-coral-500">×</button>
             </li>
           ))}
         </ul>
@@ -642,7 +791,7 @@ function Medicines({ patientId, rows, onChange }: { patientId: string; rows: Med
 /* ---------------------------- clinical timeline --------------------------- */
 
 const SRC: Record<UpdateRow["source"], { label: string; tone: Tone }> = {
-  caregiver: { label: "Caregiver", tone: "calm" },
+  caregiver: { label: "From home", tone: "calm" },
   nurse: { label: "Rehab nurse", tone: "recovery" },
   duty_doctor: { label: "Duty doctor", tone: "neutral" },
   pmr: { label: "Lead clinician", tone: "attention" },

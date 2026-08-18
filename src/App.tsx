@@ -91,7 +91,7 @@ function Shell() {
   if (!role) return <NoRole />;
 
   return (
-    <div className="min-h-screen bg-mist">
+    <div className="cl-app min-h-screen bg-mist">
       <TopBar role={role} />
       <RoleSurface role={role} />
       {/* Restrained install affordance — only ever mounted for a signed-in user. */}

@@ -13,6 +13,7 @@ import {
 import {
   Panel, SectionLabel, StatusTag, JourneySteps, ProvenanceTag, Reveal, type JourneyState,
 } from "../../components/clinical";
+import { useBranding } from "../../branding/BrandingProvider";
 
 /**
  * AI Plan Studio — the doctor-led journey after patient setup, presented as a
@@ -54,7 +55,7 @@ export default function PlanStudio({ patientId, onExit }: { patientId: string; o
         <div className="relative mx-auto max-w-[1180px] overflow-hidden px-5 py-6 lg:px-8">
           <div aria-hidden className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(70% 120% at 100% 0%, rgba(23,179,161,0.18), transparent 60%)" }} />
           <div className="relative">
-            <button type="button" onClick={onExit} className="tap text-[13px] font-semibold text-haze-300 hover:text-haze-100">← Back to caseload</button>
+            <button type="button" onClick={onExit} className="tap inline-flex min-h-[44px] items-center pr-3 text-[13px] font-semibold text-haze-300 hover:text-haze-100">← Back to caseload</button>
             <div className="mt-3 flex flex-wrap items-center justify-between gap-4">
               <div className="min-w-0">
                 <SectionLabel onDark>AI Plan Studio</SectionLabel>
@@ -75,7 +76,7 @@ export default function PlanStudio({ patientId, onExit }: { patientId: string; o
       <div className="mx-auto max-w-[1180px] px-5 py-6 lg:px-8">
         {error && <div className="mb-4"><ErrorNote>{error}</ErrorNote></div>}
         {plan ? (
-          <PlanReview plan={plan} onExit={onExit} onRegeneratePrompt={() => setPlan(null)} onSaved={(pl) => setPlan(pl)} />
+          <PlanReview plan={plan} patient={patient} onExit={onExit} onRegeneratePrompt={() => setPlan(null)} onSaved={(pl) => setPlan(pl)} />
         ) : (
           <PreparePanel patient={patient} onPatientChanged={refreshPatient} onGenerated={(pl) => setPlan(pl)} />
         )}
@@ -414,22 +415,46 @@ function FactEditList({ label, rows, onChange }: { label: string; rows: FactItem
 
 /* =============================== REVIEW ================================== */
 
+const APPROVER_ROLE: Record<string, string> = {
+  pmr: "Doctor", duty_doctor: "Duty doctor", nurse: "Nurse",
+};
+
 function PlanReview({
-  plan, onExit, onRegeneratePrompt, onSaved,
+  plan, patient, onExit, onRegeneratePrompt, onSaved,
 }: {
   plan: PatientPlanRow;
+  patient: PatientRow | null;
   onExit: () => void;
   onRegeneratePrompt: () => void;
   onSaved: (p: PatientPlanRow) => void;
 }) {
+  // Approval is attributed to the signed-in account, not to a generic "doctor".
+  // An institution admin signing in does not become the approving clinician.
+  const { profile } = useBranding();
+  const approverName = profile?.full_name?.trim() || "this account";
+  const approverRole = profile?.is_admin && profile?.role !== "pmr" ? "Admin" : APPROVER_ROLE[profile?.role ?? ""] ?? "Staff";
   const [draft, setDraft] = useState<PlanDraft>(plan.content);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState<"save" | "approve" | "activate" | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [savedNote, setSavedNote] = useState<string | null>(null);
   const [confirmActivate, setConfirmActivate] = useState(false);
+  const [pathwayName, setPathwayName] = useState<string | null>(null);
   const approved = plan.status === "approved";
   const activated = !!plan.activated_at;
+
+  // The governing pathway is named in the activation confirmation, so the
+  // clinician can see exactly which plan is about to become live care.
+  useEffect(() => {
+    const pack = patient?.pathway_pack_id;
+    const version = patient?.pathway_version_id;
+    if (!pack || !version) return;
+    let live = true;
+    getPackPathways(pack)
+      .then((rows) => { if (live) setPathwayName(rows.find((r) => r.version_id === version)?.name ?? null); })
+      .catch(() => undefined);
+    return () => { live = false; };
+  }, [patient?.pathway_pack_id, patient?.pathway_version_id]);
 
   const persist = async (approve: boolean) => {
     setBusy(approve ? "approve" : "save"); setErr(null); setSavedNote(null);
@@ -442,10 +467,11 @@ function PlanReview({
     finally { setBusy(null); }
   };
 
+  // Activation is a separate, deliberate step: it can only run on a plan that is
+  // already approved, so approving and going live are never one ambiguous tap.
   const activate = async () => {
     setBusy("activate"); setErr(null);
     try {
-      if (!approved) await savePlan(plan.id, draft, true);
       await activateCarePlan(plan.id);
       onExit();
     } catch (e) { setErr(e instanceof Error ? e.message : "Could not activate the care plan."); setBusy(null); }
@@ -552,7 +578,26 @@ function PlanReview({
         </Reveal>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Reveal index={5}><FactListCard title="Diet" rows={draft.diet ?? []} empty="No diet instructions." /></Reveal>
+          {/* Diet is editable: a discharge summary that says nothing about diet
+              used to leave a "Missing: diet" flag with no way to answer it. */}
+          <Reveal index={5}>
+            <EditableFactCard title="Diet" subtitle="Add what the document did not state — your entry is marked as yours." editing={editing}
+              rows={draft.diet ?? []}
+              render={(d) => (
+                <span className="flex flex-wrap items-baseline gap-x-2 text-[13.5px] text-ink">
+                  <span className="min-w-0">{d.text}</span>
+                  <ProvenanceTag p={d.provenance} />
+                </span>
+              )}
+              empty="No diet instructions."
+              editor={(d, set) => (
+                <input value={d.text} onChange={(e) => set({ ...d, text: e.target.value, provenance: "doctor" })}
+                  placeholder="e.g. Soft diet, thickened fluids" className={`${inputCls} w-full`} />
+              )}
+              onChange={(rows) => setDraft({ ...draft, diet: rows as PlanFact[] })}
+              blank={{ text: "", provenance: "doctor" } as PlanFact}
+            />
+          </Reveal>
           <Reveal index={5}><FactListCard title="Safety boundaries" rows={draft.precautions ?? []} empty="No precautions captured." /></Reveal>
         </div>
 
@@ -600,36 +645,88 @@ function PlanReview({
 
           {confirmActivate && !activated ? (
             <div className="mt-4 rounded-2xl bg-sky-50 p-4 ring-1 ring-sky-200">
-              <p className="text-[13px] font-semibold text-ink">Activate this care plan?</p>
-              <p className="mt-1 text-[12px] text-sage-600">It becomes the live plan the home team follows. It can be re-run safely and preserves earlier versions.</p>
+              <p className="text-[13.5px] font-semibold text-ink">Activate this care plan?</p>
+              {/* What is going live, for whom, under which pathway, and what it
+                  changes — stated before the irreversible-feeling step. */}
+              <dl className="mt-2.5 space-y-1.5 text-[12.5px]">
+                <div className="flex gap-2">
+                  <dt className="w-[74px] shrink-0 font-semibold text-sage-500">Patient</dt>
+                  <dd className="min-w-0 flex-1 font-semibold text-ink">{patient?.full_name ?? "This patient"}</dd>
+                </div>
+                <div className="flex gap-2">
+                  <dt className="w-[74px] shrink-0 font-semibold text-sage-500">Pathway</dt>
+                  <dd className="min-w-0 flex-1 text-ink">{pathwayName ?? "The pathway version assigned in patient setup"}</dd>
+                </div>
+                <div className="flex gap-2">
+                  <dt className="w-[74px] shrink-0 font-semibold text-sage-500">Version</dt>
+                  <dd className="min-w-0 flex-1 text-ink">v{plan.version}</dd>
+                </div>
+                <div className="flex gap-2">
+                  <dt className="w-[74px] shrink-0 font-semibold text-sage-500">Effect</dt>
+                  <dd className="min-w-0 flex-1 text-ink">
+                    {medCount} medicine{medCount === 1 ? "" : "s"} and {taskCount} daily task{taskCount === 1 ? "" : "s"} become live care.
+                    The family, caregiver, nurse and duty doctor start following this plan today. Earlier versions are preserved.
+                  </dd>
+                </div>
+              </dl>
               <div className="mt-3 space-y-2">
                 <PrimaryButton onClick={activate} disabled={busy === "activate"} className="w-full">{busy === "activate" ? "Activating…" : "Confirm — activate care plan"}</PrimaryButton>
                 <GhostButton onClick={() => setConfirmActivate(false)} disabled={busy === "activate"} className="w-full">Cancel</GhostButton>
               </div>
             </div>
           ) : (
-            <div className="mt-4 space-y-2">
+            <div className="mt-4">
               {activated ? (
-                <>
+                <div className="space-y-2">
                   <PrimaryButton onClick={onExit} className="w-full">Back to caseload</PrimaryButton>
                   <GhostButton onClick={onRegeneratePrompt} className="w-full">Amend (new version)</GhostButton>
-                </>
+                </div>
               ) : (
                 <>
-                  {savedNote && <p className="text-center text-[12.5px] font-semibold text-brand-700">{savedNote} ✓</p>}
-                  <button
-                    type="button"
-                    onClick={() => setConfirmActivate(true)}
-                    disabled={!!busy}
-                    className="tap w-full rounded-2xl bg-brand-800 px-4 py-3 text-[14.5px] font-semibold text-white shadow-sm transition-colors hover:bg-brand-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:opacity-50"
-                  >
-                    Approve &amp; activate care plan
-                  </button>
-                  <div className="flex gap-2">
-                    <GhostButton onClick={() => persist(true)} disabled={!!busy} className="flex-1">{busy === "approve" ? "Approving…" : "Approve only"}</GhostButton>
-                    <GhostButton onClick={() => persist(false)} disabled={!!busy} className="flex-1">{busy === "save" ? "Saving…" : "Save draft"}</GhostButton>
-                  </div>
-                  <button type="button" onClick={onRegeneratePrompt} disabled={!!busy} className="tap w-full py-1 text-center text-[12.5px] font-semibold text-sage-500 hover:text-ink">Regenerate from sources</button>
+                  {savedNote && <p className="mb-2 text-center text-[12.5px] font-semibold text-brand-700">{savedNote} ✓</p>}
+
+                  {/* Three distinct steps, never two look-alike buttons side by
+                      side: keep working · record your clinical approval · make it
+                      live. Activation is only offered once the plan is approved. */}
+                  <ol className="space-y-2.5">
+                    <li className="rounded-2xl border border-line bg-white p-3">
+                      <p className="text-[13px] font-semibold text-ink">1 · Save draft</p>
+                      <p className="mt-0.5 text-[12px] leading-relaxed text-sage-600">Keeps your edits. Nothing is approved and no care changes.</p>
+                      <GhostButton onClick={() => persist(false)} disabled={!!busy} className="mt-2 w-full">{busy === "save" ? "Saving…" : "Save draft"}</GhostButton>
+                    </li>
+
+                    <li className={`rounded-2xl border p-3 ${approved ? "border-brand-200 bg-brand-50/50" : "border-line bg-white"}`}>
+                      <p className="text-[13px] font-semibold text-ink">2 · Approve draft</p>
+                      <p className="mt-0.5 text-[12px] leading-relaxed text-sage-600">
+                        {approved
+                          ? "Approved. The home team is not following it yet — activate it below."
+                          : "Records your clinical approval of this version. Care is still not live."}
+                      </p>
+                      <p className="mt-1 text-[11.5px] text-sage-500">Recorded against {approverName} · {approverRole}.</p>
+                      <GhostButton onClick={() => persist(true)} disabled={!!busy} className="mt-2 w-full">
+                        {busy === "approve" ? "Approving…" : approved ? "Re-approve after edits" : "Approve draft"}
+                      </GhostButton>
+                    </li>
+
+                    <li className={`rounded-2xl border p-3 ${approved ? "border-line bg-white" : "border-dashed border-line bg-mist/60"}`}>
+                      <p className="text-[13px] font-semibold text-ink">3 · Activate plan</p>
+                      <p className="mt-0.5 text-[12px] leading-relaxed text-sage-600">
+                        {approved
+                          ? "Makes this the live plan the home team follows from today."
+                          : "Available once the draft is approved."}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmActivate(true)}
+                        disabled={!!busy || !approved}
+                        className="tap mt-2 w-full rounded-2xl bg-brand-800 px-4 py-3 text-[14px] font-semibold text-white shadow-sm transition-colors hover:bg-brand-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:opacity-40"
+                      >
+                        Activate care plan
+                      </button>
+                    </li>
+                  </ol>
+
+                  <button type="button" onClick={onRegeneratePrompt} disabled={!!busy} className="tap mt-3 w-full py-1 text-center text-[12.5px] font-semibold text-sage-500 hover:text-ink">Regenerate from sources</button>
                 </>
               )}
             </div>

@@ -24,7 +24,7 @@ import {
 /**
  * Nurse patient view — the nurse is the family's first point of contact. Redesigned
  * in the clinical design language: a hero (who · condition · what needs answering ·
- * duty window), then the family message thread, the caregiver's readings, the
+ * duty window), then the family message thread, the readings recorded at home, the
  * medicine list (read-only) and the care feed. She answers families here and
  * escalates clinical questions to the doctor.
  */
@@ -180,7 +180,7 @@ function NurseHero({
                   {improving != null && <span className={`text-[11px] font-bold ${improving ? "text-brand-300" : "text-warn-300"}`}>{improving ? "improving" : "watch"}</span>}
                 </div>
                 <div className="mt-2"><RecoveryTrajectory values={bpSys} tone={improving === false ? "attention" : "recovery"} height={40} animate onDark /></div>
-                <p className="mt-2 text-[11.5px] text-haze-400">Recorded at home by the caregiver</p>
+                <p className="mt-2 text-[11.5px] text-haze-400">Recorded at home by the family or caregiver</p>
               </div>
             )}
           </div>
@@ -197,7 +197,7 @@ function ReadingsPanel({ readings }: { readings: ReadingRow[] }) {
   if (!latest) {
     return (
       <Panel label="Detail" title="Readings">
-        <p className="text-[13.5px] text-sage-500">No readings recorded yet. They appear here as the caregiver logs them.</p>
+        <p className="text-[13.5px] text-sage-500">No readings recorded yet. They appear here as the home team logs them.</p>
       </Panel>
     );
   }
@@ -212,7 +212,7 @@ function ReadingsPanel({ readings }: { readings: ReadingRow[] }) {
     ["Activity", latest.activity],
   ];
   return (
-    <Panel label="Detail" title={`Readings · ${niceDate(latest.reading_date)}`} aside={<span className="text-[12px] text-sage-500">by the caregiver</span>}>
+    <Panel label="Detail" title={`Readings · ${niceDate(latest.reading_date)}`} aside={<span className="text-[12px] text-sage-500">recorded at home</span>}>
       <div className="grid gap-3 sm:grid-cols-3">
         {vitals.map(([k, v]) => (
           <div key={k} className="rounded-2xl bg-mist p-3.5 ring-1 ring-ink/[0.04]">
@@ -322,7 +322,7 @@ function RaiseQuery({ patientId, myName }: { patientId: string; myName: string |
 /* ------------------------------- care feed -------------------------------- */
 
 const SRC: Record<UpdateRow["source"], { label: string; tone: Tone }> = {
-  caregiver: { label: "Caregiver", tone: "calm" },
+  caregiver: { label: "From home", tone: "calm" },
   nurse: { label: "Rehab nurse", tone: "recovery" },
   duty_doctor: { label: "Duty doctor", tone: "neutral" },
   pmr: { label: "Lead clinician", tone: "attention" },

@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { CareTaskRow, TaskOutcome, ReadingsInput } from "../../lib/db";
 import { PARAM_CATALOGUE, type MonitorParam } from "../../domain/monitoring";
-import { useHc, classifyTask, HcIcon, OUTCOME_META, useNow } from "./hc-kit";
+import { useHc, classifyTask, HcIcon, OUTCOME_META, useNow, useSubmit } from "./hc-kit";
 
 /* ============================================================================
    Action Stage — the centre of Today. Renders the CORRECT input for the task in
@@ -95,20 +95,22 @@ function ReadingRenderer({ task, params, onRecorded }: { task: CareTaskRow; para
   const [vals, setVals] = useState<Record<string, string>>(() =>
     Object.fromEntries(params.map((p) => [p.field, readings[p.field] ?? ""])),
   );
-  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  // One reading = one write: the guard drops any tap made while a save is in flight.
+  const { state: status, run, reset } = useSubmit(0);
   const recorded = outcomes.get(task.id) === "done";
 
-  const set = (field: string, v: string) => { setVals((s) => ({ ...s, [field]: v })); setStatus("idle"); };
+  const set = (field: string, v: string) => { setVals((s) => ({ ...s, [field]: v })); reset(); };
   const anyFilled = params.some((p) => (vals[p.field] ?? "").trim() !== "");
 
-  const save = async () => {
-    setStatus("saving");
+  const save = () => run(async () => {
     const patch: Partial<ReadingsInput> = {};
     for (const p of params) if (READING_FIELDS.has(p.field)) patch[p.field] = vals[p.field] ?? "";
-    const ok = await saveReadingFields(patch);
-    if (ok) { setStatus("saved"); recordOutcome(task.id, "done"); setTimeout(onRecorded, 650); }
-    else setStatus("error");
-  };
+    if (!(await saveReadingFields(patch))) return false;
+    // The value is stored first; only then is the occurrence marked recorded.
+    recordOutcome(task.id, "done");
+    setTimeout(onRecorded, 650);
+    return true;
+  });
 
   return (
     <>
@@ -124,10 +126,13 @@ function ReadingRenderer({ task, params, onRecorded }: { task: CareTaskRow; para
       {recorded && status !== "saved" && (
         <div className="hc-done-badge"><HcIcon.Check size={14} /> Recorded today — you can update it</div>
       )}
+      {status === "error" && (
+        <p className="hc-save-error" role="alert">Couldn&rsquo;t save the reading. Nothing was lost — tap Try again.</p>
+      )}
       <button type="button" className={`hc-save${status === "saved" ? " saved" : ""}`} onClick={save} disabled={status === "saving" || !anyFilled}>
         {status === "saved" ? <><HcIcon.Check size={17} /> Saved</>
           : status === "saving" ? "Saving…"
-          : status === "error" ? "Couldn't save — tap to retry"
+          : status === "error" ? "Try again"
           : "Save reading"}
       </button>
     </>
@@ -239,28 +244,29 @@ const FOOD_AMOUNTS = ["All", "Most", "About half", "A little", "Refused"];
 function FoodRenderer({ task, onRecorded }: { task: CareTaskRow; onRecorded: () => void }) {
   const { readings, saveReadingFields, recordOutcome, outcomes } = useHc();
   const [amount, setAmount] = useState(readings.foodIntake ?? "");
-  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const { state: status, run, reset } = useSubmit(0);
   const recorded = outcomes.get(task.id) === "done";
 
-  const save = async () => {
-    setStatus("saving");
-    const ok = await saveReadingFields({ foodIntake: amount });
-    if (ok) { setStatus("saved"); recordOutcome(task.id, amount === "Refused" ? "refused" : "done"); setTimeout(onRecorded, 650); }
-    else setStatus("error");
-  };
+  const save = () => run(async () => {
+    if (!(await saveReadingFields({ foodIntake: amount }))) return false;
+    recordOutcome(task.id, amount === "Refused" ? "refused" : "done");
+    setTimeout(onRecorded, 650);
+    return true;
+  });
   return (
     <>
       <div className="hc-field">
         <div className="hc-lab"><b>How much was taken?</b></div>
         <div className="hc-choices">
           {FOOD_AMOUNTS.map((o) => (
-            <button key={o} type="button" className={`hc-choice${amount === o ? " on" : ""}`} onClick={() => { setAmount(amount === o ? "" : o); setStatus("idle"); }}>{o}</button>
+            <button key={o} type="button" className={`hc-choice${amount === o ? " on" : ""}`} onClick={() => { setAmount(amount === o ? "" : o); reset(); }}>{o}</button>
           ))}
         </div>
       </div>
       {recorded && status !== "saved" && <div className="hc-done-badge"><HcIcon.Check size={14} /> Recorded today</div>}
+      {status === "error" && <p className="hc-save-error" role="alert">Couldn&rsquo;t save. Nothing was lost — tap Try again.</p>}
       <button type="button" className={`hc-save${status === "saved" ? " saved" : ""}`} onClick={save} disabled={status === "saving" || !amount}>
-        {status === "saved" ? <><HcIcon.Check size={17} /> Saved</> : status === "saving" ? "Saving…" : status === "error" ? "Couldn't save — retry" : "Save"}
+        {status === "saved" ? <><HcIcon.Check size={17} /> Saved</> : status === "saving" ? "Saving…" : status === "error" ? "Try again" : "Save"}
       </button>
     </>
   );
@@ -304,16 +310,25 @@ const OUTCOMES_FOR: Record<string, TaskOutcome[]> = {
   task: ["done", "unable", "refused", "na"],
 };
 
+/** Exercise / activity reads in the family's words: completed, or couldn't. */
+const PHYSIO_LABEL: Record<string, string> = { done: "Completed", unable: "Couldn’t complete", refused: "Refused" };
+
 function OutcomeRenderer({ task, kind, onRecorded }: { task: CareTaskRow; kind: string; onRecorded: () => void }) {
   const { recordOutcome, outcomes } = useHc();
   const current = outcomes.get(task.id);
   const set = OUTCOMES_FOR[kind] ?? OUTCOMES_FOR.task;
+  // A settle window so an accidental double tap can't record and immediately
+  // un-record the same occurrence. Deliberate corrections still work after it.
+  const settling = useRef(false);
   const pick = (o: TaskOutcome) => {
+    if (settling.current) return;
+    settling.current = true;
+    window.setTimeout(() => { settling.current = false; }, 600);
     const next = current === o ? null : o;
     recordOutcome(task.id, next);
     if (next) setTimeout(onRecorded, 500);
   };
-  const label: Record<string, string> | undefined = kind === "physio" ? { done: "Completed", unable: "Unable", refused: "Refused" } : undefined;
+  const label: Record<string, string> | undefined = kind === "physio" ? PHYSIO_LABEL : undefined;
   return (
     <div className="hc-outcomes" style={{ marginTop: 16, gridTemplateColumns: set.length === 3 ? "1fr 1fr 1fr" : "1fr 1fr" }}>
       {set.map((o) => (

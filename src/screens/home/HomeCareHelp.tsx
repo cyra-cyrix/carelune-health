@@ -6,15 +6,15 @@ import {
 import { credentialsText, shareOnWhatsApp, generatePassword } from "../../lib/share";
 import { loginUrl as appLoginUrl } from "../../config/urls";
 import { useBranding } from "../../branding/BrandingProvider";
-import RaiseConcern from "../../components/RaiseConcern";
 import { useHc, BottomSheet, HcIcon } from "./hc-kit";
+import { EmergencyBlock } from "./hc-safety";
 import { TabHead } from "./HomeCareMedicines";
 
 /* ============================================================================
-   Help — connection first. The conversation with the care team (RaiseConcern:
-   compose + voice note + reply thread + read receipts) leads; then coverage +
-   next review, a compact emergency block, and family-only actions (care package
-   + Add Caregiver). All backend behaviour is unchanged.
+   Help — coverage, the next review, the one emergency block, and family-only
+   actions (care package + Add Caregiver). Raising a concern now lives in its own
+   Messages section, so the emergency instruction is written in exactly one place
+   on this surface. All backend behaviour is unchanged.
 
    Nothing promises 24/7. Care-team member NAMES aren't resolvable to the
    household under RLS, so coverage is described by role + hours. A private
@@ -23,11 +23,9 @@ import { TabHead } from "./HomeCareMedicines";
    ========================================================================== */
 
 export function HomeCareHelp() {
-  const { patient, plan, role } = useHc();
+  const { patient, plan, role, goTab } = useHc();
   const { org } = useBranding();
   const hours = org?.service_hours?.trim();
-  const emergencyNote = org?.emergency_note?.trim();
-  const emergencyNumber = org?.emergency_number?.trim();
 
   const nextReview = (plan?.content?.review_dates ?? [])
     .map((r) => ({ ...r, t: new Date(r.date).getTime() }))
@@ -38,10 +36,7 @@ export function HomeCareHelp() {
     <div style={{ paddingTop: 8 }}>
       <TabHead title="Help" sub="You’re not deciding alone." />
 
-      {/* 1–2. Conversation + Ask (existing component, backend unchanged) */}
-      <RaiseConcern patientId={patient.id} />
-
-      {/* 3–4. Coverage + next review (compact) */}
+      {/* Coverage + next review (compact) */}
       <div className="hc-card" style={{ marginTop: 12 }}>
         <div className="hc-help-line">
           <span className="hl-ic"><HcIcon.Clock size={16} /></span>
@@ -55,16 +50,16 @@ export function HomeCareHelp() {
         )}
       </div>
 
-      {/* 5. Compact emergency */}
-      <div className="hc-emerg compact">
-        <div className="em-row">
-          <span className="em-t"><HcIcon.Warn size={15} /> Emergency</span>
-          {emergencyNumber && <a href={`tel:${emergencyNumber.replace(/\s/g, "")}`}><HcIcon.Phone size={14} /> {emergencyNumber}</a>}
-        </div>
-        <p>{emergencyNote || "Call your centre first. If unreachable, call 112 or 108, or go to the nearest hospital."}</p>
-      </div>
+      {/* The single emergency instruction for this surface. */}
+      <EmergencyBlock />
 
-      {/* 6. Family-only actions */}
+      <button type="button" className="hc-row-btn" onClick={() => goTab("messages")}>
+        <span className="rb-ic"><HcIcon.Chat size={20} /></span>
+        <span className="rb-body"><b>Raise a concern</b><span>Send it to the care team and follow the reply</span></span>
+        <HcIcon.Right size={18} />
+      </button>
+
+      {/* Family-only actions */}
       {role === "family" && (
         <>
           <PackageRow patientId={patient.id} />

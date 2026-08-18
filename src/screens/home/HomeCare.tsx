@@ -15,6 +15,8 @@ import { HomeCareMedicines } from "./HomeCareMedicines";
 import { HomeCareLog } from "./HomeCareLog";
 import { HomeCareProgress } from "./HomeCareProgress";
 import { HomeCareHelp } from "./HomeCareHelp";
+import { HomeCareMessages } from "./HomeCareMessages";
+import { HomeCareMore } from "./HomeCareMore";
 import "./homecare.css";
 
 /* Home Care is the shared Family + Caregiver shell. It owns patient-scoped
@@ -25,7 +27,9 @@ const EMPTY_READINGS: ReadingsInput = {
   pulse: "", spo2: "", temperature: "", pain: "", fluidMl: "", bowel: "", skin: "", feeding: "", cognition: "",
 };
 
-export type HcTab = "today" | "medicines" | "log" | "progress" | "help";
+/** Four sections live in the bottom bar; medicines, log and help are opened
+ *  from More (and from an action that hands off, e.g. a medicine task). */
+export type HcTab = "today" | "progress" | "messages" | "more" | "medicines" | "log" | "help";
 
 export default function HomeCare({ role, initialTab = "today" }: { role: HcRole; initialTab?: HcTab }) {
   const { profile } = useBranding();
@@ -152,10 +156,12 @@ export default function HomeCare({ role, initialTab = "today" }: { role: HcRole;
       <div className="hc">
         <div className="hc-app">
           {tab === "today" && <HomeCareToday />}
-          {tab === "medicines" && <HomeCareMedicines />}
-          {tab === "log" && <HomeCareLog />}
           {tab === "progress" && <HomeCareProgress />}
-          {tab === "help" && <HomeCareHelp />}
+          {tab === "messages" && <HomeCareMessages />}
+          {tab === "more" && <HomeCareMore />}
+          {tab === "medicines" && <SubScreen title="More" onBack={() => setTab("more")}><HomeCareMedicines /></SubScreen>}
+          {tab === "log" && <SubScreen title="More" onBack={() => setTab("more")}><HomeCareLog /></SubScreen>}
+          {tab === "help" && <SubScreen title="More" onBack={() => setTab("more")}><HomeCareHelp /></SubScreen>}
         </div>
         <BottomNav tab={tab} setTab={setTab} />
       </div>
@@ -165,11 +171,14 @@ export default function HomeCare({ role, initialTab = "today" }: { role: HcRole;
 
 const NAV: { key: HcTab; label: string; icon: (props: { size?: number }) => React.ReactNode }[] = [
   { key: "today", label: "Today", icon: HcIcon.Home },
-  { key: "medicines", label: "Medicines", icon: HcIcon.Pill },
-  { key: "log", label: "Log", icon: HcIcon.Pulse },
   { key: "progress", label: "Progress", icon: HcIcon.Chart },
-  { key: "help", label: "Help", icon: HcIcon.Life },
+  { key: "messages", label: "Messages", icon: HcIcon.Chat },
+  { key: "more", label: "More", icon: HcIcon.Menu },
 ];
+
+/** Sections opened from More keep More lit, so the bar never looks unrelated
+ *  to the screen the person is actually on. */
+const UNDER_MORE: HcTab[] = ["more", "medicines", "log", "help"];
 
 function BottomNav({ tab, setTab }: { tab: HcTab; setTab: (next: HcTab) => void }) {
   return (
@@ -177,9 +186,10 @@ function BottomNav({ tab, setTab }: { tab: HcTab; setTab: (next: HcTab) => void 
       <div className="hc-nav-in">
         {NAV.map((item) => {
           const Icon = item.icon;
+          const on = item.key === "more" ? UNDER_MORE.includes(tab) : tab === item.key;
           return (
-            <button key={item.key} type="button" className={`hc-navbtn${tab === item.key ? " on" : ""}`}
-              aria-current={tab === item.key ? "page" : undefined} onClick={() => setTab(item.key)}>
+            <button key={item.key} type="button" className={`hc-navbtn${on ? " on" : ""}`}
+              aria-current={on ? "page" : undefined} onClick={() => setTab(item.key)}>
               <span className="nb-ic"><Icon size={22} /></span>
               <span>{item.label}</span>
             </button>
@@ -187,6 +197,18 @@ function BottomNav({ tab, setTab }: { tab: HcTab; setTab: (next: HcTab) => void 
         })}
       </div>
     </nav>
+  );
+}
+
+/** A screen reached from More gets one way back — no browser history to rely on. */
+function SubScreen({ title, onBack, children }: { title: string; onBack: () => void; children: React.ReactNode }) {
+  return (
+    <>
+      <button type="button" className="hc-back" onClick={onBack}>
+        <HcIcon.Left size={16} /> {title}
+      </button>
+      {children}
+    </>
   );
 }
 

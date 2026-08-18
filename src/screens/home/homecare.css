@@ -376,7 +376,7 @@
   border-top: 1px solid var(--hair);
   padding-bottom: env(safe-area-inset-bottom);
 }
-.hc-nav-in { max-width: 480px; margin: 0 auto; display: grid; grid-template-columns: repeat(5, 1fr); }
+.hc-nav-in { max-width: 480px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); }
 @media (min-width: 768px) { .hc-nav-in { max-width: 720px; } }
 .hc-navbtn {
   display: flex; flex-direction: column; align-items: center; gap: 3px;
@@ -671,4 +671,66 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
   }
+}
+
+/* ---- Stage 2: messages, more, sub-screens, failure states -------------- */
+
+/* A save/send that failed. Never colour alone — it always carries words. */
+.hc-save-error {
+  display: flex; gap: 7px; margin: 12px 0 0; padding: 10px 13px;
+  border-radius: var(--r-md); background: var(--danger-wash); color: var(--danger);
+  font-size: 12.5px; font-weight: 700; line-height: 1.45;
+}
+
+/* Multi-line text in the household language (the shared numeric input is centred
+   and huge, which is wrong for prose). */
+.hc-textarea {
+  width: 100%; font: inherit; font-size: 15px; line-height: 1.5; resize: vertical;
+  padding: 12px 13px; border-radius: var(--r-md); min-height: 92px;
+  border: 1.5px solid var(--hair); background: var(--white); color: var(--ink);
+}
+.hc-textarea::placeholder { color: var(--slate-2); }
+.hc-textarea:focus { border-color: var(--sky); outline: none; }
+
+/* The service boundary, stated once wherever a message is composed. */
+.hc-boundary {
+  margin: 14px 0 0; padding: 11px 13px; border-radius: var(--r-md);
+  background: var(--amber-wash); color: var(--ink);
+  font-size: 12.5px; line-height: 1.5;
+}
+
+/* What happened after sending: status, who has it, what happens next. */
+.hc-receipt {
+  display: flex; align-items: flex-start; gap: 12px; margin-top: 12px; padding: 16px;
+  border: 1px solid var(--hair); border-radius: var(--r-lg); background: var(--white);
+}
+.hc-receipt > div { min-width: 0; flex: 1; }
+.hc-receipt b { display: block; font-size: 15px; font-weight: 800; color: var(--ink); }
+.hc-receipt-list { margin: 10px 0 0; }
+.hc-receipt-list > div { display: flex; gap: 10px; padding: 5px 0; }
+.hc-receipt-list dt { flex: none; width: 108px; font-size: 12px; font-weight: 800; color: var(--slate); }
+.hc-receipt-list dd { margin: 0; min-width: 0; flex: 1; font-size: 13px; line-height: 1.45; color: var(--ink); }
+
+/* One raised concern and its replies. */
+.hc-concern { padding: 13px 15px; }
+.hc-concern-head { display: flex; align-items: flex-start; gap: 8px; }
+.hc-concern-head b { min-width: 0; flex: 1; font-size: 14px; font-weight: 700; line-height: 1.45; white-space: pre-line; }
+.hc-concern-thread { list-style: none; margin: 9px 0 0; padding: 0 0 0 11px; border-left: 2px solid var(--sky-wash); }
+.hc-concern-thread li { padding: 4px 0; }
+.hc-concern-thread span { font-size: 11.5px; font-weight: 800; color: var(--sky-ink); }
+.hc-concern-thread p { margin: 2px 0 0; font-size: 13px; line-height: 1.5; color: var(--ink); white-space: pre-line; }
+.hc-concern-foot { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-top: 9px; }
+.hc-concern-foot span { font-size: 11.5px; font-weight: 800; color: var(--slate); }
+.hc-concern-foot span.replied { color: var(--ok); }
+.hc-concern-foot time { font-size: 11.5px; color: var(--slate-2); }
+
+/* Numbered install / how-to steps. */
+.hc-steps { margin: 6px 0 0; padding-left: 20px; }
+.hc-steps li { padding: 5px 0; font-size: 14px; line-height: 1.5; color: var(--ink); }
+
+/* Back out of a section opened from More. */
+.hc-back {
+  display: inline-flex; align-items: center; gap: 6px; margin: 12px 0 0; padding: 6px 10px 6px 4px;
+  min-height: var(--cl-target); font: inherit; font-size: 13px; font-weight: 800;
+  color: var(--sky-ink); background: none; border: 0; cursor: pointer;
 }

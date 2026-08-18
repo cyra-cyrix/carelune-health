@@ -168,7 +168,7 @@ function Vitals({ latest, history }: { latest: ReadingRow | null; history: Readi
   if (!latest) {
     return (
       <Section title="Readings">
-        <EmptyState title="No readings yet">The caregiver hasn&rsquo;t recorded readings for this patient yet.</EmptyState>
+        <EmptyState title="No readings yet">No readings have been recorded at home for this patient yet.</EmptyState>
       </Section>
     );
   }
@@ -341,5 +341,5 @@ function niceDate(iso: string): string {
 }
 
 function sourceLabel(s: UpdateRow["source"]): string {
-  return { caregiver: "Caregiver", nurse: "Nurse", duty_doctor: "Duty Doctor", pmr: "Doctor" }[s] ?? "Care team";
+  return { caregiver: "From home", nurse: "Nurse", duty_doctor: "Duty Doctor", pmr: "Doctor" }[s] ?? "Care team";
 }

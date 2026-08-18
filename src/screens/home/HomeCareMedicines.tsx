@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { raiseApproval, type MedicationRow, type MedAdminStatus } from "../../lib/db";
 import { useBranding } from "../../branding/BrandingProvider";
-import { useHc, BottomSheet, HcIcon, currentPeriod, PERIODS, type Period } from "./hc-kit";
+import { useHc, BottomSheet, HcIcon, currentPeriod, PERIODS, HOUSEHOLD_LABEL, useSubmit, type Period } from "./hc-kit";
 
 /* ============================================================================
    Medicines — a calm, dense, Apple-Health-style log. Every dose for the day is
@@ -47,6 +47,26 @@ function parseMed(m: MedicationRow): MedPlan {
 
 const foodLabel = (f: MedPlan["food"]) => (f === "before" ? "Before food" : f === "after" ? "After food" : null);
 
+export type DoseSummary = { total: number; taken: number; skipped: number; remaining: number };
+
+/** Count today's scheduled doses honestly. A dose that was skipped (or missed)
+ *  is NOT a dose that was taken — the two are reported separately, and the
+ *  remainder is what still has no record at all. */
+export function summariseDoses(statuses: (MedAdminStatus | undefined)[]): DoseSummary {
+  const taken = statuses.filter((s) => s === "given").length;
+  const skipped = statuses.filter((s) => s === "skipped" || s === "missed").length;
+  return { total: statuses.length, taken, skipped, remaining: statuses.length - taken - skipped };
+}
+
+/** "1 of 5 taken · 1 skipped · 3 still to record" — never a single blended count. */
+export function doseSummaryLine(d: DoseSummary): string {
+  if (d.total === 0) return "No scheduled doses today.";
+  const parts = [`${d.taken} of ${d.total} taken`];
+  if (d.skipped > 0) parts.push(`${d.skipped} skipped`);
+  if (d.remaining > 0) parts.push(`${d.remaining} still to record`);
+  return parts.join(" · ");
+}
+
 type Row = { med: MedicationRow; plan: MedPlan };
 type Focus = { med: MedicationRow; plan: MedPlan; slot: string };
 
@@ -63,11 +83,17 @@ export function HomeCareMedicines() {
   const statusOf = (medId: string, slot: string) => medAdmin.get(`${medId}|${slot}`);
 
   const nowPeriod = currentPeriod();
-  const scheduledTotal = parsed.reduce((n, r) => n + r.plan.slots.length, 0);
-  const scheduledDone = parsed.reduce((n, r) => n + r.plan.slots.filter((s) => statusOf(r.med.id, s)).length, 0);
-  const pct = scheduledTotal ? Math.round((scheduledDone / scheduledTotal) * 100) : 0;
+  const summary = summariseDoses(parsed.flatMap((r) => r.plan.slots.map((s) => statusOf(r.med.id, s))));
+  const takenPct = summary.total ? Math.round((summary.taken / summary.total) * 100) : 0;
+  const skippedPct = summary.total ? Math.round((summary.skipped / summary.total) * 100) : 0;
 
+  // One dose = one record. The lock swallows a second tap arriving inside the
+  // settle window, so a double tap can never mark-then-unmark the same slot.
+  const settling = useRef(false);
   const toggle = (med: MedicationRow, slot: string, status?: MedAdminStatus) => {
+    if (settling.current) return;
+    settling.current = true;
+    window.setTimeout(() => { settling.current = false; }, 600);
     if (status === "given") clearMed(med.id, slot);
     else markMed(med.id, slot, "given");
   };
@@ -93,9 +119,9 @@ export function HomeCareMedicines() {
           </span>
         </button>
         {slot === "prn"
-          ? <button type="button" className={`mr-check${status === "given" ? " given" : ""}`} aria-label={`Log ${r.med.name} taken`} onClick={() => toggle(r.med, slot, status)}><span className="mr-dot">{status === "given" && <HcIcon.Check size={14} />}</span></button>
+          ? <button type="button" className={`mr-check${status === "given" ? " given" : ""}`} aria-label={`Record ${r.med.name} as taken`} onClick={() => toggle(r.med, slot, status)}><span className="mr-dot">{status === "given" && <HcIcon.Check size={14} />}</span></button>
           : <button type="button" className={`mr-check${status === "given" ? " given" : status === "skipped" ? " skipped" : ""}`}
-              aria-label={status === "given" ? `Undo ${r.med.name}` : `Mark ${r.med.name} given`} onClick={() => toggle(r.med, slot, status)}>
+              aria-label={status === "given" ? `Undo ${r.med.name}` : `Record ${r.med.name} as taken`} onClick={() => toggle(r.med, slot, status)}>
               <span className="mr-dot">{status === "given" ? <HcIcon.Check size={14} /> : status === "skipped" ? "–" : null}</span>
             </button>}
       </div>
@@ -104,18 +130,21 @@ export function HomeCareMedicines() {
 
   return (
     <div style={{ paddingTop: 8 }}>
-      <TabHead title="Medicines" sub={`${scheduledDone} of ${scheduledTotal} doses taken today`} />
-      <div className="hc-mprog" aria-hidden="true"><span style={{ width: `${pct}%` }} /></div>
+      <TabHead title="Medicines" sub={doseSummaryLine(summary)} />
+      <div className="hc-mprog" aria-hidden="true">
+        <span style={{ width: `${takenPct}%` }} />
+        {summary.skipped > 0 && <span className="skipped" style={{ width: `${skippedPct}%` }} />}
+      </div>
 
       {PERIODS.map((p) => {
         const rows = parsed.filter((r) => r.plan.slots.includes(p.key));
         if (rows.length === 0) return null;
-        const done = rows.filter((r) => statusOf(r.med.id, p.key)).length;
+        const taken = rows.filter((r) => statusOf(r.med.id, p.key) === "given").length;
         return (
           <section key={p.key}>
             <div className="hc-mgrp-head">
               <span className="mg-label">{PERIOD_ICON[p.key]} {p.label}{p.key === nowPeriod && <span className="mg-now">Now</span>}</span>
-              <span className={`mg-count${done === rows.length ? " done" : ""}`}>{done}/{rows.length}</span>
+              <span className={`mg-count${taken === rows.length ? " done" : ""}`}>{taken}/{rows.length} taken</span>
             </div>
             <div className="hc-mlist">{rows.map((r) => renderRow(r, p.key))}</div>
           </section>
@@ -150,20 +179,42 @@ export function HomeCareMedicines() {
 
 /* ------------------------------ detail sheet ----------------------------- */
 
+/** Reasons a dose is commonly missed at home. Free text stays available — the
+ *  reason is a note to the care team, never a change to the prescription. */
+const SKIP_REASONS = ["Refused it", "Vomiting or nausea", "Asleep", "Ran out", "Other"];
+
 function MedDetail({ focus, status, onClose, onMark, onClear }: {
   focus: Focus; status?: MedAdminStatus; onClose: () => void;
-  onMark: (s: MedAdminStatus) => void; onClear: () => void;
+  onMark: (s: MedAdminStatus, reason: string) => void; onClear: () => void;
 }) {
   const { med, plan, slot } = focus;
+  const { role, postStatus } = useHc();
   const { profile } = useBranding();
   const [helpSent, setHelpSent] = useState(false);
+  const [skipping, setSkipping] = useState(false);
+  const [reason, setReason] = useState("");
+  const [note, setNote] = useState("");
+  const taken = useSubmit(0);
+  const skipped = useSubmit(0);
   const when = slot === "prn" ? "As needed" : slot === "interval" ? (plan.interval ?? "Round the clock") : (plan.clock ?? PERIODS.find((p) => p.key === slot)?.label ?? "Today");
   const facts = [med.dose, foodLabel(plan.food), when].filter(Boolean) as string[];
+  const who = profile?.full_name?.trim() || HOUSEHOLD_LABEL[role];
+
   const needHelp = async () => {
     setHelpSent(true);
-    try { await raiseApproval(med.patient_id, { type: "patient_query", message: `Need help with ${med.name}${med.dose ? ` (${med.dose})` : ""} — ${when} dose.`, urgency: "routine", from_name: profile?.full_name ?? "Family" }); }
-    catch { /* Help tab always available */ }
+    try { await raiseApproval(med.patient_id, { type: "patient_query", message: `Need help with ${med.name}${med.dose ? ` (${med.dose})` : ""} — ${when} dose.`, urgency: "routine", from_name: who }); }
+    catch { /* the Messages tab is always available */ }
   };
+
+  const confirmSkip = () => skipped.run(async () => {
+    const why = (reason === "Other" ? note.trim() : reason) || note.trim();
+    onMark("skipped", why);
+    // The med_admin record carries the status; the reason (optional) reaches the
+    // care team through the existing update feed. No prescription is changed.
+    if (why) await postStatus(`${med.name}${med.dose ? ` ${med.dose}` : ""} — ${when} dose skipped. Reason: ${why}`, "watch").catch(() => undefined);
+    return true;
+  });
+
   return (
     <BottomSheet title={med.name} onClose={onClose}>
       <div className="hc-mfacts">
@@ -173,14 +224,38 @@ function MedDetail({ focus, status, onClose, onMark, onClear }: {
 
       {status ? (
         <div className="hc-med-status" style={{ marginTop: 16 }}>
-          <span className={`hc-med-chip ${status}`}>{status === "given" ? <><HcIcon.Check size={15} /> Given</> : "Skipped"}</span>
+          <span className={`hc-med-chip ${status}`}>{status === "given" ? <><HcIcon.Check size={15} /> Taken</> : "Skipped"}</span>
           <button type="button" className="hc-med-undo" onClick={onClear}>Undo</button>
         </div>
-      ) : (
-        <div className="hc-med-acts" style={{ gridTemplateColumns: slot === "prn" ? "1fr" : "1fr 1fr", marginTop: 16 }}>
-          <button type="button" className="hc-outcome done" onClick={() => onMark("given")}><HcIcon.Check size={15} /> {slot === "prn" ? "Given now" : "Given"}</button>
-          {slot !== "prn" && <button type="button" className="hc-outcome unable" onClick={() => onMark("skipped")}>Skipped</button>}
+      ) : skipping ? (
+        <div style={{ marginTop: 16 }}>
+          <div className="hc-lab"><b>Why was it skipped?</b><span>optional</span></div>
+          <div className="hc-choices">
+            {SKIP_REASONS.map((r) => (
+              <button key={r} type="button" className={`hc-choice${reason === r ? " on" : ""}`} onClick={() => setReason(reason === r ? "" : r)}>{r}</button>
+            ))}
+          </div>
+          {reason === "Other" && (
+            <input className="hc-num-in" style={{ fontSize: 15, fontWeight: 600, textAlign: "left", marginTop: 10 }}
+              value={note} onChange={(e) => setNote(e.target.value)} placeholder="In your own words" aria-label="Reason it was skipped" />
+          )}
+          {skipped.state === "error" && <p className="hc-save-error" role="alert">Couldn&rsquo;t record it. Tap Try again.</p>}
+          <button type="button" className="hc-save" onClick={confirmSkip} disabled={skipped.state === "saving"}>
+            {skipped.state === "saving" ? "Recording…" : skipped.state === "error" ? "Try again" : "Record as skipped"}
+          </button>
+          <button type="button" className="hc-help-link" onClick={() => setSkipping(false)}>Back</button>
         </div>
+      ) : (
+        <>
+          <div className="hc-med-acts" style={{ gridTemplateColumns: slot === "prn" ? "1fr" : "1fr 1fr", marginTop: 16 }}>
+            <button type="button" className="hc-outcome done" disabled={taken.state === "saving"}
+              onClick={() => taken.run(() => { onMark("given", ""); return true; })}>
+              <HcIcon.Check size={15} /> {slot === "prn" ? "Taken now" : "Taken"}
+            </button>
+            {slot !== "prn" && <button type="button" className="hc-outcome unable" onClick={() => setSkipping(true)}>Skipped</button>}
+          </div>
+          <p className="hc-muted" style={{ padding: "8px 2px 0" }}>Recording what happened at home. It never changes the prescription.</p>
+        </>
       )}
       <button type="button" className="hc-med-help" onClick={needHelp} disabled={helpSent}>{helpSent ? "Sent to the care team ✓" : "Need help with this medicine?"}</button>
     </BottomSheet>

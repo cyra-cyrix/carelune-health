@@ -99,7 +99,7 @@ const REPLY_ROLE: Record<string, string> = {
   nurse: "Nurse",
   pmr: "Doctor",
   duty_doctor: "Duty Doctor",
-  caregiver: "Caregiver",
+  caregiver: "From home",
   family: "Family",
 };
 

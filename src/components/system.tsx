@@ -8,7 +8,7 @@ import type { PathwayStatus } from "../domain/pathways";
 /* ------------------------------- inputs ---------------------------------- */
 
 export const inputCls =
-  "w-full rounded-xl bg-white px-3.5 py-2.5 text-[14px] text-ink ring-1 ring-line placeholder:text-sage-400 " +
+  "w-full min-h-[44px] rounded-xl bg-white px-3.5 py-2.5 text-[14px] text-ink ring-1 ring-line placeholder:text-sage-400 " +
   "focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 transition-shadow";
 
 export function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
@@ -61,7 +61,7 @@ export function PrimaryButton({
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className={`tap inline-flex items-center justify-center gap-2 rounded-xl bg-brand-800 px-4 py-2.5 text-[14px] font-semibold text-white shadow-sm transition-colors hover:bg-brand-900 disabled:opacity-50 ${className}`}
+      className={`tap inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-brand-800 px-4 py-2.5 text-[14px] font-semibold text-white shadow-sm transition-colors hover:bg-brand-900 disabled:opacity-50 ${className}`}
     >
       {children}
     </button>
@@ -76,7 +76,7 @@ export function GhostButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`tap inline-flex items-center justify-center gap-2 rounded-xl border border-line bg-white px-4 py-2.5 text-[14px] font-semibold text-ink transition-colors hover:bg-mist-100 disabled:opacity-50 ${className}`}
+      className={`tap inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-line bg-white px-4 py-2.5 text-[14px] font-semibold text-ink transition-colors hover:bg-mist-100 disabled:opacity-50 ${className}`}
     >
       {children}
     </button>

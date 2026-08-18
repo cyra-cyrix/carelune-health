@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type {
   PatientRow, CareTaskRow, TaskOutcome, MedicationRow, MedAdminStatus,
@@ -53,6 +53,46 @@ export function useHc(): HcData {
   const ctx = useContext(HcContext);
   if (!ctx) throw new Error("useHc must be used within <HcProvider>");
   return ctx;
+}
+
+/** How this household member is named on anything the care team reads. The
+ *  caregiver and the family are different people — never label one as the other. */
+export const HOUSEHOLD_LABEL: Record<HcRole, string> = { family: "Family", caregiver: "Caregiver" };
+
+/* ---------------------------- submission guard --------------------------- */
+
+export type SubmitState = "idle" | "saving" | "saved" | "error";
+
+/**
+ * One real-world action must produce exactly one write. `run` ignores every call
+ * made while a submission is already in flight, so a double tap (or an impatient
+ * second tap during a slow network) can never queue a second write. The returned
+ * state also drives the saving / saved / failed + retry affordances.
+ */
+export function useSubmit(resetAfterMs = 1400): { state: SubmitState; run: (task: () => Promise<boolean> | boolean) => Promise<void>; reset: () => void } {
+  const [state, setState] = useState<SubmitState>("idle");
+  const inFlight = useRef(false);
+
+  useEffect(() => {
+    if (state !== "saved" || resetAfterMs <= 0) return;
+    const id = window.setTimeout(() => setState("idle"), resetAfterMs);
+    return () => window.clearTimeout(id);
+  }, [state, resetAfterMs]);
+
+  const run = async (task: () => Promise<boolean> | boolean) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setState("saving");
+    try {
+      setState((await task()) ? "saved" : "error");
+    } catch {
+      setState("error");
+    } finally {
+      inFlight.current = false;
+    }
+  };
+
+  return { state, run, reset: () => setState("idle") };
 }
 
 /* ------------------------------- helpers --------------------------------- */
@@ -138,33 +178,6 @@ export const OUTCOME_META: Record<TaskOutcome, { label: string; short: string }>
   na: { label: "N/A", short: "N/A" },
 };
 
-/* ------------------------------- Ring ------------------------------------ */
-
-/** Sky progress ring — same two-stop language as the landing. `onDark` recolours
- *  it for the sky-gradient Today hero (white arc/text on a translucent track). */
-export function Ring({ value, total, size = 76, onDark = false }: { value: number; total: number; size?: number; onDark?: boolean }) {
-  const r = (size - 8) / 2;
-  const c = 2 * Math.PI * r;
-  const pct = total > 0 ? Math.min(1, value / total) : 0;
-  const track = onDark ? "rgba(255,255,255,0.28)" : "#e2ecf8";
-  const arc = onDark ? "#ffffff" : "#168bff";
-  const text = onDark ? "#ffffff" : "#0e6fdb";
-  return (
-    <svg className="hc-ring" width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={track} strokeWidth="6" />
-      <circle
-        cx={size / 2} cy={size / 2} r={r} fill="none" stroke={arc} strokeWidth="6" strokeLinecap="round"
-        strokeDasharray={c} strokeDashoffset={c * (1 - pct)}
-        transform={`rotate(-90 ${size / 2} ${size / 2})`}
-      />
-      <text x="50%" y="50%" textAnchor="middle" dominantBaseline="central"
-        style={{ fontWeight: 800, fontSize: size * 0.3, fill: text, fontVariantNumeric: "tabular-nums" }}>
-        {value}
-      </text>
-    </svg>
-  );
-}
-
 /* ---------------------------- Bottom sheet ------------------------------- */
 
 export function BottomSheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
@@ -223,6 +236,7 @@ export const HcIcon = {
   Left: ({ size = 22 }: IP) => svg(size, <path d="M15 5l-7 7 7 7" />),
   Right: ({ size = 22 }: IP) => svg(size, <path d="M9 5l7 7-7 7" />),
   Plus: ({ size = 22 }: IP) => svg(size, <path d="M12 5v14M5 12h14" />),
+  Menu: ({ size = 22 }: IP) => svg(size, <path d="M4 7h16M4 12h16M4 17h16" />),
   Clock: ({ size = 22 }: IP) => svg(size, <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>),
   Sun: ({ size = 22 }: IP) => svg(size, <><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M19 5l-1.5 1.5M6.5 17.5 5 19" /></>),
   Moon: ({ size = 22 }: IP) => svg(size, <path d="M20 14A8 8 0 1 1 10 4a6 6 0 0 0 10 10Z" />),

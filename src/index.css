@@ -23,6 +23,28 @@
 @layer base {
   :root {
     color-scheme: light;
+    --cl-canvas: #f7f9fc;
+    --cl-surface: #ffffff;
+    --cl-ink: #0a0d12;
+    --cl-muted: #5f6b78;
+    --cl-muted-soft: #7b8794;
+    --cl-line: #e2e9f1;
+    --cl-line-strong: #d4deea;
+    --cl-blue: #168bff;
+    --cl-blue-strong: #0e6fdb;
+    --cl-blue-wash: #eef5ff;
+    --cl-positive: #167a58;
+    --cl-positive-wash: #e7f5ef;
+    --cl-attention: #9a5b00;
+    --cl-attention-wash: #fff3df;
+    --cl-danger: #c9372c;
+    --cl-danger-wash: #fdeceb;
+    --cl-radius-sm: 10px;
+    --cl-radius-md: 14px;
+    --cl-radius-lg: 16px;
+    --cl-shadow-surface: 0 1px 2px rgba(16, 32, 56, 0.04), 0 8px 24px -18px rgba(16, 40, 78, 0.22);
+    --cl-shadow-lifted: 0 2px 5px -2px rgba(16, 32, 56, 0.08), 0 18px 40px -24px rgba(16, 40, 78, 0.3);
+    --cl-target: 44px;
   }
   html,
   body,
@@ -86,4 +108,34 @@
 .soft-scroll::-webkit-scrollbar-thumb {
   background: rgba(27, 43, 38, 0.14);
   border-radius: 9999px;
+}
+
+/* The signed-in application sits on the shared Stage 1 canvas token, so the
+   family surface and the clinical surfaces share one ground colour. */
+.cl-app {
+  background: var(--cl-canvas);
+}
+
+/* ---- PWA install affordance (application only, never marketing) --------- */
+.cl-install {
+  position: fixed; left: 50%; transform: translateX(-50%); z-index: 60;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 84px);
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  max-width: min(92vw, 420px); padding: 10px 12px 10px 14px;
+  border-radius: var(--cl-radius-md); background: var(--cl-blue-strong); color: #fff;
+  box-shadow: var(--cl-shadow-lifted);
+  font: 500 13.5px/1.35 "Manrope", system-ui, sans-serif;
+}
+.cl-install-copy { flex: 1; min-width: 150px; }
+.cl-install-steps { flex: 1; min-width: 180px; }
+.cl-install-steps b { display: block; font-weight: 700; }
+.cl-install-steps ol { margin: 6px 0 0; padding-left: 20px; list-style: decimal outside; }
+.cl-install-steps li { padding: 2px 0; }
+.cl-install-go {
+  min-height: var(--cl-target); padding: 0 14px; border: 0; border-radius: var(--cl-radius-sm);
+  background: #fff; color: var(--cl-blue-strong); font: inherit; font-weight: 700; cursor: pointer;
+}
+.cl-install-x {
+  min-width: var(--cl-target); min-height: var(--cl-target); border-radius: var(--cl-radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.5); background: transparent; color: #fff; cursor: pointer;
 }

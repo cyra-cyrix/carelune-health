@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  getPatient, extractFacts, getPatientDocuments,
+  getPatient, extractFacts, getPatientDocuments, uploadPatientDocument,
   savePlanIntake, generatePlan, getPatientPlan, savePlan, activateCarePlan,
   type PatientRow, type PatientPlanRow, type DocumentRow,
 } from "../../lib/db";
@@ -107,6 +107,9 @@ function PreparePanel({
 }) {
   const [docs, setDocs] = useState<DocumentRow[] | null>(null);
   const [docId, setDocId] = useState<string>("");
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
   const [pasted, setPasted] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -119,6 +122,24 @@ function PreparePanel({
       .then((d) => { setDocs(d); if (d[0]) setDocId(d[0].id); })
       .catch(() => setDocs([]));
   }, [patient?.id]);
+
+  /*
+   * Uploading lives on THIS screen. It used to be a different page, which meant a
+   * doctor holding a discharge sheet had to leave the drafting screen, upload, and
+   * come back. Photographs are first-class: extract-facts reads JPG/PNG with the
+   * vision model, which is the common case when the sheet is paper.
+   */
+  const onFile = async (file: File | undefined) => {
+    if (!file || !patient) return;
+    setUploading(true); setErr(null);
+    try {
+      const row = await uploadPatientDocument(patient.id, file, "discharge_summary");
+      setDocs((xs) => [row, ...(xs ?? [])]);
+      setDocId(row.id);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not upload that file.");
+    } finally { setUploading(false); }
+  };
 
   const hasSource = !!docId || pasted.trim().length > 40;
 
@@ -162,42 +183,78 @@ function PreparePanel({
           You review and change anything before it starts.
         </p>
 
+        <span className="mb-1.5 block text-[12.5px] font-semibold text-sage-600">Discharge document</span>
+
+        {/* PDF or photograph — both are read; a photo of a paper sheet is the common case. */}
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/pdf,image/jpeg,image/png"
+          className="hidden"
+          onChange={(e) => { void onFile(e.target.files?.[0]); e.target.value = ""; }}
+        />
+        <input
+          ref={cameraRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(e) => { void onFile(e.target.files?.[0]); e.target.value = ""; }}
+        />
+        <div className="flex flex-wrap gap-2">
+          <PrimaryButton onClick={() => fileRef.current?.click()} disabled={uploading || busy}>
+            {uploading ? "Uploading…" : "Upload PDF or photo"}
+          </PrimaryButton>
+          <GhostButton onClick={() => cameraRef.current?.click()} disabled={uploading || busy}>
+            Take a photo
+          </GhostButton>
+        </div>
+        <p className="mt-1.5 text-[11.5px] text-sage-500">
+          PDF, JPG or PNG, up to 10&nbsp;MB. A clear photo of the discharge sheet works — Carelune reads it.
+        </p>
+
         {docs === null ? (
-          <Skeleton className="h-24" />
+          <div className="mt-3"><Skeleton className="h-16" /></div>
         ) : docs.length > 0 ? (
-          <div>
-            <span className="mb-1.5 block text-[12.5px] font-semibold text-sage-600">Discharge document</span>
-            <div className="space-y-2">
-              {docs.map((d) => (
-                <button
-                  key={d.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={docId === d.id}
-                  onClick={() => setDocId(d.id)}
-                  className={`tap flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left transition-colors ${
-                    docId === d.id ? "bg-sky-50 ring-2 ring-sky-500" : "bg-mist-100 ring-1 ring-ink/[0.04] hover:ring-ink/10"
-                  }`}
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13.5px] font-semibold text-ink">{d.file_name}</span>
-                    <span className="mt-0.5 block text-[11.5px] text-sage-500">{d.doc_type?.replace(/_/g, " ") || "Document"}</span>
+          <div className="mt-3 space-y-2">
+            {docs.map((d) => (
+              <button
+                key={d.id}
+                type="button"
+                role="radio"
+                aria-checked={docId === d.id}
+                onClick={() => setDocId(d.id)}
+                className={`tap flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left transition-colors ${
+                  docId === d.id ? "bg-sky-50 ring-2 ring-sky-500" : "bg-mist-100 ring-1 ring-ink/[0.04] hover:ring-ink/10"
+                }`}
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13.5px] font-semibold text-ink">{d.file_name}</span>
+                  <span className="mt-0.5 block text-[11.5px] text-sage-500">
+                    {d.mime?.startsWith("image/") ? "Photo" : "PDF"}
+                    {d.doc_type ? ` · ${d.doc_type.replace(/_/g, " ")}` : ""}
                   </span>
-                </button>
-              ))}
-            </div>
+                </span>
+              </button>
+            ))}
           </div>
-        ) : (
-          <Field label="Paste the discharge summary" hint="Or upload the document in patient setup — a photo of the sheet works too.">
+        ) : null}
+
+        <details className="mt-3 group">
+          <summary className="tap cursor-pointer list-none text-[12.5px] font-semibold text-sky-700 hover:text-sky-800">
+            No file? Paste the text instead
+          </summary>
+          <div className="mt-2">
             <textarea
               value={pasted}
               onChange={(e) => setPasted(e.target.value)}
               rows={7}
               placeholder="Paste the discharge summary text here…"
               className={`${inputCls} resize-y`}
+              aria-label="Paste the discharge summary"
             />
-          </Field>
-        )}
+          </div>
+        </details>
 
         <div className="mt-4">
           <Field label="Anything you want included? (optional)" hint="Your instruction is carried through as a non-negotiable.">

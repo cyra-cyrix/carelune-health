@@ -2,16 +2,23 @@ import { useEffect, useState } from "react";
 import { LoopMark } from "../../components/ui";
 import { useBranding } from "../../branding/BrandingProvider";
 import {
-  updateOrgBranding, getMyEnabledPacks, getStorefront, updateStorefront, saveDoctorKyc, updateMyName, getPackPathways,
-  type EnabledPack, type Storefront, type PackPathway,
+  updateOrgBranding, getStorefront, updateStorefront, saveDoctorKyc, updateMyName,
+  type Storefront,
 } from "../../lib/db";
 import {
-  Card, Field, inputCls, PrimaryButton, GhostButton, Stepper, Chip, PathwayStatusBadge,
+  Card, Field, inputCls, PrimaryButton, GhostButton, Stepper,
   ErrorNote, Skeleton, SectionHeader,
 } from "../../components/system";
 import { CARE_PACKAGE, CARE_PACKAGE_INCLUDES_TEXT } from "../../domain/carePackage";
 
-const STEPS = ["Identity", "Programmes", "Package", "Finish"];
+/*
+ * Setup is three steps, not four. The old "Programmes" step made the HOD read and
+ * accept a pre-assigned pathway library before they could price anything — a gate
+ * that taught them nothing and delayed finishing. Departments (collected in
+ * Identity) are now the only taxonomy an institution declares; the recovery plan
+ * is built per patient from that patient's own discharge document.
+ */
+const STEPS = ["Identity", "Package", "Finish"];
 const inr = (n: number | null | undefined) => (n == null ? "—" : `₹${n.toLocaleString("en-IN")}`);
 
 /** Recovery departments an institution can declare it serves (trial shortlist). */
@@ -30,10 +37,9 @@ const CONSENT_COPY =
   "Carelune's Terms and Data-Processing terms.";
 
 /**
- * HOD / Admin onboarding wizard. Sets institution identity + branding, reviews
- * the Super-Admin-assigned Continuum Care programmes (read-only clinical content,
- * clearly marked as requiring institutional clinical approval), and configures the
- * ONE commercial package families subscribe to. Finishing marks setup complete.
+ * HOD / Admin onboarding wizard. Sets institution identity + branding + the
+ * recovery departments served, then configures the ONE commercial package
+ * families subscribe to — free or paid. Finishing marks setup complete.
  */
 export default function OrgSetup() {
   const { org, profile, refresh } = useBranding();
@@ -56,8 +62,7 @@ export default function OrgSetup() {
   const [specialty, setSpecialty] = useState("");
   const [consent, setConsent] = useState(false);
 
-  // programmes / package
-  const [packs, setPacks] = useState<EnabledPack[] | null>(null);
+  // package
   const [sf, setSf] = useState<Storefront | null>(null);
 
   useEffect(() => {
@@ -80,7 +85,6 @@ export default function OrgSetup() {
   }, [profile]);
 
   useEffect(() => {
-    void getMyEnabledPacks().then(setPacks).catch(() => setPacks([]));
     void getStorefront().then(setSf).catch(() => setSf(null));
   }, []);
 
@@ -176,7 +180,9 @@ export default function OrgSetup() {
                       );
                     })}
                   </div>
-                  <p className="mt-1.5 text-[11.5px] text-sage-500">Determines which recovery pathways apply to your institution.</p>
+                  <p className="mt-1.5 text-[11.5px] text-sage-500">
+                    Each patient&rsquo;s recovery plan is built from their own discharge document — you review and approve it before it reaches the family.
+                  </p>
                 </div>
 
                 <div className="h-px bg-line" />
@@ -227,20 +233,15 @@ export default function OrgSetup() {
 
           {step === 1 && (
             <Card>
-              <SectionHeader title="Your clinical pathways" sub="Assigned by Carelune. Governed templates — clinical content is read-only." />
-              <div className="mt-4 space-y-3">
-                {packs === null ? (
-                  <><Skeleton className="h-20" /><Skeleton className="h-20" /></>
-                ) : packs.length === 0 ? (
-                  <p className="text-[13px] text-sage-500">No pathways enabled yet. Ask Carelune to enable a Continuum Care programme.</p>
+              <SectionHeader title="Your care package" sub="One package, one price — what families subscribe to." />
+              <div className="mt-4">
+                {sf === null ? (
+                  <Skeleton className="h-56" />
                 ) : (
-                  packs.map((p) => <PackReadCard key={p.pack_id} pack={p} />)
+                  <PackageEditor sf={sf} onSaved={setSf} onError={setError} />
                 )}
-                <p className="text-[11.5px] leading-relaxed text-sage-500">
-                  Need a pathway we don&rsquo;t offer yet? Ask your Carelune contact — uploading your own SOP and an
-                  AI-built library are coming soon.
-                </p>
-                <div className="flex justify-between pt-1">
+                {error && <div className="mt-3"><ErrorNote>{error}</ErrorNote></div>}
+                <div className="mt-4 flex justify-between">
                   <GhostButton onClick={() => setStep(0)}>Back</GhostButton>
                   <PrimaryButton onClick={() => setStep(2)}>Continue</PrimaryButton>
                 </div>
@@ -250,34 +251,19 @@ export default function OrgSetup() {
 
           {step === 2 && (
             <Card>
-              <SectionHeader title="Your care package" sub="One package, one price — what families subscribe to. Pathways are not priced separately." />
-              <div className="mt-4">
-                {sf === null ? (
-                  <Skeleton className="h-56" />
-                ) : (
-                  <PackageEditor sf={sf} onSaved={setSf} onError={setError} />
-                )}
-                {error && <div className="mt-3"><ErrorNote>{error}</ErrorNote></div>}
-                <div className="mt-4 flex justify-between">
-                  <GhostButton onClick={() => setStep(1)}>Back</GhostButton>
-                  <PrimaryButton onClick={() => setStep(3)}>Continue</PrimaryButton>
-                </div>
-              </div>
-            </Card>
-          )}
-
-          {step === 3 && (
-            <Card>
               <SectionHeader title="You're ready" sub="Next: add your team and share the patient registration link." />
               <ul className="mt-4 space-y-2 text-[13.5px] text-sage-700">
-                <li className="flex gap-2"><span className="text-sky-600">✓</span> Institution identity & emergency guidance set</li>
-                <li className="flex gap-2"><span className="text-sky-600">✓</span> {packs?.length ?? 0} clinical pathway{(packs?.length ?? 0) === 1 ? "" : "s"} reviewed · one package priced</li>
+                <li className="flex gap-2"><span className="text-sky-600">✓</span> Institution identity &amp; emergency guidance set</li>
+                <li className="flex gap-2">
+                  <span className="text-sky-600">✓</span>
+                  {departments.length} recovery department{departments.length === 1 ? "" : "s"} declared · one package priced
+                </li>
                 <li className="flex gap-2"><span className="text-sage-400">•</span> Add your doctors, nurses and coordinators from the <span className="font-semibold text-ink">Team</span> tab</li>
                 <li className="flex gap-2"><span className="text-sage-400">•</span> Share the permanent patient <span className="font-semibold text-ink">Registration link</span></li>
               </ul>
               {error && <div className="mt-3"><ErrorNote>{error}</ErrorNote></div>}
               <div className="mt-5 flex justify-between">
-                <GhostButton onClick={() => setStep(2)}>Back</GhostButton>
+                <GhostButton onClick={() => setStep(1)}>Back</GhostButton>
                 <PrimaryButton onClick={finish} disabled={busy}>{busy ? "Finishing…" : "Enter workspace"}</PrimaryButton>
               </div>
             </Card>
@@ -290,60 +276,6 @@ export default function OrgSetup() {
   );
 }
 
-/** A read-only pathway card the HOD can expand to read what the programme covers
- *  (its sub-pathways, lazy-loaded). Full SOP viewer + upload + AI library are later. */
-function PackReadCard({ pack }: { pack: EnabledPack }) {
-  const [open, setOpen] = useState(false);
-  const [pathways, setPathways] = useState<PackPathway[] | null>(null);
-
-  const toggle = () => {
-    const next = !open;
-    setOpen(next);
-    if (next && pathways === null) getPackPathways(pack.pack_id).then(setPathways).catch(() => setPathways([]));
-  };
-
-  return (
-    <div className="rounded-2xl border border-line bg-white p-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[15px] font-semibold text-ink">{pack.pack_name}</span>
-        <Chip tone="grey">{pack.specialty}</Chip>
-        <span className="ml-auto"><PathwayStatusBadge status={pack.status} /></span>
-      </div>
-      {pack.description && <p className="mt-1.5 text-[12.5px] leading-relaxed text-sage-600">{pack.description}</p>}
-
-      <button type="button" onClick={toggle} className="tap mt-2 text-[12.5px] font-semibold text-sky-700 hover:text-sky-800">
-        {open ? "Hide details" : "Read what’s included"}
-      </button>
-      {open && (
-        <div className="mt-2 rounded-xl bg-mist-100 p-3 ring-1 ring-ink/[0.04]">
-          {pathways === null ? (
-            <p className="text-[12px] text-sage-500">Loading…</p>
-          ) : pathways.length === 0 ? (
-            <p className="text-[12px] text-sage-500">No sub-pathways listed.</p>
-          ) : (
-            <>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-sage-500">Pathways in this programme</p>
-              <ul className="mt-1.5 space-y-1.5">
-                {pathways.map((pw) => (
-                  <li key={pw.pathway_id} className="flex items-center gap-2 text-[13px] text-ink">
-                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-sky-400" />
-                    {pw.name}
-                    {pw.version_status && <span className="ml-1"><PathwayStatusBadge status={pw.version_status} /></span>}
-                  </li>
-                ))}
-              </ul>
-              <p className="mt-2 text-[11px] text-sage-500">The full clinical SOP is provided for your clinician’s review.</p>
-            </>
-          )}
-        </div>
-      )}
-      <p className="mt-1.5 text-[11.5px] text-sage-500">
-        This is a draft pathway. Your clinician must review and approve it before any patient plan built on it is activated.
-      </p>
-    </div>
-  );
-}
-
 function PackageEditor({
   sf, onSaved, onError,
 }: {
@@ -351,23 +283,31 @@ function PackageEditor({
   onSaved: (s: Storefront) => void;
   onError: (m: string | null) => void;
 }) {
-  // Only the price is editable. Name, duration, free-trial and inclusions are
-  // fixed by the platform and shown read-only (see src/domain/carePackage.ts).
-  const [price, setPrice] = useState(sf.package_price != null ? String(sf.package_price) : "");
+  /*
+   * The institution chooses ONE thing here: free or paid.
+   *
+   * `package_price = 0` is the single source of truth for "free" — a null price
+   * means "not decided yet", which is why an institution that has never opened
+   * this step still reads as unpriced. Choosing Free writes an explicit 0 so the
+   * family storefront can hide payment with confidence rather than inferring it.
+   */
+  const [paid, setPaid] = useState(sf.package_price == null ? true : sf.package_price > 0);
+  const [price, setPrice] = useState(sf.package_price ? String(sf.package_price) : "");
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  const priceNum = Number(price) || 0;
+  const priceNum = paid ? Number(price) || 0 : 0;
   const payout = Math.round(priceNum * (1 - sf.platform_fee_pct / 100));
+  const incomplete = paid && priceNum <= 0;
 
   const save = async () => {
     setBusy(true); onError(null); setSaved(false);
     try {
       // Persist the fixed package identity alongside the price so every consumer
-      // (DB or client) reads the same offer. Free-trial is platform-set — untouched.
+      // (DB or client) reads the same offer.
       const patch = {
         package_name: CARE_PACKAGE.name,
-        package_price: price ? Number(price) : null,
+        package_price: priceNum,
         package_includes: CARE_PACKAGE_INCLUDES_TEXT,
       };
       await updateStorefront(sf.centre_id, patch);
@@ -386,19 +326,51 @@ function PackageEditor({
         <div className="mt-1 flex flex-wrap items-baseline gap-2">
           <span className="font-display text-[22px] font-semibold tracking-tight text-ink">{CARE_PACKAGE.name}</span>
           <span className="text-[12.5px] font-medium text-sage-500">· {CARE_PACKAGE.durationLabel}</span>
-          {priceNum > 0 && (
-            <span className="ml-auto text-[15px] font-semibold text-sky-700">{inr(priceNum)}<span className="text-[12px] font-medium text-sage-500">/month</span></span>
-          )}
+          <span className="ml-auto text-[15px] font-semibold text-sky-700">
+            {paid
+              ? <>{inr(priceNum)}<span className="text-[12px] font-medium text-sage-500">/month</span></>
+              : "Free"}
+          </span>
         </div>
       </div>
 
-      {/* The only editable field */}
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Price / month (₹)">
-          <input value={price} onChange={(e) => setPrice(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="e.g. 5999" className={inputCls} />
-        </Field>
-        <ReadOnlyField label="Free-trial days" value={sf.trial_days > 0 ? `${sf.trial_days} days` : "No free trial"} hint="Set by the platform." />
+      {/* Free or paid — one decision, then the price if it is paid. */}
+      <div>
+        <span className="mb-1.5 block text-[12.5px] font-semibold text-sage-600">How families pay</span>
+        <div role="radiogroup" aria-label="How families pay" className="grid grid-cols-2 gap-2">
+          {([
+            { on: !paid, label: "Free", sub: "No charge to families" },
+            { on: paid, label: "Paid", sub: "You set the monthly price" },
+          ]).map((opt) => (
+            <button
+              key={opt.label}
+              type="button"
+              role="radio"
+              aria-checked={opt.on}
+              onClick={() => setPaid(opt.label === "Paid")}
+              className={`tap rounded-2xl px-4 py-3 text-left transition-colors ${
+                opt.on ? "bg-sky-50 ring-2 ring-sky-500" : "bg-mist-100 ring-1 ring-ink/[0.04] hover:ring-ink/10"
+              }`}
+            >
+              <span className={`block text-[14px] font-semibold ${opt.on ? "text-sky-700" : "text-ink"}`}>{opt.label}</span>
+              <span className="mt-0.5 block text-[11.5px] text-sage-500">{opt.sub}</span>
+            </button>
+          ))}
+        </div>
       </div>
+
+      {paid && (
+        <Field label="Price / month (₹)">
+          <input
+            value={price}
+            onChange={(e) => setPrice(e.target.value.replace(/\D/g, ""))}
+            inputMode="numeric"
+            placeholder="e.g. 5999"
+            className={inputCls}
+            autoFocus
+          />
+        </Field>
+      )}
 
       {/* Fixed inclusions — read-only rows */}
       <div>
@@ -414,24 +386,23 @@ function PackageEditor({
         <p className="mt-1.5 text-[11.5px] text-sage-500">Standard programme inclusions — shown to families with your package.</p>
       </div>
 
-      {priceNum > 0 && (
+      {paid && priceNum > 0 && (
         <p className="rounded-xl bg-mist-100 px-3 py-2 text-[12px] text-sage-700 ring-1 ring-ink/[0.04]">
           Platform fee {sf.platform_fee_pct}% — you receive <span className="font-semibold text-ink">{inr(payout)}</span> of {inr(priceNum)}/month. Families see {inr(priceNum)}.
         </p>
       )}
+      {!paid && (
+        <p className="rounded-xl bg-mist-100 px-3 py-2 text-[12px] text-sage-700 ring-1 ring-ink/[0.04]">
+          Families join at no charge and see no payment step. You can switch to paid later.
+        </p>
+      )}
       <div className="flex items-center gap-3">
-        <PrimaryButton onClick={save} disabled={busy}>{busy ? "Saving…" : "Save price"}</PrimaryButton>
+        <PrimaryButton onClick={save} disabled={busy || incomplete}>
+          {busy ? "Saving…" : paid ? "Save price" : "Save as free"}
+        </PrimaryButton>
         {saved && <span className="text-[12.5px] font-semibold text-good-600">Saved ✓</span>}
+        {incomplete && !busy && <span className="text-[11.5px] text-sage-500">Enter a monthly price to continue.</span>}
       </div>
     </div>
-  );
-}
-
-/** A locked, read-only field styled like the editable inputs but non-interactive. */
-function ReadOnlyField({ label, value, hint }: { label: string; value: string; hint?: string }) {
-  return (
-    <Field label={label} hint={hint}>
-      <div className={`${inputCls} flex items-center bg-mist-100 text-sage-600`} aria-readonly="true">{value}</div>
-    </Field>
   );
 }

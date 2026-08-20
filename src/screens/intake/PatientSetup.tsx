@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  getPatient, getMyEnabledPacks, assignPatientPathway,
+  getPatient, extractFacts, savePlanIntake,
   getCentreStaff, getCareTeam, setCareTeamMember,
   getHouseholdMembers, addCaregiver,
   getPatientDocuments, uploadPatientDocument, deletePatientDocument, getDocumentUrl,
-  type PatientRow, type EnabledPack, type StaffMember, type CareTeamMember,
+  type PatientRow, type StaffMember, type CareTeamMember,
   type HouseholdMember, type DocumentRow, type TeamRole,
 } from "../../lib/db";
 import {
-  Card, Field, inputCls, PrimaryButton, GhostButton, Chip, PathwayStatusBadge,
-  EmptyState, Skeleton, ErrorNote, SectionHeader, PackCard,
+  Card, Field, inputCls, PrimaryButton, GhostButton, Chip,
+  Skeleton, ErrorNote, SectionHeader,
 } from "../../components/system";
 
 const DOC_TYPES: { key: DocumentRow["doc_type"]; label: string }[] = [
@@ -35,6 +35,34 @@ export default function PatientSetup({
 }: { patientId: string; onExit: () => void; onContinue: () => void }) {
   const [patient, setPatient] = useState<PatientRow | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
+  /*
+   * Pasted text and the doctor's instruction are collected HERE, beside the
+   * upload, because this is the screen where the doctor is holding the paperwork.
+   * Continue commits them so the next screen can draft without asking again:
+   * the instruction is stored as a non-negotiable, and pasted text is turned into
+   * document facts exactly as an uploaded file would be.
+   */
+  const [extras, setExtras] = useState<{ pasted: string; note: string }>({ pasted: "", note: "" });
+  const [continuing, setContinuing] = useState(false);
+  const [continueErr, setContinueErr] = useState<string | null>(null);
+
+  const handleContinue = async () => {
+    setContinuing(true); setContinueErr(null);
+    try {
+      if (extras.note.trim()) {
+        await savePlanIntake(patientId, {
+          milestone_goal: "", milestone_by: "", monitor_focus: "", non_negotiables: extras.note.trim(),
+        });
+      }
+      if (extras.pasted.trim().length > 40) {
+        await extractFacts(patientId, { dischargeText: extras.pasted.trim() });
+      }
+      onContinue();
+    } catch (e) {
+      setContinueErr(e instanceof Error ? e.message : "Could not save that. Try again.");
+      setContinuing(false);
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -69,87 +97,25 @@ export default function PatientSetup({
           )}
         </div>
         <p className="mt-1 text-[14px] text-sage-500">
-          Assign the pathway and care team, and add any documents. The doctor builds and approves the recovery plan next.
+          Add the care team and the discharge document. Carelune drafts the recovery programme next — you review and approve it.
         </p>
 
         <div className="mt-6 space-y-5">
-          <PathwaySection patient={patient} onChange={(p) => setPatient(p)} />
           <TeamSection patientId={patientId} />
-          <DocumentsSection patientId={patientId} />
+          <DocumentsSection patientId={patientId} extras={extras} onExtras={setExtras} />
 
+          {continueErr && <ErrorNote>{continueErr}</ErrorNote>}
           <div className="flex flex-wrap items-center justify-end gap-3 pt-1">
             <GhostButton onClick={onExit}>Save &amp; close</GhostButton>
-            <PrimaryButton onClick={onContinue}>Continue to plan builder →</PrimaryButton>
+            <PrimaryButton onClick={handleContinue} disabled={continuing}>
+              {continuing ? "Saving…" : "Continue — draft the recovery plan →"}
+            </PrimaryButton>
           </div>
         </div>
       </div>
     </div>
   );
 }
-
-/* ------------------------------- pathway --------------------------------- */
-
-function PathwaySection({ patient, onChange }: { patient: PatientRow | null; onChange: (p: PatientRow) => void }) {
-  const [packs, setPacks] = useState<EnabledPack[] | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  useEffect(() => {
-    void getMyEnabledPacks().then(setPacks).catch((e) => { setErr(e instanceof Error ? e.message : "Could not load pathways."); setPacks([]); });
-  }, []);
-
-  const assign = async (packId: string) => {
-    if (!patient) return;
-    const next = patient.pathway_pack_id === packId ? null : packId;
-    setBusy(true); setErr(null);
-    try {
-      await assignPatientPathway(patient.id, next);
-      onChange({ ...patient, pathway_pack_id: next });
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Could not assign the pathway.");
-    } finally { setBusy(false); }
-  };
-
-  const chosen = packs?.find((p) => p.pack_id === patient?.pathway_pack_id) ?? null;
-
-  return (
-    <Card>
-      <SectionHeader title="Clinical pathway" sub="Only pathways Carelune has enabled for your institution appear here." />
-      <div className="mt-4">
-        {err && <div className="mb-3"><ErrorNote>{err}</ErrorNote></div>}
-        {packs === null ? (
-          <div className="grid gap-3 sm:grid-cols-2"><Skeleton className="h-24" /><Skeleton className="h-24" /></div>
-        ) : packs.length === 0 ? (
-          <EmptyState title="No pathways enabled" body="Ask Carelune to enable a Continuum Care programme for your institution." />
-        ) : (
-          <>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {packs.map((p) => (
-                <div key={p.pack_id} className="relative">
-                  <PackCard
-                    name={p.pack_name} specialty={p.specialty} description={p.description}
-                    selected={patient?.pathway_pack_id === p.pack_id} disabled={busy}
-                    onToggle={() => assign(p.pack_id)}
-                  />
-                  <span className="pointer-events-none absolute right-11 top-4"><PathwayStatusBadge status={p.status} /></span>
-                </div>
-              ))}
-            </div>
-            {chosen && (
-              <p className="mt-3 rounded-xl bg-sky-50 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-sky-800 ring-1 ring-sky-200">
-                <span className="font-semibold">{chosen.pack_name}</span> assigned. This is a draft pathway — the doctor can build and
-                approve this patient's plan now; automated plan generation from the pathway template unlocks only after your clinician
-                approves it. Draft content never becomes active care on its own.
-              </p>
-            )}
-          </>
-        )}
-      </div>
-    </Card>
-  );
-}
-
-/* -------------------------------- team ----------------------------------- */
 
 const TEAM_ROLES: { key: TeamRole; label: string; roles: StaffMember["role"][] }[] = [
   { key: "lead_doctor", label: "Lead doctor", roles: ["pmr", "duty_doctor"] },
@@ -291,12 +257,17 @@ function AddCaregiver({ patientId, onAdded }: { patientId: string; onAdded: () =
 
 /* ------------------------------ documents -------------------------------- */
 
-function DocumentsSection({ patientId }: { patientId: string }) {
+function DocumentsSection({ patientId, extras, onExtras }: {
+  patientId: string;
+  extras: { pasted: string; note: string };
+  onExtras: (e: { pasted: string; note: string }) => void;
+}) {
   const [docs, setDocs] = useState<DocumentRow[] | null>(null);
   const [docType, setDocType] = useState<DocumentRow["doc_type"]>("discharge_summary");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const cameraRef = useRef<HTMLInputElement | null>(null);
 
   const load = async () => {
     try { setDocs(await getPatientDocuments(patientId)); }
@@ -331,7 +302,7 @@ function DocumentsSection({ patientId }: { patientId: string }) {
 
   return (
     <Card>
-      <SectionHeader title="Documents" sub="Private to this patient's care team. Stored securely, isolated per institution." />
+      <SectionHeader title="Discharge document" sub="PDF, JPG or PNG up to 10 MB — a clear photo of the sheet works. Private to this patient's care team." />
       <div className="mt-4 space-y-3">
         {err && <ErrorNote>{err}</ErrorNote>}
 
@@ -343,11 +314,56 @@ function DocumentsSection({ patientId }: { patientId: string }) {
               </select>
             </Field>
           </div>
-          <input ref={fileRef} type="file" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} />
+          {/* A paper discharge sheet photographed on a phone is the common case here,
+              so the camera is a first-class control rather than a hidden fallback.
+              extract-facts reads JPG/PNG with the vision model. */}
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/pdf,image/jpeg,image/png"
+            className="hidden"
+            onChange={(e) => onFile(e.target.files?.[0])}
+          />
+          <input
+            ref={cameraRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={(e) => onFile(e.target.files?.[0])}
+          />
           <PrimaryButton onClick={() => fileRef.current?.click()} disabled={busy}>
-            {busy ? "Uploading…" : "Upload document"}
+            {busy ? "Uploading…" : "Upload PDF or photo"}
           </PrimaryButton>
+          <GhostButton onClick={() => cameraRef.current?.click()} disabled={busy}>
+            Take a photo
+          </GhostButton>
         </div>
+
+        <details open={!!extras.pasted}>
+          <summary className="tap cursor-pointer list-none text-[12.5px] font-semibold text-sky-700 hover:text-sky-800">
+            No file? Paste the discharge text instead
+          </summary>
+          <div className="mt-2">
+            <textarea
+              value={extras.pasted}
+              onChange={(e) => onExtras({ ...extras, pasted: e.target.value })}
+              rows={7}
+              placeholder="Paste the discharge summary text here…"
+              className={`${inputCls} resize-y`}
+              aria-label="Paste the discharge summary"
+            />
+          </div>
+        </details>
+
+        <Field label="Anything you want included? (optional)" hint="Carried through to the plan as a non-negotiable.">
+          <input
+            value={extras.note}
+            onChange={(e) => onExtras({ ...extras, note: e.target.value })}
+            placeholder="e.g. No weight-bearing on the left leg for 3 weeks"
+            className={inputCls}
+          />
+        </Field>
 
         {docs === null ? (
           <Skeleton className="h-16" />

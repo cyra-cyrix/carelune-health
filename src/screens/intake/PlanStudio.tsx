@@ -1,14 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  getPatient, getPackPathways, approvePathwayVersion, assignGoverningVersion,
-  extractFacts, getDocumentFacts, saveDocumentFacts, getPatientDocuments,
-  getPlanIntake, savePlanIntake, generatePlan, getPatientPlan, savePlan, activateCarePlan,
-  type PatientRow, type PackPathway, type PlanIntake, type PatientPlanRow,
-  type DocumentFacts, type DocumentRow, type FactItem, type FactMedicine,
+  getPatient, extractFacts, getDocumentFacts, getPatientDocuments, uploadPatientDocument,
+  savePlanIntake, generatePlan, getPatientPlan, savePlan, activateCarePlan,
+  type PatientRow, type PatientPlanRow, type DocumentRow,
 } from "../../lib/db";
+import { acceptAllProposed, acceptProposed, listProposed, removeProposed } from "../../lib/pathwayValidation";
 import type { PlanDraft, PlanFact, PlanMedicine, PlanTask } from "../../lib/pathwayValidation";
 import {
-  Field, inputCls, PrimaryButton, GhostButton, PathwayStatusBadge, ErrorNote, Skeleton,
+  Field, inputCls, PrimaryButton, GhostButton, ErrorNote, Skeleton,
 } from "../../components/system";
 import {
   Panel, SectionLabel, StatusTag, JourneySteps, ProvenanceTag, Reveal, type JourneyState,
@@ -63,8 +62,9 @@ export default function PlanStudio({ patientId, onExit }: { patientId: string; o
                   Recovery plan · {patient?.full_name ?? "…"}
                 </h1>
                 <p className="mt-1 max-w-2xl text-[13.5px] text-haze-300">
-                  Based on the discharge summary and your approved pathway. You edit and approve everything —
-                  nothing is invented, nothing goes live until you activate it.
+                  Drafted from this patient&rsquo;s discharge document against international recovery
+                  standards. Diagnoses and medicines are copied, never invented. You edit and approve
+                  everything — nothing reaches the family until you activate it.
                 </p>
               </div>
               <StatusTag tone={statusTone}>{statusLabel}</StatusTag>
@@ -87,6 +87,17 @@ export default function PlanStudio({ patientId, onExit }: { patientId: string; o
 
 /* =============================== PREPARE ================================== */
 
+/**
+ * PREPARE — the whole of the doctor's work before a plan exists.
+ *
+ * This replaced a four-gate screen (choose an approved pathway · approve it for
+ * the institution · read the document · answer three questions) that stood
+ * between a doctor and a draft. None of those gates were about *this* patient.
+ * What remains is: the document, an optional note, one button.
+ *
+ * Reading the document and drafting the programme are one action now — the
+ * doctor should not have to know that extraction is a separate step.
+ */
 function PreparePanel({
   patient, onPatientChanged, onGenerated,
 }: {
@@ -94,326 +105,195 @@ function PreparePanel({
   onPatientChanged: () => Promise<void> | void;
   onGenerated: (p: PatientPlanRow) => void;
 }) {
-  const [pathways, setPathways] = useState<PackPathway[] | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
+  const [docs, setDocs] = useState<DocumentRow[] | null>(null);
+  const [docId, setDocId] = useState<string>("");
+  const [uploading, setUploading] = useState(false);
+  /* Facts may already exist because the doctor pasted the text during setup. */
+  const [hasFacts, setHasFacts] = useState<boolean | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const [pasted, setPasted] = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [step, setStep] = useState(0);
   const [err, setErr] = useState<string | null>(null);
 
-  const [docs, setDocs] = useState<DocumentRow[]>([]);
-  const [selectedDoc, setSelectedDoc] = useState("");
-  const [mode, setMode] = useState<"document" | "paste">("document");
-  const [dischargeText, setDischargeText] = useState("");
-  const [facts, setFacts] = useState<DocumentFacts | null>(null);
-
-  const [intake, setIntake] = useState<PlanIntake>({ milestone_goal: "", milestone_by: "", monitor_focus: "", non_negotiables: "" });
-
-  // guided-journey animation state
-  const [genStep, setGenStep] = useState(-1);
-  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
-
   useEffect(() => {
-    if (!patient?.pathway_pack_id) { setPathways([]); return; }
-    void getPackPathways(patient.pathway_pack_id).then(setPathways).catch(() => setPathways([]));
-    void getPatientDocuments(patient.id).then((d) => { setDocs(d); const disc = d.find((x) => x.doc_type === "discharge_summary"); if (disc) setSelectedDoc(disc.id); });
-    void getDocumentFacts(patient.id).then((f) => { if (f) setFacts(f.facts); });
-    void getPlanIntake(patient.id).then((i) => { if (i) setIntake(i); });
-  }, [patient?.id, patient?.pathway_pack_id]);
+    if (!patient) return;
+    void getPatientDocuments(patient.id)
+      .then((d) => { setDocs(d); if (d[0]) setDocId(d[0].id); })
+      .catch(() => setDocs([]));
+    void getDocumentFacts(patient.id).then((f) => setHasFacts(!!f)).catch(() => setHasFacts(false));
+  }, [patient?.id]);
 
-  useEffect(() => () => { if (timer.current) clearInterval(timer.current); }, []);
+  /*
+   * The document was already provided during patient setup, so asking for it a
+   * second time was a screen that existed only to hold a button. When a document
+   * is present we draft immediately and the doctor lands on the plan itself.
+   * The ref guard means a failed attempt is not retried in a loop — the doctor
+   * gets the error and an explicit retry instead.
+   */
+  const autoDrafted = useRef(false);
+  useEffect(() => {
+    if (!patient || docs === null || hasFacts === null || autoDrafted.current) return;
+    // A document to read, or facts already extracted from pasted text — either is
+    // enough to draft without asking the doctor for anything again.
+    if ((docs.length > 0 && docId) || hasFacts) { autoDrafted.current = true; void run(); }
+  }, [patient?.id, docs, docId, hasFacts]);
 
-  if (!patient?.pathway_pack_id) {
-    return <Panel title="Assign a pathway first"><p className="text-[13.5px] text-sage-600">Assign a clinical pathway in patient setup, then return here to build the plan.</p></Panel>;
-  }
-
-  const governing = patient.pathway_version_id;
-  const governingPathway = pathways?.find((p) => p.version_id === governing) ?? null;
-
-  const approve = async (p: PackPathway) => {
-    if (!p.version_id) return;
-    setBusy(`approve:${p.pathway_id}`); setErr(null);
+  /*
+   * Uploading lives on THIS screen. It used to be a different page, which meant a
+   * doctor holding a discharge sheet had to leave the drafting screen, upload, and
+   * come back. Photographs are first-class: extract-facts reads JPG/PNG with the
+   * vision model, which is the common case when the sheet is paper.
+   */
+  const onFile = async (file: File | undefined) => {
+    if (!file || !patient) return;
+    setUploading(true); setErr(null);
     try {
-      await approvePathwayVersion(p.version_id);
-      if (patient.pathway_pack_id) setPathways(await getPackPathways(patient.pathway_pack_id));
-    } catch (e) { setErr(e instanceof Error ? e.message : "Could not approve."); }
-    finally { setBusy(null); }
-  };
-  const useVersion = async (p: PackPathway) => {
-    if (!p.version_id) return;
-    setBusy(`use:${p.pathway_id}`); setErr(null);
-    try { await assignGoverningVersion(patient.id, p.version_id); await onPatientChanged(); }
-    catch (e) { setErr(e instanceof Error ? e.message : "Could not set the governing version."); }
-    finally { setBusy(null); }
-  };
-
-  const extract = async () => {
-    setBusy("facts"); setErr(null);
-    try {
-      const f = mode === "document"
-        ? await extractFacts(patient.id, { documentId: selectedDoc })
-        : await extractFacts(patient.id, { dischargeText });
-      setFacts(f);
-    } catch (e) { setErr(e instanceof Error ? e.message : "Could not extract facts."); }
-    finally { setBusy(null); }
-  };
-
-  const questionsFilled = !!(intake.milestone_goal.trim() && intake.monitor_focus.trim() && intake.non_negotiables.trim());
-  const factCount = facts ? (facts.diagnoses.length + facts.medicines.length + facts.precautions.length + facts.diet.length + (facts.procedure ? 1 : 0)) : 0;
-  const canGenerate = !!governing && !!facts && questionsFilled && !busy;
-
-  const generate = async () => {
-    setBusy("generate"); setErr(null); setGenStep(0);
-    // advance the visible journey while the model works
-    timer.current = setInterval(() => setGenStep((s) => (s < 3 ? s + 1 : s)), 650);
-    try {
-      if (facts) await saveDocumentFacts(patient.id, facts);
-      await savePlanIntake(patient.id, intake);
-      await generatePlan(patient.id);
-      const pl = await getPatientPlan(patient.id);
-      if (timer.current) clearInterval(timer.current);
-      setGenStep(4);
-      if (pl) { await new Promise((r) => setTimeout(r, 320)); onGenerated(pl); }
+      const row = await uploadPatientDocument(patient.id, file, "discharge_summary");
+      setDocs((xs) => [row, ...(xs ?? [])]);
+      setDocId(row.id);
     } catch (e) {
-      if (timer.current) clearInterval(timer.current);
-      setGenStep(-1);
-      setErr(e instanceof Error ? e.message : "Could not generate the plan.");
-    } finally { setBusy(null); }
+      setErr(e instanceof Error ? e.message : "Could not upload that file.");
+    } finally { setUploading(false); }
   };
 
-  const generating = busy === "generate";
+  const hasSource = !!docId || hasFacts === true || pasted.trim().length > 40;
 
-  // journey states for the right pane
-  const journey: { label: string; caption?: string; state: JourneyState }[] = [
-    { label: "Reading the discharge document", caption: mode === "document" ? (docs.find((d) => d.id === selectedDoc)?.file_name ?? "Selected document") : "Pasted text", state: genStep > 0 ? "done" : generating ? "active" : facts ? "done" : "idle" },
-    { label: "Structuring diagnoses, medicines & restrictions", caption: facts ? `${factCount} facts extracted` : "From the document only", state: genStep > 1 ? "done" : genStep === 1 ? "active" : facts ? "done" : "idle" },
-    { label: "Applying your approved pathway", caption: governingPathway?.name ?? "Governing version", state: genStep > 2 ? "done" : genStep === 2 ? "active" : "idle" },
-    { label: "Checking for missing or conflicting information", state: genStep > 3 ? "done" : genStep === 3 ? "active" : "idle" },
-    { label: "Draft ready for your review", state: genStep >= 4 ? "done" : "idle" },
+  const run = async () => {
+    if (!patient || !hasSource) return;
+    setBusy(true); setErr(null); setStep(1);
+    try {
+      // The doctor's note is saved as a non-negotiable instruction, so it reaches
+      // the model as `doctor` provenance rather than being lost.
+      if (note.trim()) {
+        await savePlanIntake(patient.id, {
+          milestone_goal: "", milestone_by: "", monitor_focus: "", non_negotiables: note.trim(),
+        });
+      }
+      if (docId) await extractFacts(patient.id, { documentId: docId });
+      else if (pasted.trim().length > 40) await extractFacts(patient.id, { dischargeText: pasted.trim() });
+      // else: facts were already extracted (pasted during patient setup).
+      setStep(2);
+      const generated = await generatePlan(patient.id);
+      setStep(3);
+      await onPatientChanged();
+      const saved = await getPatientPlan(patient.id);
+      if (saved) onGenerated(saved);
+      else if (generated) onGenerated(generated as unknown as PatientPlanRow);
+      // Without this the screen would sit on the progress steps for ever.
+      else setErr("The draft was generated but could not be loaded. Try again.");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not draft the programme.");
+      setStep(0);
+    } finally { setBusy(false); }
+  };
+
+  const journey: { label: string; caption: string; state: JourneyState }[] = [
+    { label: "Reading the discharge document", caption: "Diagnoses, medicines, restrictions", state: step > 1 ? "done" : step === 1 ? "active" : "idle" },
+    { label: "Designing the recovery programme", caption: "Targets, exercise, diet, wound care, monitoring", state: step > 2 ? "done" : step === 2 ? "active" : "idle" },
+    { label: "Ready for your review", caption: "You edit and approve everything", state: step > 2 ? "done" : "idle" },
   ];
 
-  return (
-    <div className="grid gap-5 lg:grid-cols-[minmax(0,440px)_1fr]">
-      {/* -------------------------- LEFT: sources -------------------------- */}
-      <div className="space-y-5">
-        {err && <ErrorNote>{err}</ErrorNote>}
+  const drafting = busy || (docs !== null && hasFacts !== null && (docs.length > 0 || hasFacts) && !err);
 
-        {/* pathway */}
-        <Panel label="Source" title="Approved pathway">
-          <p className="-mt-2 mb-3 text-[12.5px] text-sage-500">A plan can only be built from a pathway version your institution has clinically approved. Draft templates are not national standards.</p>
-          <div className="space-y-2.5">
-            {pathways === null ? <Skeleton className="h-20" /> : pathways.filter((p) => p.version_id).length === 0 ? (
-              <p className="text-[13px] text-sage-500">This pack has no pathway version yet.</p>
-            ) : (
-              pathways.filter((p) => p.version_id).map((p) => {
-                const isGoverning = p.version_id === governing;
-                return (
-                  <div key={p.pathway_id} className={`rounded-2xl border p-3.5 transition-colors ${isGoverning ? "border-brand-300 bg-brand-50/60" : "border-line bg-white"}`}>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-[14px] font-semibold text-ink">{p.name}</span>
-                      {p.version_status && <PathwayStatusBadge status={p.version_status} />}
-                      {p.institution_approved && <StatusTag tone="recovery">Approved</StatusTag>}
-                      {isGoverning && <StatusTag tone="calm">Governing</StatusTag>}
-                    </div>
-                    <div className="mt-2.5 flex flex-wrap gap-2">
-                      {!p.institution_approved ? (
-                        <PrimaryButton onClick={() => approve(p)} disabled={busy === `approve:${p.pathway_id}`}>{busy === `approve:${p.pathway_id}` ? "Approving…" : "Approve for our institution"}</PrimaryButton>
-                      ) : !isGoverning ? (
-                        <PrimaryButton onClick={() => useVersion(p)} disabled={busy === `use:${p.pathway_id}`}>{busy === `use:${p.pathway_id}` ? "Setting…" : "Use for this patient"}</PrimaryButton>
-                      ) : (
-                        <span className="text-[12.5px] font-semibold text-brand-700">✓ Ready</span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </Panel>
-
-        {/* document → facts */}
-        <Panel
-          label="Source"
-          title="Governing discharge document"
-          aside={
-            <div className="flex gap-1 rounded-lg bg-mist-100 p-0.5 text-[12px] font-semibold">
-              <button type="button" onClick={() => setMode("document")} className={`rounded-md px-2.5 py-1 ${mode === "document" ? "bg-white text-sky-700 shadow-sm" : "text-sage-500"}`}>Document</button>
-              <button type="button" onClick={() => setMode("paste")} className={`rounded-md px-2.5 py-1 ${mode === "paste" ? "bg-white text-sky-700 shadow-sm" : "text-sage-500"}`}>Paste</button>
-            </div>
-          }
-        >
-          <div className="space-y-3">
-            {mode === "document" ? (
-              docs.length === 0 ? (
-                <p className="text-[13px] text-sage-500">No documents uploaded. Upload the discharge summary in patient setup, or paste the text.</p>
-              ) : (
-                <Field label="Only this document is read">
-                  <select value={selectedDoc} onChange={(e) => setSelectedDoc(e.target.value)} className={inputCls}>
-                    <option value="">— Select a document —</option>
-                    {docs.map((d) => <option key={d.id} value={d.id}>{d.file_name} ({d.doc_type.replace("_", " ")})</option>)}
-                  </select>
-                </Field>
-              )
-            ) : (
-              <Field label="Discharge summary text (fallback)">
-                <textarea value={dischargeText} onChange={(e) => setDischargeText(e.target.value)} rows={5} placeholder="Paste the discharge summary text…" className={`${inputCls} resize-y font-mono text-[13px]`} />
-              </Field>
-            )}
-            <div className="flex items-center gap-3">
-              <PrimaryButton onClick={extract} disabled={busy === "facts" || (mode === "document" ? !selectedDoc : dischargeText.trim().length < 20)}>
-                {busy === "facts" ? "Reading…" : facts ? "Re-read document" : "Read document"}
-              </PrimaryButton>
-              {facts && <StatusTag tone="calm">{factCount} facts</StatusTag>}
-            </div>
-            {facts && <FactsReview facts={facts} onChange={setFacts} />}
-          </div>
-        </Panel>
-
-        {/* three instructions */}
-        <Panel label="Source" title="Your instructions">
-          <p className="-mt-2 mb-3 text-[12.5px] text-sage-500">Three answers that steer the plan. Kept with your provenance.</p>
-          <div className="space-y-4">
-            <Field label="Recovery milestone you expect, and by when">
-              <div className="grid gap-2 sm:grid-cols-[1fr_150px]">
-                <input value={intake.milestone_goal} onChange={(e) => setIntake({ ...intake, milestone_goal: e.target.value })} placeholder="e.g. Independent indoor walking" className={inputCls} />
-                <input value={intake.milestone_by} onChange={(e) => setIntake({ ...intake, milestone_by: e.target.value })} placeholder="By week 4" className={inputCls} />
-              </div>
-            </Field>
-            <Field label="What to monitor more closely than usual">
-              <textarea value={intake.monitor_focus} onChange={(e) => setIntake({ ...intake, monitor_focus: e.target.value })} rows={2} placeholder="e.g. Wound at the graft site; blood sugar" className={`${inputCls} resize-y`} />
-            </Field>
-            <Field label="Non-negotiable instructions or safety boundaries">
-              <textarea value={intake.non_negotiables} onChange={(e) => setIntake({ ...intake, non_negotiables: e.target.value })} rows={2} placeholder="e.g. No bending/twisting/lifting > 2 kg for 6 weeks" className={`${inputCls} resize-y`} />
-            </Field>
-          </div>
+  if (drafting) {
+    return (
+      <div className="mx-auto max-w-[560px]">
+        <Panel label="Working" title="Drafting the recovery programme">
+          <p className="-mt-2 mb-4 text-[13px] leading-relaxed text-sage-600">
+            Reading {docs?.find((d) => d.id === docId)?.file_name ?? "the discharge document"} and
+            building a 30-day programme — targets, exercise, diet, medicines, wound care and what to
+            monitor, each with dates.
+          </p>
+          <JourneySteps steps={journey} />
         </Panel>
       </div>
+    );
+  }
 
-      {/* ---------------------- RIGHT: generated plan --------------------- */}
-      <div className="lg:sticky lg:top-4 lg:self-start">
-        <div className="overflow-hidden rounded-3xl bg-white shadow-panel ring-1 ring-ink/[0.05]">
-          <div className="border-b border-line bg-gradient-to-b from-sky-50/60 to-white px-6 py-4">
-            <SectionLabel>Generated care plan</SectionLabel>
-            <h2 className="mt-1 font-display text-[17px] font-semibold tracking-[-0.01em] text-ink">
-              {generating ? "Building the recovery plan…" : "Ready when your sources are"}
-            </h2>
-          </div>
+  return (
+    <div className="mx-auto max-w-[620px]">
+      <Panel label="Needed" title="Add the discharge document">
+        <p className="-mt-2 mb-4 text-[13px] leading-relaxed text-sage-600">
+          Carelune drafts the recovery programme from it. A clear photo of the sheet works.
+        </p>
 
-          <div className="p-6">
-            <JourneySteps steps={journey} />
-
-            {!generating && (
-              <div className="mt-4 rounded-2xl bg-mist p-4 ring-1 ring-ink/[0.04]">
-                <SectionLabel>Before you generate</SectionLabel>
-                <ul className="mt-2 space-y-1.5 text-[13px]">
-                  <ReadyRow ok={!!governing} label="Approved pathway selected" />
-                  <ReadyRow ok={!!facts} label={facts ? `${factCount} facts read from the document` : "Read the discharge document"} />
-                  <ReadyRow ok={questionsFilled} label="Three instructions answered" />
-                </ul>
-              </div>
-            )}
-
-            <div className="mt-5">
-              <button
-                type="button"
-                onClick={generate}
-                disabled={!canGenerate}
-                className="tap flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-800 px-5 py-3.5 text-[15px] font-semibold text-white shadow-sm transition-colors hover:bg-brand-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:opacity-50"
-              >
-                {generating ? "Generating draft…" : "Generate recovery plan"}
-              </button>
-              {!canGenerate && !generating && (
-                <p className="mt-2 text-center text-[12px] text-sage-500">
-                  {!governing ? "Select an approved pathway to continue." : !facts ? "Read the discharge document first." : "Answer the three instructions."}
-                </p>
-              )}
-            </div>
-          </div>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/pdf,image/jpeg,image/png"
+          className="hidden"
+          onChange={(e) => { void onFile(e.target.files?.[0]); e.target.value = ""; }}
+        />
+        <input
+          ref={cameraRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(e) => { void onFile(e.target.files?.[0]); e.target.value = ""; }}
+        />
+        <div className="flex flex-wrap gap-2">
+          <PrimaryButton onClick={() => fileRef.current?.click()} disabled={uploading}>
+            {uploading ? "Uploading…" : "Upload PDF or photo"}
+          </PrimaryButton>
+          <GhostButton onClick={() => cameraRef.current?.click()} disabled={uploading}>Take a photo</GhostButton>
         </div>
-      </div>
+
+        <details className="mt-3">
+          <summary className="tap cursor-pointer list-none text-[12.5px] font-semibold text-sky-700 hover:text-sky-800">
+            No file? Paste the text instead
+          </summary>
+          <div className="mt-2 space-y-3">
+            <textarea
+              value={pasted}
+              onChange={(e) => setPasted(e.target.value)}
+              rows={7}
+              placeholder="Paste the discharge summary text here…"
+              className={`${inputCls} resize-y`}
+              aria-label="Paste the discharge summary"
+            />
+            <Field label="Anything you want included? (optional)" hint="Carried through as a non-negotiable.">
+              <input
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="e.g. No weight-bearing on the left leg for 3 weeks"
+                className={inputCls}
+              />
+            </Field>
+            <PrimaryButton onClick={run} disabled={!hasSource}>Draft from pasted text</PrimaryButton>
+          </div>
+        </details>
+
+        {err && <div className="mt-4"><ErrorNote>{err}</ErrorNote></div>}
+        {err && (
+          <div className="mt-3">
+            <GhostButton onClick={() => { autoDrafted.current = false; void run(); }} disabled={!hasSource}>
+              Try again
+            </GhostButton>
+          </div>
+        )}
+
+        <p className="mt-4 border-t border-line pt-3 text-[11.5px] leading-relaxed text-sage-500">
+          Drafted with reference to international continuing-care guidance — WHO Rehabilitation 2030,
+          AHA/ASA stroke recovery, ERAS post-operative recovery, NICE rehabilitation, ACSM exercise
+          prescription, ESPEN nutrition and WOCN/EWMA wound care. A draft for your clinical judgement,
+          not a certified protocol. Diagnoses and medicines are copied from the document and never
+          invented; anything Carelune proposes is marked for your approval.
+        </p>
+      </Panel>
     </div>
   );
+
 }
 
-function ReadyRow({ ok, label }: { ok: boolean; label: string }) {
-  return (
-    <li className="flex items-center gap-2.5">
-      <span className={`grid h-4 w-4 shrink-0 place-items-center rounded-full text-[10px] ${ok ? "bg-brand-500 text-white" : "bg-mist-200 text-sage-500"}`}>{ok ? "✓" : ""}</span>
-      <span className={ok ? "text-ink" : "text-sage-500"}>{label}</span>
-    </li>
-  );
-}
 
-/* ----------------------------- facts review ------------------------------- */
-
-function FactsReview({ facts, onChange }: { facts: DocumentFacts; onChange: (f: DocumentFacts) => void }) {
-  const setItems = (key: "diagnoses" | "investigations" | "precautions" | "diet", rows: FactItem[]) => onChange({ ...facts, [key]: rows });
-  return (
-    <div className="rounded-2xl border border-sky-200 bg-sky-50/40 p-4">
-      <div className="flex items-center gap-2">
-        <ProvenanceTag p="document" />
-        <p className="text-[12.5px] font-semibold text-sky-800">Facts read from the document — correct before generating</p>
-      </div>
-      <p className="mt-0.5 text-[11.5px] text-sage-600">Your edits carry your (doctor) provenance.</p>
-
-      {(facts.missing.length > 0 || facts.conflicts.length > 0) && (
-        <div className="mt-2.5 space-y-1">
-          {facts.conflicts.map((c, i) => <p key={`c${i}`} className="text-[12px] text-coral-600"><span className="font-semibold">Conflict:</span> {c}</p>)}
-          {facts.missing.map((m, i) => <p key={`m${i}`} className="text-[12px] text-warn-600"><span className="font-semibold">Missing:</span> {m}</p>)}
-        </div>
-      )}
-
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        <FactEditList label="Diagnoses" rows={facts.diagnoses} onChange={(r) => setItems("diagnoses", r)} />
-        <div>
-          <span className="mb-1 block text-[12px] font-semibold text-sage-600">Procedure</span>
-          <input value={facts.procedure?.text ?? ""} onChange={(e) => onChange({ ...facts, procedure: e.target.value.trim() ? { text: e.target.value, provenance: facts.procedure?.provenance ?? "doctor" } : null })} placeholder="e.g. L4-L5 fusion" className={inputCls} />
-        </div>
-      </div>
-
-      <div className="mt-3">
-        <span className="mb-1 block text-[12px] font-semibold text-sage-600">Medicines</span>
-        <div className="space-y-2">
-          {facts.medicines.map((m, i) => (
-            <div key={i} className="rounded-xl bg-white/70 p-2 ring-1 ring-sky-100">
-              <div className="flex items-center gap-1.5">
-                <input value={m.name} onChange={(e) => onChange({ ...facts, medicines: facts.medicines.map((x, j) => j === i ? { ...x, name: e.target.value } : x) })} placeholder="Medicine name" className={`${inputCls} flex-1`} />
-                <button type="button" onClick={() => onChange({ ...facts, medicines: facts.medicines.filter((_, j) => j !== i) })} aria-label="Remove medicine" className="shrink-0 px-1.5 text-[13px] font-semibold text-sage-500 hover:text-coral-600">✕</button>
-              </div>
-              <div className="mt-1.5 grid grid-cols-3 gap-1.5">
-                <input value={m.dose} onChange={(e) => onChange({ ...facts, medicines: facts.medicines.map((x, j) => j === i ? { ...x, dose: e.target.value } : x) })} placeholder="Dose" className={inputCls} />
-                <input value={m.freq} onChange={(e) => onChange({ ...facts, medicines: facts.medicines.map((x, j) => j === i ? { ...x, freq: e.target.value } : x) })} placeholder="1-0-1" className={inputCls} />
-                <input value={m.timing} onChange={(e) => onChange({ ...facts, medicines: facts.medicines.map((x, j) => j === i ? { ...x, timing: e.target.value } : x) })} placeholder="After food" className={inputCls} />
-              </div>
-            </div>
-          ))}
-          <button type="button" onClick={() => onChange({ ...facts, medicines: [...facts.medicines, { name: "", dose: "", freq: "", timing: "", note: "", provenance: "doctor" } as FactMedicine] })} className="text-[12px] font-semibold text-sky-700 hover:text-sky-800">+ Add medicine</button>
-        </div>
-      </div>
-
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        <FactEditList label="Precautions / boundaries" rows={facts.precautions} onChange={(r) => setItems("precautions", r)} />
-        <FactEditList label="Diet" rows={facts.diet} onChange={(r) => setItems("diet", r)} />
-      </div>
-    </div>
-  );
-}
-
-function FactEditList({ label, rows, onChange }: { label: string; rows: FactItem[]; onChange: (r: FactItem[]) => void }) {
-  return (
-    <div>
-      <span className="mb-1 block text-[12px] font-semibold text-sage-600">{label}</span>
-      <div className="space-y-1.5">
-        {rows.map((r, i) => (
-          <div key={i} className="flex items-center gap-1.5">
-            <input value={r.text} onChange={(e) => onChange(rows.map((x, j) => j === i ? { ...x, text: e.target.value } : x))} className={`${inputCls} flex-1`} />
-            <button type="button" onClick={() => onChange(rows.filter((_, j) => j !== i))} className="px-1.5 text-[12px] font-semibold text-sage-500 hover:text-coral-600">✕</button>
-          </div>
-        ))}
-        <button type="button" onClick={() => onChange([...rows, { text: "", provenance: "doctor" }])} className="text-[12px] font-semibold text-sky-700 hover:text-sky-800">+ Add</button>
-      </div>
-    </div>
-  );
-}
-
-/* =============================== REVIEW ================================== */
+const SECTION_LABEL: Record<string, string> = {
+  diet: "Diet", precautions: "Safety boundaries", targets: "Recovery target",
+  daily_tasks: "Daily task", therapy_tasks: "Exercise / therapy", wound_care: "Wound care",
+};
 
 const APPROVER_ROLE: Record<string, string> = {
   pmr: "Doctor", duty_doctor: "Duty doctor", nurse: "Nurse",
@@ -439,22 +319,8 @@ function PlanReview({
   const [err, setErr] = useState<string | null>(null);
   const [savedNote, setSavedNote] = useState<string | null>(null);
   const [confirmActivate, setConfirmActivate] = useState(false);
-  const [pathwayName, setPathwayName] = useState<string | null>(null);
   const approved = plan.status === "approved";
   const activated = !!plan.activated_at;
-
-  // The governing pathway is named in the activation confirmation, so the
-  // clinician can see exactly which plan is about to become live care.
-  useEffect(() => {
-    const pack = patient?.pathway_pack_id;
-    const version = patient?.pathway_version_id;
-    if (!pack || !version) return;
-    let live = true;
-    getPackPathways(pack)
-      .then((rows) => { if (live) setPathwayName(rows.find((r) => r.version_id === version)?.name ?? null); })
-      .catch(() => undefined);
-    return () => { live = false; };
-  }, [patient?.pathway_pack_id, patient?.pathway_version_id]);
 
   const persist = async (approve: boolean) => {
     setBusy(approve ? "approve" : "save"); setErr(null); setSavedNote(null);
@@ -476,6 +342,15 @@ function PlanReview({
       onExit();
     } catch (e) { setErr(e instanceof Error ? e.message : "Could not activate the care plan."); setBusy(null); }
   };
+
+  /*
+   * docs/DECISIONS.md D-002, control 2. Every line the model PROPOSED (rather than
+   * copied from the document) must be ruled on by the doctor before this plan can
+   * become live care. Editing a proposed line re-marks it as the doctor's, which is
+   * what clears it from this count.
+   */
+  const proposals = listProposed(draft);
+  const unreviewed = proposals.length;
 
   const medCount = draft.medicines?.length ?? 0;
   const taskCount = (draft.daily_tasks?.length ?? 0) + (draft.therapy_tasks?.length ?? 0);
@@ -577,6 +452,31 @@ function PlanReview({
           />
         </Reveal>
 
+        {(draft.wound_care?.length ?? 0) > 0 && (
+          <Reveal index={4}>
+            <EditableTaskCard title="Wound & surgical site care" editing={editing}
+              rows={draft.wound_care ?? []}
+              onChange={(rows) => setDraft({ ...draft, wound_care: rows })}
+            />
+          </Reveal>
+        )}
+
+        {(draft.targets?.length ?? 0) > 0 && (
+          <Reveal index={4}>
+            <Panel label="Recovery" title="What we are aiming for">
+              <ul className="space-y-2">
+                {(draft.targets ?? []).map((t, i) => (
+                  <li key={i} className="flex flex-wrap items-baseline gap-x-2 text-[13.5px] text-ink">
+                    <span className="min-w-0">{t.text}</span>
+                    {t.by_day != null && <span className="text-[12px] font-semibold text-sage-500">by day {t.by_day}</span>}
+                    <ProvenanceTag p={t.provenance} />
+                  </li>
+                ))}
+              </ul>
+            </Panel>
+          </Reveal>
+        )}
+
         <div className="grid gap-4 sm:grid-cols-2">
           {/* Diet is editable: a discharge summary that says nothing about diet
               used to leave a "Missing: diet" flag with no way to answer it. */}
@@ -654,8 +554,8 @@ function PlanReview({
                   <dd className="min-w-0 flex-1 font-semibold text-ink">{patient?.full_name ?? "This patient"}</dd>
                 </div>
                 <div className="flex gap-2">
-                  <dt className="w-[74px] shrink-0 font-semibold text-sage-500">Pathway</dt>
-                  <dd className="min-w-0 flex-1 text-ink">{pathwayName ?? "The pathway version assigned in patient setup"}</dd>
+                  <dt className="w-[74px] shrink-0 font-semibold text-sage-500">Source</dt>
+                  <dd className="min-w-0 flex-1 text-ink">This patient&rsquo;s discharge document, reviewed by you</dd>
                 </div>
                 <div className="flex gap-2">
                   <dt className="w-[74px] shrink-0 font-semibold text-sage-500">Version</dt>
@@ -669,8 +569,55 @@ function PlanReview({
                   </dd>
                 </div>
               </dl>
+              {unreviewed > 0 && (
+                <div className="mt-3 rounded-xl bg-warn-100 p-3.5 ring-1 ring-warn-500/25">
+                  <p className="text-[12.5px] leading-relaxed text-ink">
+                    <span className="font-semibold">
+                      Carelune suggested {unreviewed} {unreviewed === 1 ? "line" : "lines"}
+                    </span>{" "}
+                    from standard recovery practice, because the discharge document did not cover
+                    {unreviewed === 1 ? " it" : " them"}. Keep or remove each one — keeping makes it yours.
+                  </p>
+                  <ul className="mt-2.5 space-y-1.5">
+                    {proposals.map((ref) => (
+                      <li key={`${ref.section}-${ref.index}`} className="rounded-lg bg-white/70 px-2.5 py-2">
+                        <p className="text-[12px] leading-snug text-ink">{ref.text || "(untitled)"}</p>
+                        <p className="mt-0.5 text-[10.5px] font-semibold uppercase tracking-wide text-sage-500">
+                          {SECTION_LABEL[ref.section] ?? ref.section}
+                        </p>
+                        <div className="mt-1.5 flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setDraft(acceptProposed(draft, ref))}
+                            className="tap rounded-lg bg-sky-600 px-2.5 py-1 text-[11.5px] font-semibold text-white hover:bg-sky-700"
+                          >
+                            Keep
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDraft(removeProposed(draft, ref))}
+                            className="tap rounded-lg px-2.5 py-1 text-[11.5px] font-semibold text-sage-600 hover:text-ink"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                  <button
+                    type="button"
+                    onClick={() => setDraft(acceptAllProposed(draft))}
+                    className="tap mt-2.5 text-[12px] font-semibold text-sky-700 hover:text-sky-800"
+                  >
+                    Keep all {unreviewed}
+                  </button>
+                  <p className="mt-2 text-[11px] leading-relaxed text-sage-600">
+                    Save the plan after deciding, so your choices are recorded.
+                  </p>
+                </div>
+              )}
               <div className="mt-3 space-y-2">
-                <PrimaryButton onClick={activate} disabled={busy === "activate"} className="w-full">{busy === "activate" ? "Activating…" : "Confirm — activate care plan"}</PrimaryButton>
+                <PrimaryButton onClick={activate} disabled={busy === "activate" || unreviewed > 0} className="w-full">{busy === "activate" ? "Activating…" : "Confirm — activate care plan"}</PrimaryButton>
                 <GhostButton onClick={() => setConfirmActivate(false)} disabled={busy === "activate"} className="w-full">Cancel</GhostButton>
               </div>
             </div>

@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type {
   PatientRow, CareTaskRow, TaskOutcome, MedicationRow, MedAdminStatus,
-  PatientPlanRow, ReadingsInput, ReadingRow, ThresholdRow, UpdateRow,
+  PatientPlanRow, ReadingsInput, ReadingRow, ThresholdRow, UpdateRow, CareEventRow,
 } from "../../lib/db";
 
 /* ============================================================================
@@ -28,6 +28,8 @@ export type HcData = {
   history: ReadingRow[];
   thresholds: ThresholdRow[];
   feed: UpdateRow[];
+  /** Today's event-level records (0027) — feeds, position changes, photos. */
+  events: CareEventRow[];
   /** Record (or clear) a care-task outcome. */
   recordOutcome: (taskId: string, outcome: TaskOutcome | null) => void;
   /** Merge-save today's readings (never overwrites unrelated fields). */

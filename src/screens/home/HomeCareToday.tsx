@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import { ActionStage } from "./ActionStage";
 import { RecordNow } from "./RecordNow";
+import { NotificationBell } from "./Notifications";
 import { HomeCareTimeline } from "./HomeCareTimeline";
 import { HcIcon, OUTCOME_META, useHc, type TaskKind } from "./hc-kit";
-import { buildTodayModel, glanceTiles, nextSelectionAfterRecord, type TodayItem } from "./today-model";
+import { buildTodayModel, eventTiles, glanceTiles, nextSelectionAfterRecord, type TodayItem } from "./today-model";
 
 /**
  * Today — the caregiver's home screen, arranged per the approved mockup.
@@ -18,13 +19,20 @@ import { buildTodayModel, glanceTiles, nextSelectionAfterRecord, type TodayItem 
  * teal is deliberately not carried across.
  */
 export function HomeCareToday() {
-  const { patient, day, tasks, outcomes, meds } = useHc();
+  const { patient, day, tasks, outcomes, meds, events } = useHc();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [recordOpen, setRecordOpen] = useState(false);
   const [view, setView] = useState<"plan" | "timeline">("plan");
 
   const model = buildTodayModel(tasks, outcomes, selectedId);
-  const tiles = useMemo(() => glanceTiles(model.ordered), [model.ordered]);
+  /*
+   * Real event counts win over recorded-of-scheduled: "4 feeds" is what a nurse
+   * asks about. Scheduled progress is the fallback until events exist for the day.
+   */
+  const tiles = useMemo(() => {
+    const fromEvents = eventTiles(events);
+    return fromEvents.length ? fromEvents.slice(0, 4) : glanceTiles(model.ordered);
+  }, [events, model.ordered]);
   const firstName = patient.full_name.split(" ")[0] || patient.full_name;
   const open = model.active;
 
@@ -44,9 +52,12 @@ export function HomeCareToday() {
           <p>{greeting()},</p>
           <h1>{firstName}&rsquo;s care</h1>
         </div>
-        <button type="button" className="hc-team-btn" onClick={() => setRecordOpen(false)}>
-          <HcIcon.Users size={15} /> Care team
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <NotificationBell />
+          <button type="button" className="hc-team-btn" onClick={() => setRecordOpen(true)}>
+            <HcIcon.Users size={15} /> Record
+          </button>
+        </div>
       </header>
 
       <div className="hc-greet-meta">
@@ -111,10 +122,10 @@ export function HomeCareToday() {
         {tiles.length > 0 && (
           <div className="hc-tiles">
             {tiles.map((t) => (
-              <div key={t.key} className={`hc-tile${t.done ? " done" : t.recorded < t.total ? " due" : ""}`}>
+              <div key={t.key} className={`hc-tile${t.done ? " done" : t.total != null && t.recorded < t.total ? " due" : ""}`}>
                 <span className="hc-tile-label">{kindIcon(t.kind)} {t.label}</span>
                 <span className="hc-tile-n num">{t.recorded}</span>
-                <span className="hc-tile-sub">of {t.total}</span>
+                <span className="hc-tile-sub">{t.total == null ? "recorded" : `of ${t.total}`}</span>
               </div>
             ))}
           </div>

@@ -3,11 +3,11 @@ import { useBranding } from "../../branding/BrandingProvider";
 import {
   getMyPatient, getCareTasks, getTodayTaskOutcomes, setTaskOutcome,
   getMedications, getMedAdminToday, setMedAdmin, clearMedAdmin,
-  getPatientPlan, getTodayReadings, saveReadings, getThresholds,
+  getPatientPlan, getTodayReadings, saveReadings, getThresholds, getTodayCareEvents,
   getReadingHistory, getDailyUpdates, addUpdate,
   type PatientRow, type CareTaskRow, type TaskOutcome, type MedicationRow,
   type MedAdminStatus, type PatientPlanRow, type ReadingsInput, type ReadingRow,
-  type ThresholdRow, type UpdateRow,
+  type ThresholdRow, type UpdateRow, type CareEventRow,
 } from "../../lib/db";
 import { HcProvider, dayAtHome, HcIcon, type HcData, type HcRole } from "./hc-kit";
 import { HomeCareToday } from "./HomeCareToday";
@@ -45,6 +45,7 @@ export default function HomeCare({ role, initialTab = "today" }: { role: HcRole;
   const [history, setHistory] = useState<ReadingRow[]>([]);
   const [thresholds, setThresholds] = useState<ThresholdRow[]>([]);
   const [feed, setFeed] = useState<UpdateRow[]>([]);
+  const [events, setEvents] = useState<CareEventRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -64,7 +65,7 @@ export default function HomeCare({ role, initialTab = "today" }: { role: HcRole;
         if (!active) return;
         setPatient(nextPatient);
         if (nextPatient) {
-          const [nextTasks, nextOutcomes, nextMeds, nextMedAdmin, nextPlan, nextReadings, nextThresholds, nextHistory, nextFeed] = await Promise.all([
+          const [nextTasks, nextOutcomes, nextMeds, nextMedAdmin, nextPlan, nextReadings, nextThresholds, nextHistory, nextFeed, nextEvents] = await Promise.all([
             getCareTasks(nextPatient.id),
             getTodayTaskOutcomes(nextPatient.id).catch(() => new Map<string, TaskOutcome>()),
             getMedications(nextPatient.id).catch(() => [] as MedicationRow[]),
@@ -74,6 +75,8 @@ export default function HomeCare({ role, initialTab = "today" }: { role: HcRole;
             getThresholds(nextPatient.id).catch(() => [] as ThresholdRow[]),
             getReadingHistory(nextPatient.id, 7).catch(() => [] as ReadingRow[]),
             getDailyUpdates(nextPatient.id, 10).catch(() => [] as UpdateRow[]),
+            // Absent until migration 0027 is applied — an empty list, never a crash.
+            getTodayCareEvents(nextPatient.id).catch(() => [] as CareEventRow[]),
           ]);
           if (!active) return;
           setTasks(nextTasks);
@@ -85,6 +88,7 @@ export default function HomeCare({ role, initialTab = "today" }: { role: HcRole;
           setThresholds(nextThresholds);
           setHistory(nextHistory);
           setFeed(nextFeed);
+          setEvents(nextEvents);
         }
       } catch (cause) {
         if (active) setError(cause instanceof Error ? cause.message : "Could not load Home Care.");
@@ -148,7 +152,7 @@ export default function HomeCare({ role, initialTab = "today" }: { role: HcRole;
   if (!patient) return <Shell><Info title="No patient linked yet">Your centre links your account to the patient at onboarding. The daily plan appears here once that&rsquo;s done.</Info></Shell>;
 
   const data: HcData = {
-    role, patient, day: dayAtHome(patient), tasks, outcomes, meds, medAdmin, plan, readings, history, thresholds, feed,
+    role, patient, day: dayAtHome(patient), tasks, outcomes, meds, medAdmin, plan, readings, history, thresholds, feed, events,
     recordOutcome, saveReadingFields, markMed, clearMed, postStatus, goTab: (nextTab) => setTab(nextTab as HcTab), reload,
   };
 

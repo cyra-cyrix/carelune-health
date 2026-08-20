@@ -134,12 +134,40 @@ export function initialBlockKey(blocks: PeriodBlock[], now: Period = currentPeri
 /* --------------------------- "at a glance" tiles --------------------------- */
 
 export interface GlanceTile {
-  key: TaskKind;
+  key: string;
   kind: TaskKind;
   label: string;
+  /** Count for an event tile, or recorded-of-scheduled for a task tile. */
   recorded: number;
-  total: number;
+  total: number | null;
   done: boolean;
+}
+
+/** Event kinds worth counting on the home screen, in display order. */
+const COUNTED: { kind: string; label: string; icon: TaskKind }[] = [
+  { kind: "feed", label: "Feeds", icon: "food" },
+  { kind: "positioning", label: "Position", icon: "positioning" },
+  { kind: "urine", label: "Urine", icon: "task" },
+  { kind: "bowel", label: "Bowel", icon: "task" },
+];
+
+/**
+ * Counts of what actually happened today, from the event stream (0027).
+ *
+ * These are true counts — four feeds are four rows — which the single daily
+ * readings row could never express. A kind with no events today is left out
+ * rather than shown as a zero: an empty tile reads as a failure to record when
+ * it may simply not apply to this patient.
+ */
+export function eventTiles(events: { kind: string }[]): GlanceTile[] {
+  return COUNTED.map((c) => ({
+    key: c.kind,
+    kind: c.icon,
+    label: c.label,
+    recorded: events.filter((e) => e.kind === c.kind).length,
+    total: null,
+    done: false,
+  })).filter((t) => t.recorded > 0);
 }
 
 const TILE_LABEL: Partial<Record<TaskKind, string>> = {

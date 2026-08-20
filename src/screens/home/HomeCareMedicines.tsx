@@ -130,6 +130,9 @@ export function HomeCareMedicines() {
           <span className="mr-ic"><HcIcon.Pill size={16} /></span>
           <span className="mr-txt">
             <b>{r.med.name}</b>
+            {/* Purpose first: a caregiver handing over tablets should know what
+                each one is for, not just its dose. */}
+            {r.med.purpose && <small className="hc-med-purpose">{r.med.purpose}</small>}
             <small>{[r.med.dose, foodLabel(r.plan.food), slot === "prn" ? "Only if needed" : slot === "interval" ? (r.plan.interval ?? "") : r.plan.clock].filter(Boolean).join(" · ") || "As directed"}</small>
           </span>
         </button>

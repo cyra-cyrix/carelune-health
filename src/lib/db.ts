@@ -66,6 +66,8 @@ export type MedicationRow = {
   id: string;
   patient_id: string;
   name: string;
+  /** Plain-language reason this medicine is given, e.g. "blood thinner" (0027). */
+  purpose?: string | null;
   dose: string | null;
   freq: string | null;
   timing: string | null;
@@ -1684,4 +1686,92 @@ export async function getFamilyQueryCounts(patientIds: string[]): Promise<Record
     counts[row.patient_id] = c;
   }
   return counts;
+}
+
+/* ------------------------- care events (0027) ------------------------------ */
+
+export type CareEventKind =
+  | "feed" | "positioning" | "urine" | "bowel" | "vitals" | "medicine"
+  | "therapy" | "secretion" | "pain" | "photo" | "note" | "other";
+
+export type CareEventRow = {
+  id: string;
+  patient_id: string;
+  kind: CareEventKind;
+  detail: string | null;
+  amount: number | null;
+  unit: string | null;
+  document_id: string | null;
+  occurred_at: string;
+  recorded_by: string | null;
+};
+
+/**
+ * Record one thing that happened.
+ *
+ * Separate from `saveReadings`, which merges into the single daily row. A feed
+ * at 07:00 and another at 11:00 are two events; collapsing them into one value
+ * is what made "4 feeds today" impossible to show.
+ */
+export async function addCareEvent(
+  patientId: string,
+  centreId: string,
+  e: { kind: CareEventKind; detail?: string; amount?: number | null; unit?: string; documentId?: string },
+): Promise<void> {
+  const { data: auth } = await supabase.auth.getUser();
+  const { error } = await supabase.from("care_events").insert({
+    patient_id: patientId,
+    centre_id: centreId,
+    kind: e.kind,
+    detail: e.detail ?? null,
+    amount: e.amount ?? null,
+    unit: e.unit ?? null,
+    document_id: e.documentId ?? null,
+    recorded_by: auth.user?.id ?? null,
+  });
+  if (error) throw new Error(pgErr(error, "Could not record that."));
+}
+
+/** Today's events for a patient, oldest first (timeline order). */
+export async function getTodayCareEvents(patientId: string): Promise<CareEventRow[]> {
+  const since = new Date(); since.setHours(0, 0, 0, 0);
+  const { data, error } = await supabase
+    .from("care_events")
+    .select("id, patient_id, kind, detail, amount, unit, document_id, occurred_at, recorded_by")
+    .eq("patient_id", patientId)
+    .gte("occurred_at", since.toISOString())
+    .order("occurred_at", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as CareEventRow[];
+}
+
+/* ------------------------- notifications (0027) ---------------------------- */
+
+export type NotificationRow = {
+  id: string;
+  patient_id: string | null;
+  kind: "message" | "plan" | "task" | "reading" | "alert" | "system";
+  title: string;
+  body: string | null;
+  created_at: string;
+  read_at: string | null;
+};
+
+/** The signed-in user's notifications, newest first. RLS returns only their own. */
+export async function getMyNotifications(limit = 30): Promise<NotificationRow[]> {
+  const { data, error } = await supabase
+    .from("notifications")
+    .select("id, patient_id, kind, title, body, created_at, read_at")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []) as NotificationRow[];
+}
+
+/** Mark one notification, or all of them, read. */
+export async function markNotificationsRead(ids?: string[]): Promise<void> {
+  let q = supabase.from("notifications").update({ read_at: new Date().toISOString() }).is("read_at", null);
+  if (ids?.length) q = q.in("id", ids);
+  const { error } = await q;
+  if (error) throw error;
 }

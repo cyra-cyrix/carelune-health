@@ -129,3 +129,55 @@ export function initialBlockKey(blocks: PeriodBlock[], now: Period = currentPeri
   if (unfinished) return unfinished.key;
   return (blocks.find((b) => b.key === now) ?? blocks[blocks.length - 1]).key;
 }
+
+
+/* --------------------------- "at a glance" tiles --------------------------- */
+
+export interface GlanceTile {
+  key: TaskKind;
+  kind: TaskKind;
+  label: string;
+  recorded: number;
+  total: number;
+  done: boolean;
+}
+
+const TILE_LABEL: Partial<Record<TaskKind, string>> = {
+  task: "Vitals",
+  medicine: "Medicines",
+  physio: "Therapy",
+  food: "Feeds",
+  positioning: "Position",
+};
+
+/**
+ * The four-up summary above the plan.
+ *
+ * Counts come from today's scheduled activities and their recorded outcomes —
+ * the data we actually hold. The daily readings row stores one value per
+ * parameter per day, not an event stream, so a tile cannot honestly claim
+ * "4 feeds recorded"; it reports recorded-of-scheduled instead.
+ */
+export function glanceTiles(ordered: TodayItem[]): GlanceTile[] {
+  const byKind = new Map<TaskKind, TodayItem[]>();
+  for (const item of ordered) {
+    const list = byKind.get(item.kind) ?? [];
+    list.push(item);
+    byKind.set(item.kind, list);
+  }
+  return [...byKind.entries()]
+    .filter(([kind]) => TILE_LABEL[kind])
+    .map(([kind, items]) => {
+      const recorded = items.filter((i) => i.outcome !== null).length;
+      return {
+        key: kind,
+        kind,
+        label: TILE_LABEL[kind] as string,
+        recorded,
+        total: items.length,
+        done: recorded === items.length,
+      };
+    })
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 4);
+}

@@ -115,34 +115,35 @@ function data(): HcData {
 }
 
 describe("HomeCareToday", () => {
-  it("splits the day into time-of-day cards instead of one long list", () => {
+  it("leads with the greeting, the next activity, and how the day is going", () => {
     render(<HcProvider value={data()}><HomeCareToday /></HcProvider>);
 
-    expect(screen.getByRole("heading", { level: 1, name: "Today" })).toBeTruthy();
-    expect(screen.getByText("1 of 3 recorded")).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: /care$/ })).toBeTruthy();
+    // 3 recordable activities (the medicine hands off to Medicines); the walk is done.
+    expect(screen.getByText("1 of 3 activities recorded")).toBeTruthy();
 
-    // 07:30 + 08:00 -> Morning, 18:00 -> Evening, 21:00 -> Bedtime. Nothing falls
-    // in the afternoon, and that block is not rendered at all — the caregiver
-    // never swipes onto an empty card.
-    const tabs = screen.getByRole("navigation", { name: "Time of day" });
-    expect(within(tabs).getByRole("button", { name: /Morning/ })).toBeTruthy();
-    expect(within(tabs).getByRole("button", { name: /Evening/ })).toBeTruthy();
-    expect(within(tabs).getByRole("button", { name: /Bedtime/ })).toBeTruthy();
-    expect(within(tabs).queryByRole("button", { name: /Afternoon/ })).toBeNull();
-
-    const evening = screen.getByRole("region", { name: /^Evening/ });
-    expect(within(evening).getAllByText("Evening walk")).toHaveLength(1);
-    // Morning work stays in the Morning card, not mixed into the evening one.
-    expect(within(evening).queryByText("Record blood pressure")).toBeNull();
+    // Next up is the earliest unrecorded activity, with its controls in place —
+    // recording must never send the caregiver to another screen.
+    const next = screen.getByRole("region", { name: "Record blood pressure" });
+    expect(within(next).getByText("Next up")).toBeTruthy();
   });
 
-  it("opens the next unrecorded activity for recording inside its own card", () => {
+  it("lists the whole day in one plan, and offers the timeline", () => {
     render(<HcProvider value={data()}><HomeCareToday /></HcProvider>);
 
-    // The reading is the next thing due, and its controls render in the Morning
-    // card itself — recording must never send the caregiver to another screen.
-    const morning = screen.getByRole("region", { name: /^Morning/ });
-    expect(within(morning).getByText("Record blood pressure")).toBeTruthy();
+    const plan = screen.getByRole("region", { name: "Today’s plan" });
+    expect(within(plan).getByText("Evening walk")).toBeTruthy();
+    expect(within(plan).getByText("Bedtime positioning")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "See all" }));
+    expect(screen.getByRole("heading", { level: 1, name: "Today’s timeline" })).toBeTruthy();
+  });
+
+  it("opens Record now from the floating button", () => {
+    render(<HcProvider value={data()}><HomeCareToday /></HcProvider>);
+
+    fireEvent.click(screen.getByRole("button", { name: "Record something now" }));
+    expect(screen.getByText("Record now")).toBeTruthy();
   });
 
   it("keeps a medicine task as a handoff to Medicines instead of a second completion", () => {

@@ -89,6 +89,21 @@ export function HomeCareMedicines() {
 
   // One dose = one record. The lock swallows a second tap arriving inside the
   // settle window, so a double tap can never mark-then-unmark the same slot.
+  const [bulk, setBulk] = useState(false);
+
+  /** Mark every outstanding dose given, leaving already-recorded ones alone. */
+  const markAllGiven = () => {
+    setBulk(true);
+    for (const r of parsed) {
+      // plan.slots holds scheduled periods only; an "only if needed" medicine has
+      // none, so PRN doses can never be swept up by this.
+      for (const slot of r.plan.slots) {
+        if (!statusOf(r.med.id, slot)) markMed(r.med.id, slot, "given");
+      }
+    }
+    window.setTimeout(() => setBulk(false), 800);
+  };
+
   const settling = useRef(false);
   const toggle = (med: MedicationRow, slot: string, status?: MedAdminStatus) => {
     if (settling.current) return;
@@ -135,6 +150,25 @@ export function HomeCareMedicines() {
         <span style={{ width: `${takenPct}%` }} />
         {summary.skipped > 0 && <span className="skipped" style={{ width: `${skippedPct}%` }} />}
       </div>
+
+      {/*
+        The common case is "everything went as prescribed", and making the
+        caregiver tap each dose for that is the slowest path through the most
+        frequent outcome. This offers it as one action, with marking
+        individually kept equally visible so the fast path never becomes the
+        careless one. Doses already recorded are left untouched.
+      */}
+      {summary.total > summary.taken + summary.skipped && (
+        <div className="hc-mall">
+          <div>
+            <b>All given as prescribed?</b>
+            <small>Marks every dose still outstanding today</small>
+          </div>
+          <button type="button" className="hc-btn" onClick={markAllGiven} disabled={bulk}>
+            {bulk ? "Marking…" : "All given"}
+          </button>
+        </div>
+      )}
 
       {PERIODS.map((p) => {
         const rows = parsed.filter((r) => r.plan.slots.includes(p.key));

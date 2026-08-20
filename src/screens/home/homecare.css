@@ -739,93 +739,118 @@
 }
 
 /* ---------------------------------------------------------------------------
-   Today — time-of-day cards
-   The day is swiped one block at a time instead of scrolled as one long column,
-   so 6am vitals and bedtime care are never in the same list on a phone.
+   Today — greeting, next-up hero, glance tiles, plan list, record sheet.
+   Arrangement follows the approved mockup; every colour comes from the tokens
+   above (--sky / --ok / --amber / --ink / --slate), never from the mockup's
+   teal, so the caregiver surface stays on the Carelune palette.
    --------------------------------------------------------------------------- */
 
-.hc-block-tabs {
-  display: flex;
-  gap: 6px;
-  overflow-x: auto;
-  padding: 2px 16px 0;
-  margin: 0 -16px;
-  scrollbar-width: none;
-}
-.hc-block-tabs::-webkit-scrollbar { display: none; }
+/* Greeting */
+.hc-greet { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.hc-greet-copy p { margin: 0; font-size: 13px; color: var(--slate); }
+.hc-greet-copy h1 { margin: 1px 0 0; font-size: 22px; font-weight: 750; letter-spacing: -0.02em; color: var(--ink); }
+.hc-greet-meta { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 12.5px; color: var(--slate); }
+.hc-greet-meta b { color: var(--sky-ink); font-weight: 700; }
+.hc-greet-sep { width: 1px; height: 12px; background: var(--hair-2); }
 
-.hc-block-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex: 0 0 auto;
-  min-height: 40px;
-  padding: 8px 13px;
-  border: 0;
-  border-radius: 999px;
-  background: var(--hc-surface-2, #eef1f6);
-  color: var(--hc-muted, #5b6b7f);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 650;
-  cursor: pointer;
-}
-.hc-block-tab.on { background: var(--hc-accent, #168bff); color: #fff; }
-.hc-block-tab.done:not(.on) { color: var(--hc-good, #128a5b); }
-.hc-block-tab-count {
-  display: inline-flex;
-  align-items: center;
-  font-size: 11.5px;
-  font-weight: 700;
-  opacity: 0.85;
+.hc-team-btn {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 40px;
+  padding: 8px 13px; border: 1px solid var(--hair-2); border-radius: 999px;
+  background: var(--white); color: var(--ink); font: inherit; font-size: 13px; font-weight: 650; cursor: pointer;
 }
 
-/* The slider itself. Scroll-snap does the work — no carousel library, and it
-   keeps native momentum and accessibility on touch devices. */
-.hc-block-track {
-  display: flex;
-  gap: 12px;
-  overflow-x: auto;
-  scroll-snap-type: x mandatory;
-  -webkit-overflow-scrolling: touch;
-  padding: 12px 16px 4px;
-  margin: 0 -16px;
-  scrollbar-width: none;
+/* NEXT UP hero — the one thing to do now. */
+.hc-next {
+  display: flex; align-items: flex-start; gap: 14px; padding: 16px;
+  border-radius: var(--r-lg); background: var(--sky-wash);
+  box-shadow: inset 0 0 0 1px rgba(22, 139, 255, 0.16);
 }
-.hc-block-track::-webkit-scrollbar { display: none; }
-
-.hc-block-card {
-  flex: 0 0 min(100%, 430px);
-  scroll-snap-align: center;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px;
-  border-radius: 20px;
-  background: var(--hc-surface, #fff);
-  box-shadow: 0 1px 2px rgba(16, 26, 40, 0.06), 0 8px 24px -12px rgba(16, 26, 40, 0.18);
+.hc-next-icon {
+  flex: 0 0 auto; display: grid; place-items: center; width: 46px; height: 46px;
+  border-radius: 50%; background: var(--white); color: var(--sky-ink);
+}
+.hc-next-body { min-width: 0; flex: 1; }
+.hc-next-kicker { margin: 0; font-size: 10.5px; font-weight: 750; letter-spacing: 0.12em; text-transform: uppercase; color: var(--sky-ink); }
+.hc-next-body h2 { margin: 3px 0 0; font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: var(--ink); }
+.hc-next-body p { margin: 2px 0 0; font-size: 13px; color: var(--slate); }
+.hc-next-side { flex: 0 0 auto; text-align: right; }
+.hc-next-due { display: block; font-size: 12px; font-weight: 700; color: var(--sky-ink); }
+.hc-next-count { display: block; font-size: 26px; font-weight: 750; line-height: 1.1; color: var(--ink); }
+.hc-next-unit { display: block; font-size: 11.5px; color: var(--slate); }
+.hc-next-cta {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin-top: 12px;
+  padding: 10px 16px; border: 0; border-radius: 999px; background: var(--sky-ink);
+  color: #fff; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
 }
 
-.hc-block-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.hc-block-head h2 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
-.hc-block-head p { margin: 2px 0 0; font-size: 12.5px; color: var(--hc-muted, #5b6b7f); }
+/* Today at a glance */
+.hc-glance { padding: 14px 16px 16px; border-radius: var(--r-lg); background: var(--white); box-shadow: var(--shadow); }
+.hc-glance-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.hc-glance-head h2 { margin: 0; font-size: 15px; font-weight: 700; color: var(--ink); }
+.hc-glance-head p { margin: 2px 0 0; font-size: 12.5px; color: var(--slate); }
+.hc-glance-link { border: 0; background: none; padding: 6px 0; color: var(--sky-ink); font: inherit; font-size: 13px; font-weight: 650; cursor: pointer; }
+.hc-glance-bar { height: 6px; margin-top: 10px; border-radius: 999px; background: var(--ice-2); overflow: hidden; }
+.hc-glance-bar span { display: block; height: 100%; border-radius: 999px; background: var(--ok); transition: width 240ms ease; }
 
-.hc-block-badge {
-  flex: 0 0 auto;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: var(--hc-surface-2, #eef1f6);
-  color: var(--hc-muted, #5b6b7f);
-  font-size: 12px;
-  font-weight: 700;
-}
-.hc-block-badge.done { background: rgba(18, 138, 91, 0.12); color: var(--hc-good, #128a5b); }
+.hc-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+.hc-tile { padding: 10px 8px; border-radius: var(--r-md); background: var(--ice); text-align: center; }
+.hc-tile-label { display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 11px; font-weight: 650; color: var(--slate); }
+.hc-tile-n { display: block; margin-top: 4px; font-size: 20px; font-weight: 750; color: var(--ink); }
+.hc-tile-sub { display: block; font-size: 10.5px; color: var(--slate-2); }
+.hc-tile.done { background: var(--ok-wash); }
+.hc-tile.due .hc-tile-n { color: var(--amber); }
 
-.hc-block-items { display: flex; flex-direction: column; gap: 8px; }
-/* An open item holds the recording controls inline — this is the whole point:
-   the caregiver never leaves the card to enter a reading. */
-.hc-block-item.open { margin: 2px 0; }
+/* Today's Plan */
+.hc-plan-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.hc-plan-head h2 { margin: 0; font-size: 15px; font-weight: 700; color: var(--ink); }
 
 @media (prefers-reduced-motion: reduce) {
-  .hc-block-track { scroll-behavior: auto; }
+  .hc-glance-bar span { transition: none; }
 }
+
+/* Floating record button + sheet grid */
+.hc-fab {
+  position: sticky; bottom: 14px; z-index: 5; display: grid; place-items: center;
+  width: 56px; height: 56px; margin: 6px auto 0; border: 0; border-radius: 50%;
+  background: var(--sky-ink); color: #fff; box-shadow: var(--shadow-lift); cursor: pointer;
+}
+.hc-rec-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 380px) { .hc-rec-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.hc-rec-tile {
+  display: flex; flex-direction: column; align-items: center; gap: 6px; min-height: 84px;
+  padding: 12px 6px; border: 1px solid var(--hair); border-radius: var(--r-md);
+  background: var(--white); color: var(--ink); font: inherit; font-size: 11.5px; font-weight: 650;
+  line-height: 1.25; text-align: center; cursor: pointer;
+}
+.hc-rec-tile:hover { border-color: var(--sky-2); }
+.hc-rec-tile span.i { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--sky-wash); color: var(--sky-ink); }
+.hc-rec-tile.recorded span.i { background: var(--ok-wash); color: var(--ok); }
+
+/* Timeline */
+.hc-tl-filters { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.hc-tl-filters::-webkit-scrollbar { display: none; }
+.hc-tl-chip {
+  flex: 0 0 auto; min-height: 36px; padding: 7px 13px; border: 0; border-radius: 999px;
+  background: var(--ice-2); color: var(--slate); font: inherit; font-size: 12.5px; font-weight: 650; cursor: pointer;
+}
+.hc-tl-chip.on { background: var(--sky-ink); color: #fff; }
+.hc-tl { display: flex; flex-direction: column; gap: 0; margin-top: 12px; }
+.hc-tl-row { display: grid; grid-template-columns: 58px 14px 1fr; gap: 8px; align-items: start; }
+.hc-tl-time { padding-top: 2px; font-size: 11.5px; font-weight: 650; color: var(--slate); text-align: right; }
+.hc-tl-rail { position: relative; display: flex; justify-content: center; }
+.hc-tl-rail::before { content: ""; position: absolute; top: 14px; bottom: -10px; width: 1.5px; background: var(--hair-2); }
+.hc-tl-dot { position: relative; width: 9px; height: 9px; margin-top: 5px; border-radius: 50%; background: var(--sky); }
+.hc-tl-row.done .hc-tl-dot { background: var(--ok); }
+.hc-tl-row:last-child .hc-tl-rail::before { display: none; }
+.hc-tl-body { padding: 0 0 16px; }
+.hc-tl-body b { display: block; font-size: 13.5px; font-weight: 650; color: var(--ink); }
+.hc-tl-body small { display: block; margin-top: 1px; font-size: 12px; color: var(--slate); }
+
+/* Medicines — the one-tap "all given as prescribed" path. */
+.hc-mall {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin: 12px 0 4px; padding: 12px 14px; border-radius: var(--r-md);
+  background: var(--sky-wash); box-shadow: inset 0 0 0 1px rgba(22, 139, 255, 0.16);
+}
+.hc-mall b { display: block; font-size: 13.5px; font-weight: 700; color: var(--ink); }
+.hc-mall small { display: block; margin-top: 1px; font-size: 11.5px; color: var(--slate); }

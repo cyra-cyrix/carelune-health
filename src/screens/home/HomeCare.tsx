@@ -12,7 +12,6 @@ import {
 import { HcProvider, dayAtHome, HcIcon, type HcData, type HcRole } from "./hc-kit";
 import { HomeCareToday } from "./HomeCareToday";
 import { HomeCareMedicines } from "./HomeCareMedicines";
-import { HomeCareLog } from "./HomeCareLog";
 import { HomeCarePlan } from "./HomeCarePlan";
 import { RecordNow } from "./RecordNow";
 import { HomeCareProgress } from "./HomeCareProgress";
@@ -31,7 +30,7 @@ const EMPTY_READINGS: ReadingsInput = {
 
 /** Four sections live in the bottom bar; medicines, log and help are opened
  *  from More (and from an action that hands off, e.g. a medicine task). */
-export type HcTab = "today" | "progress" | "careplan" | "messages" | "more" | "medicines" | "log" | "help";
+export type HcTab = "today" | "progress" | "careplan" | "messages" | "more" | "medicines" | "help";
 
 export default function HomeCare({ role, initialTab = "today" }: { role: HcRole; initialTab?: HcTab }) {
   const { profile } = useBranding();
@@ -168,7 +167,6 @@ export default function HomeCare({ role, initialTab = "today" }: { role: HcRole;
           {tab === "messages" && <HomeCareMessages />}
           {tab === "more" && <HomeCareMore />}
           {tab === "medicines" && <SubScreen title="More" onBack={() => setTab("more")}><HomeCareMedicines /></SubScreen>}
-          {tab === "log" && <SubScreen title="More" onBack={() => setTab("more")}><HomeCareLog /></SubScreen>}
           {tab === "help" && <SubScreen title="More" onBack={() => setTab("more")}><HomeCareHelp /></SubScreen>}
           {recordOpen && <RecordNow onClose={() => setRecordOpen(false)} />}
         </div>
@@ -188,7 +186,7 @@ const NAV: { key: HcTab; label: string; icon: (props: { size?: number }) => Reac
 
 /** Sections opened from More keep More lit, so the bar never looks unrelated
  *  to the screen the person is actually on. */
-const UNDER_MORE: HcTab[] = ["more", "medicines", "log", "help"];
+const UNDER_MORE: HcTab[] = ["more", "medicines", "help"];
 
 function BottomNav({ tab, setTab, onRecord }: { tab: HcTab; setTab: (next: HcTab) => void; onRecord: () => void }) {
   return (

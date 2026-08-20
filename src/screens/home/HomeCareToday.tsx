@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { ActionStage } from "./ActionStage";
 import { NotificationBell } from "./Notifications";
 import { HomeCareTimeline } from "./HomeCareTimeline";
-import { HcIcon, OUTCOME_META, useHc, type TaskKind } from "./hc-kit";
+import { HcIcon, OUTCOME_META, useHc, PERIODS, type TaskKind } from "./hc-kit";
 import { buildTodayModel, eventTiles, glanceTiles, nextSelectionAfterRecord, type TodayItem } from "./today-model";
 
 /**
@@ -18,7 +18,7 @@ import { buildTodayModel, eventTiles, glanceTiles, nextSelectionAfterRecord, typ
  * teal is deliberately not carried across.
  */
 export function HomeCareToday() {
-  const { patient, day, tasks, outcomes, meds, events } = useHc();
+  const { patient, day, tasks, outcomes, meds, events, medAdmin, goTab } = useHc();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<"plan" | "timeline">("plan");
 
@@ -32,6 +32,22 @@ export function HomeCareToday() {
     return fromEvents.length ? fromEvents.slice(0, 4) : glanceTiles(model.ordered);
   }, [events, model.ordered]);
   const firstName = patient.full_name.split(" ")[0] || patient.full_name;
+
+  /*
+   * Medicines summarised on the home screen. It was two taps away under More,
+   * which is the wrong depth for the thing most likely to be missed — and a
+   * missed dose is not the same class of mistake as a missed note.
+   */
+  const medSlots = meds.flatMap((m) => {
+    const text = `${m.freq ?? ""} ${m.timing ?? ""}`.toLowerCase();
+    const nums = (m.freq ?? "").match(/\d/g);
+    if (nums) return PERIODS.slice(0, nums.length).filter((_, i) => Number(nums[i]) > 0).map((p) => `${m.id}|${p.key}`);
+    if (/morning|breakfast/.test(text)) return [`${m.id}|morning`];
+    if (/night|bed/.test(text)) return [`${m.id}|bedtime`];
+    return [`${m.id}|morning`];
+  });
+  const medsDue = medSlots.length;
+  const medsGiven = medSlots.filter((k) => medAdmin.get(k) === "given").length;
   const open = model.active;
 
   const advance = () => {
@@ -129,6 +145,29 @@ export function HomeCareToday() {
           </div>
         )}
       </section>
+
+      {meds.length > 0 && (
+        <section className="hc-medsum" aria-labelledby="hc-medsum-title">
+          <div className="hc-plan-head">
+            <h2 id="hc-medsum-title">Medicines</h2>
+            <button type="button" className="hc-glance-link" onClick={() => goTab("medicines")}>Open</button>
+          </div>
+          <button type="button" className="hc-medsum-btn" onClick={() => goTab("medicines")}>
+            <span className="i"><HcIcon.Pill size={18} /></span>
+            <span className="t">
+              <b>{medsGiven} of {medsDue} doses given today</b>
+              <small>
+                {medsDue === 0
+                  ? "Nothing scheduled"
+                  : medsGiven >= medsDue
+                    ? "All recorded"
+                    : `${medsDue - medsGiven} still to record`}
+              </small>
+            </span>
+            <HcIcon.Right size={16} />
+          </button>
+        </section>
+      )}
 
       <section className="hc-day-list" aria-labelledby="hc-plan-title">
         <div className="hc-plan-head">

@@ -26,12 +26,6 @@ export function HomeCareMore() {
         <HcIcon.Right size={18} />
       </button>
 
-      <button type="button" className="hc-row-btn" onClick={() => goTab("log")}>
-        <span className="rb-ic"><HcIcon.Pulse size={20} /></span>
-        <span className="rb-body"><b>Daily log</b><span>Readings and check-ins recorded at home</span></span>
-        <HcIcon.Right size={18} />
-      </button>
-
       <button type="button" className="hc-row-btn" onClick={() => goTab("help")}>
         <span className="rb-ic"><HcIcon.Life size={20} /></span>
         <span className="rb-body"><b>Help &amp; emergency</b><span>Who is covering, review dates, emergency numbers</span></span>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  getPatient,
+  getPatient, extractFacts, savePlanIntake,
   getCentreStaff, getCareTeam, setCareTeamMember,
   getHouseholdMembers, addCaregiver,
   getPatientDocuments, uploadPatientDocument, deletePatientDocument, getDocumentUrl,
@@ -35,6 +35,34 @@ export default function PatientSetup({
 }: { patientId: string; onExit: () => void; onContinue: () => void }) {
   const [patient, setPatient] = useState<PatientRow | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
+  /*
+   * Pasted text and the doctor's instruction are collected HERE, beside the
+   * upload, because this is the screen where the doctor is holding the paperwork.
+   * Continue commits them so the next screen can draft without asking again:
+   * the instruction is stored as a non-negotiable, and pasted text is turned into
+   * document facts exactly as an uploaded file would be.
+   */
+  const [extras, setExtras] = useState<{ pasted: string; note: string }>({ pasted: "", note: "" });
+  const [continuing, setContinuing] = useState(false);
+  const [continueErr, setContinueErr] = useState<string | null>(null);
+
+  const handleContinue = async () => {
+    setContinuing(true); setContinueErr(null);
+    try {
+      if (extras.note.trim()) {
+        await savePlanIntake(patientId, {
+          milestone_goal: "", milestone_by: "", monitor_focus: "", non_negotiables: extras.note.trim(),
+        });
+      }
+      if (extras.pasted.trim().length > 40) {
+        await extractFacts(patientId, { dischargeText: extras.pasted.trim() });
+      }
+      onContinue();
+    } catch (e) {
+      setContinueErr(e instanceof Error ? e.message : "Could not save that. Try again.");
+      setContinuing(false);
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -74,11 +102,14 @@ export default function PatientSetup({
 
         <div className="mt-6 space-y-5">
           <TeamSection patientId={patientId} />
-          <DocumentsSection patientId={patientId} />
+          <DocumentsSection patientId={patientId} extras={extras} onExtras={setExtras} />
 
+          {continueErr && <ErrorNote>{continueErr}</ErrorNote>}
           <div className="flex flex-wrap items-center justify-end gap-3 pt-1">
             <GhostButton onClick={onExit}>Save &amp; close</GhostButton>
-            <PrimaryButton onClick={onContinue}>Continue — draft the recovery plan →</PrimaryButton>
+            <PrimaryButton onClick={handleContinue} disabled={continuing}>
+              {continuing ? "Saving…" : "Continue — draft the recovery plan →"}
+            </PrimaryButton>
           </div>
         </div>
       </div>
@@ -226,7 +257,11 @@ function AddCaregiver({ patientId, onAdded }: { patientId: string; onAdded: () =
 
 /* ------------------------------ documents -------------------------------- */
 
-function DocumentsSection({ patientId }: { patientId: string }) {
+function DocumentsSection({ patientId, extras, onExtras }: {
+  patientId: string;
+  extras: { pasted: string; note: string };
+  onExtras: (e: { pasted: string; note: string }) => void;
+}) {
   const [docs, setDocs] = useState<DocumentRow[] | null>(null);
   const [docType, setDocType] = useState<DocumentRow["doc_type"]>("discharge_summary");
   const [busy, setBusy] = useState(false);
@@ -304,6 +339,31 @@ function DocumentsSection({ patientId }: { patientId: string }) {
             Take a photo
           </GhostButton>
         </div>
+
+        <details open={!!extras.pasted}>
+          <summary className="tap cursor-pointer list-none text-[12.5px] font-semibold text-sky-700 hover:text-sky-800">
+            No file? Paste the discharge text instead
+          </summary>
+          <div className="mt-2">
+            <textarea
+              value={extras.pasted}
+              onChange={(e) => onExtras({ ...extras, pasted: e.target.value })}
+              rows={7}
+              placeholder="Paste the discharge summary text here…"
+              className={`${inputCls} resize-y`}
+              aria-label="Paste the discharge summary"
+            />
+          </div>
+        </details>
+
+        <Field label="Anything you want included? (optional)" hint="Carried through to the plan as a non-negotiable.">
+          <input
+            value={extras.note}
+            onChange={(e) => onExtras({ ...extras, note: e.target.value })}
+            placeholder="e.g. No weight-bearing on the left leg for 3 weeks"
+            className={inputCls}
+          />
+        </Field>
 
         {docs === null ? (
           <Skeleton className="h-16" />

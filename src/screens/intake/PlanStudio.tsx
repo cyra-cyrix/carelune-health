@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  getPatient, extractFacts, getPatientDocuments, uploadPatientDocument,
+  getPatient, extractFacts, getDocumentFacts, getPatientDocuments, uploadPatientDocument,
   savePlanIntake, generatePlan, getPatientPlan, savePlan, activateCarePlan,
   type PatientRow, type PatientPlanRow, type DocumentRow,
 } from "../../lib/db";
@@ -108,6 +108,8 @@ function PreparePanel({
   const [docs, setDocs] = useState<DocumentRow[] | null>(null);
   const [docId, setDocId] = useState<string>("");
   const [uploading, setUploading] = useState(false);
+  /* Facts may already exist because the doctor pasted the text during setup. */
+  const [hasFacts, setHasFacts] = useState<boolean | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const [pasted, setPasted] = useState("");
@@ -121,6 +123,7 @@ function PreparePanel({
     void getPatientDocuments(patient.id)
       .then((d) => { setDocs(d); if (d[0]) setDocId(d[0].id); })
       .catch(() => setDocs([]));
+    void getDocumentFacts(patient.id).then((f) => setHasFacts(!!f)).catch(() => setHasFacts(false));
   }, [patient?.id]);
 
   /*
@@ -132,9 +135,11 @@ function PreparePanel({
    */
   const autoDrafted = useRef(false);
   useEffect(() => {
-    if (!patient || docs === null || autoDrafted.current) return;
-    if (docs.length > 0 && docId) { autoDrafted.current = true; void run(); }
-  }, [patient?.id, docs, docId]);
+    if (!patient || docs === null || hasFacts === null || autoDrafted.current) return;
+    // A document to read, or facts already extracted from pasted text — either is
+    // enough to draft without asking the doctor for anything again.
+    if ((docs.length > 0 && docId) || hasFacts) { autoDrafted.current = true; void run(); }
+  }, [patient?.id, docs, docId, hasFacts]);
 
   /*
    * Uploading lives on THIS screen. It used to be a different page, which meant a
@@ -154,7 +159,7 @@ function PreparePanel({
     } finally { setUploading(false); }
   };
 
-  const hasSource = !!docId || pasted.trim().length > 40;
+  const hasSource = !!docId || hasFacts === true || pasted.trim().length > 40;
 
   const run = async () => {
     if (!patient || !hasSource) return;
@@ -167,7 +172,9 @@ function PreparePanel({
           milestone_goal: "", milestone_by: "", monitor_focus: "", non_negotiables: note.trim(),
         });
       }
-      await extractFacts(patient.id, docId ? { documentId: docId } : { dischargeText: pasted.trim() });
+      if (docId) await extractFacts(patient.id, { documentId: docId });
+      else if (pasted.trim().length > 40) await extractFacts(patient.id, { dischargeText: pasted.trim() });
+      // else: facts were already extracted (pasted during patient setup).
       setStep(2);
       const generated = await generatePlan(patient.id);
       setStep(3);
@@ -189,7 +196,7 @@ function PreparePanel({
     { label: "Ready for your review", caption: "You edit and approve everything", state: step > 2 ? "done" : "idle" },
   ];
 
-  const drafting = busy || (docs !== null && docs.length > 0 && !err);
+  const drafting = busy || (docs !== null && hasFacts !== null && (docs.length > 0 || hasFacts) && !err);
 
   if (drafting) {
     return (

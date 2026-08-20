@@ -4,7 +4,7 @@ import {
   savePlanIntake, generatePlan, getPatientPlan, savePlan, activateCarePlan,
   type PatientRow, type PatientPlanRow, type DocumentRow,
 } from "../../lib/db";
-import { proposedCount } from "../../lib/pathwayValidation";
+import { acceptAllProposed, acceptProposed, listProposed, removeProposed } from "../../lib/pathwayValidation";
 import type { PlanDraft, PlanFact, PlanMedicine, PlanTask } from "../../lib/pathwayValidation";
 import {
   Field, inputCls, PrimaryButton, GhostButton, ErrorNote, Skeleton,
@@ -292,6 +292,11 @@ function PreparePanel({
 }
 
 
+const SECTION_LABEL: Record<string, string> = {
+  diet: "Diet", precautions: "Safety boundaries", targets: "Recovery target",
+  daily_tasks: "Daily task", therapy_tasks: "Exercise / therapy", wound_care: "Wound care",
+};
+
 const APPROVER_ROLE: Record<string, string> = {
   pmr: "Doctor", duty_doctor: "Duty doctor", nurse: "Nurse",
 };
@@ -346,7 +351,8 @@ function PlanReview({
    * become live care. Editing a proposed line re-marks it as the doctor's, which is
    * what clears it from this count.
    */
-  const unreviewed = proposedCount(draft);
+  const proposals = listProposed(draft);
+  const unreviewed = proposals.length;
 
   const medCount = draft.medicines?.length ?? 0;
   const taskCount = (draft.daily_tasks?.length ?? 0) + (draft.therapy_tasks?.length ?? 0);
@@ -566,12 +572,51 @@ function PlanReview({
                 </div>
               </dl>
               {unreviewed > 0 && (
-                <p className="mt-3 rounded-xl bg-warn-100 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink ring-1 ring-warn-500/25">
-                  <span className="font-semibold">{unreviewed} suggested {unreviewed === 1 ? "line has" : "lines have"} not been reviewed.</span>{" "}
-                  Carelune proposed {unreviewed === 1 ? "it" : "them"} from standard recovery practice because the
-                  discharge document was silent. Open Edit and accept, change or remove
-                  {unreviewed === 1 ? " it" : " each one"} before activating.
-                </p>
+                <div className="mt-3 rounded-xl bg-warn-100 p-3.5 ring-1 ring-warn-500/25">
+                  <p className="text-[12.5px] leading-relaxed text-ink">
+                    <span className="font-semibold">
+                      Carelune suggested {unreviewed} {unreviewed === 1 ? "line" : "lines"}
+                    </span>{" "}
+                    from standard recovery practice, because the discharge document did not cover
+                    {unreviewed === 1 ? " it" : " them"}. Keep or remove each one — keeping makes it yours.
+                  </p>
+                  <ul className="mt-2.5 space-y-1.5">
+                    {proposals.map((ref) => (
+                      <li key={`${ref.section}-${ref.index}`} className="rounded-lg bg-white/70 px-2.5 py-2">
+                        <p className="text-[12px] leading-snug text-ink">{ref.text || "(untitled)"}</p>
+                        <p className="mt-0.5 text-[10.5px] font-semibold uppercase tracking-wide text-sage-500">
+                          {SECTION_LABEL[ref.section] ?? ref.section}
+                        </p>
+                        <div className="mt-1.5 flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setDraft(acceptProposed(draft, ref))}
+                            className="tap rounded-lg bg-sky-600 px-2.5 py-1 text-[11.5px] font-semibold text-white hover:bg-sky-700"
+                          >
+                            Keep
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDraft(removeProposed(draft, ref))}
+                            className="tap rounded-lg px-2.5 py-1 text-[11.5px] font-semibold text-sage-600 hover:text-ink"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                  <button
+                    type="button"
+                    onClick={() => setDraft(acceptAllProposed(draft))}
+                    className="tap mt-2.5 text-[12px] font-semibold text-sky-700 hover:text-sky-800"
+                  >
+                    Keep all {unreviewed}
+                  </button>
+                  <p className="mt-2 text-[11px] leading-relaxed text-sage-600">
+                    Save the plan after deciding, so your choices are recorded.
+                  </p>
+                </div>
               )}
               <div className="mt-3 space-y-2">
                 <PrimaryButton onClick={activate} disabled={busy === "activate" || unreviewed > 0} className="w-full">{busy === "activate" ? "Activating…" : "Confirm — activate care plan"}</PrimaryButton>

@@ -157,15 +157,72 @@ const ALLOWED_KEYS = new Set([
   "review_dates", "missing", "conflicts", "standards",
 ]);
 
-/** How many lines the model PROPOSED and the doctor has not yet dealt with
- *  (D-002 control 2 — activation is blocked while this is non-zero). */
+/** Sections where the model is allowed to propose content (D-002). */
+export type ProposedSection = "diet" | "precautions" | "targets" | "daily_tasks" | "therapy_tasks" | "wound_care";
+const PROPOSED_SECTIONS: ProposedSection[] = ["diet", "precautions", "targets", "daily_tasks", "therapy_tasks", "wound_care"];
+
+/** A pointer to one proposed line, so the UI can accept or remove exactly it. */
+export interface ProposedRef { section: ProposedSection; index: number; text: string }
+
+const rowText = (row: unknown): string => {
+  const o = row as { text?: string; title?: string } | null;
+  return (o?.text ?? o?.title ?? "").trim();
+};
+
+/**
+ * Every line the model PROPOSED and the doctor has not yet ruled on.
+ *
+ * The doctor must be able to clear each one, so this deliberately walks EVERY
+ * section the model may propose into — including ones the review screen happens
+ * to render read-only. A suggestion the doctor cannot reach is a plan that can
+ * never be activated.
+ */
+export function listProposed(plan: Partial<PlanDraft> | null | undefined): ProposedRef[] {
+  if (!plan) return [];
+  const out: ProposedRef[] = [];
+  for (const section of PROPOSED_SECTIONS) {
+    const rows = (plan[section] ?? []) as { provenance?: Provenance }[];
+    if (!Array.isArray(rows)) continue;
+    rows.forEach((row, index) => {
+      if (isProposed(row?.provenance as Provenance)) out.push({ section, index, text: rowText(row) });
+    });
+  }
+  return out;
+}
+
+/** How many proposed lines still await the doctor (D-002 control 2). */
 export function proposedCount(plan: Partial<PlanDraft> | null | undefined): number {
-  if (!plan) return 0;
-  const facts = [...(plan.diet ?? []), ...(plan.precautions ?? [])].filter((f) => isProposed(f.provenance));
-  const tasks = [...(plan.daily_tasks ?? []), ...(plan.therapy_tasks ?? []), ...(plan.wound_care ?? [])]
-    .filter((t) => isProposed(t.provenance));
-  const targets = (plan.targets ?? []).filter((t) => isProposed(t.provenance));
-  return facts.length + tasks.length + targets.length;
+  return listProposed(plan).length;
+}
+
+/** Accepting makes the line the DOCTOR's: they are taking responsibility for it. */
+export function acceptProposed(plan: PlanDraft, ref: ProposedRef): PlanDraft {
+  const rows = [...((plan[ref.section] ?? []) as unknown as Record<string, unknown>[])];
+  if (!rows[ref.index]) return plan;
+  rows[ref.index] = { ...rows[ref.index], provenance: "doctor" };
+  return { ...plan, [ref.section]: rows };
+}
+
+/** Rejecting drops the line entirely. */
+export function removeProposed(plan: PlanDraft, ref: ProposedRef): PlanDraft {
+  const rows = [...((plan[ref.section] ?? []) as unknown as Record<string, unknown>[])];
+  if (!rows[ref.index]) return plan;
+  rows.splice(ref.index, 1);
+  return { ...plan, [ref.section]: rows };
+}
+
+/** Accept every outstanding suggestion at once. */
+export function acceptAllProposed(plan: PlanDraft): PlanDraft {
+  let next = plan;
+  for (const section of PROPOSED_SECTIONS) {
+    const rows = (next[section] ?? []) as unknown as Record<string, unknown>[];
+    if (!Array.isArray(rows) || !rows.length) continue;
+    next = {
+      ...next,
+      [section]: rows.map((r) => (isProposed(r?.provenance as Provenance) ? { ...r, provenance: "doctor" } : r)),
+    };
+  }
+  return next;
 }
 
 /**

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validatePathwayConfig, validatePlanOutput, proposedCount } from "./pathwayValidation";
+import { validatePathwayConfig, validatePlanOutput, proposedCount, listProposed, acceptProposed, removeProposed, acceptAllProposed } from "./pathwayValidation";
 
 const goodConfig = {
   content_status: "clinically_review_required",
@@ -173,5 +173,46 @@ describe("AI-proposed regimen (docs/DECISIONS.md D-002)", () => {
       targets: [{ text: "x", by_day: null, provenance: "ai_suggested" }],
     })).toBe(3);
     expect(proposedCount(null)).toBe(0);
+  });
+});
+
+describe("clearing proposed lines (the doctor must never be stuck)", () => {
+  const plan = () => ({
+    clinical_summary: "s", diagnosis: [], procedure: null, medicines: [], investigations: [],
+    daily_tasks: [], therapy_tasks: [], wound_care: [], observations: [], milestones: [],
+    warning_signs: [], escalation: { routine: "", urgent: "", emergency: "" }, education: [],
+    review_dates: [], missing: [],
+    diet: [{ text: "High protein", provenance: "ai_suggested" as const }],
+    // Read-only on screen — must still be reachable, or the plan can never activate.
+    precautions: [{ text: "No driving", provenance: "ai_suggested" as const }],
+    targets: [{ text: "Walk 50 m", by_day: 21, provenance: "ai_suggested" as const }],
+  });
+
+  it("finds proposals in every section, including read-only ones", () => {
+    expect(listProposed(plan()).map((r) => r.section).sort()).toEqual(["diet", "precautions", "targets"]);
+  });
+
+  it("keeping a line makes it the doctor's and clears it from the count", () => {
+    const p = plan();
+    const ref = listProposed(p).find((r) => r.section === "precautions")!;
+    const next = acceptProposed(p, ref);
+    expect(next.precautions[0].provenance).toBe("doctor");
+    expect(proposedCount(next)).toBe(2);
+  });
+
+  it("removing a line drops it", () => {
+    const p = plan();
+    const next = removeProposed(p, listProposed(p).find((r) => r.section === "diet")!);
+    expect(next.diet).toHaveLength(0);
+    expect(proposedCount(next)).toBe(2);
+  });
+
+  it("keep-all clears every section at once, so activation is never blocked", () => {
+    expect(proposedCount(acceptAllProposed(plan()))).toBe(0);
+  });
+
+  it("leaves document- and doctor-sourced lines untouched", () => {
+    const p = { ...plan(), diet: [{ text: "Soft solids", provenance: "document" as const }] };
+    expect(acceptAllProposed(p).diet[0].provenance).toBe("document");
   });
 });

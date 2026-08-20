@@ -58,7 +58,6 @@ function data(overrides: Partial<HcData> = {}): HcData {
     history: [],
     thresholds: [],
     feed: [],
-    events: [],
     recordOutcome: vi.fn(),
     saveReadingFields: vi.fn(async () => true),
     markMed: vi.fn(),

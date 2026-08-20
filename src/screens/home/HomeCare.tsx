@@ -1,19 +1,18 @@
-import { Fragment, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useBranding } from "../../branding/BrandingProvider";
 import {
   getMyPatient, getCareTasks, getTodayTaskOutcomes, setTaskOutcome,
   getMedications, getMedAdminToday, setMedAdmin, clearMedAdmin,
-  getPatientPlan, getTodayReadings, saveReadings, getThresholds, getTodayCareEvents,
+  getPatientPlan, getTodayReadings, saveReadings, getThresholds,
   getReadingHistory, getDailyUpdates, addUpdate,
   type PatientRow, type CareTaskRow, type TaskOutcome, type MedicationRow,
   type MedAdminStatus, type PatientPlanRow, type ReadingsInput, type ReadingRow,
-  type ThresholdRow, type UpdateRow, type CareEventRow,
+  type ThresholdRow, type UpdateRow,
 } from "../../lib/db";
 import { HcProvider, dayAtHome, HcIcon, type HcData, type HcRole } from "./hc-kit";
 import { HomeCareToday } from "./HomeCareToday";
 import { HomeCareMedicines } from "./HomeCareMedicines";
-import { HomeCarePlan } from "./HomeCarePlan";
-import { RecordNow } from "./RecordNow";
+import { HomeCareLog } from "./HomeCareLog";
 import { HomeCareProgress } from "./HomeCareProgress";
 import { HomeCareHelp } from "./HomeCareHelp";
 import { HomeCareMessages } from "./HomeCareMessages";
@@ -30,12 +29,11 @@ const EMPTY_READINGS: ReadingsInput = {
 
 /** Four sections live in the bottom bar; medicines, log and help are opened
  *  from More (and from an action that hands off, e.g. a medicine task). */
-export type HcTab = "today" | "progress" | "careplan" | "messages" | "more" | "medicines" | "help";
+export type HcTab = "today" | "progress" | "messages" | "more" | "medicines" | "log" | "help";
 
 export default function HomeCare({ role, initialTab = "today" }: { role: HcRole; initialTab?: HcTab }) {
   const { profile } = useBranding();
   const [tab, setTab] = useState<HcTab>(initialTab);
-  const [recordOpen, setRecordOpen] = useState(false);
   const [patient, setPatient] = useState<PatientRow | null>(null);
   const [tasks, setTasks] = useState<CareTaskRow[]>([]);
   const [outcomes, setOutcomes] = useState<Map<string, TaskOutcome>>(new Map());
@@ -46,7 +44,6 @@ export default function HomeCare({ role, initialTab = "today" }: { role: HcRole;
   const [history, setHistory] = useState<ReadingRow[]>([]);
   const [thresholds, setThresholds] = useState<ThresholdRow[]>([]);
   const [feed, setFeed] = useState<UpdateRow[]>([]);
-  const [events, setEvents] = useState<CareEventRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -66,7 +63,7 @@ export default function HomeCare({ role, initialTab = "today" }: { role: HcRole;
         if (!active) return;
         setPatient(nextPatient);
         if (nextPatient) {
-          const [nextTasks, nextOutcomes, nextMeds, nextMedAdmin, nextPlan, nextReadings, nextThresholds, nextHistory, nextFeed, nextEvents] = await Promise.all([
+          const [nextTasks, nextOutcomes, nextMeds, nextMedAdmin, nextPlan, nextReadings, nextThresholds, nextHistory, nextFeed] = await Promise.all([
             getCareTasks(nextPatient.id),
             getTodayTaskOutcomes(nextPatient.id).catch(() => new Map<string, TaskOutcome>()),
             getMedications(nextPatient.id).catch(() => [] as MedicationRow[]),
@@ -76,8 +73,6 @@ export default function HomeCare({ role, initialTab = "today" }: { role: HcRole;
             getThresholds(nextPatient.id).catch(() => [] as ThresholdRow[]),
             getReadingHistory(nextPatient.id, 7).catch(() => [] as ReadingRow[]),
             getDailyUpdates(nextPatient.id, 10).catch(() => [] as UpdateRow[]),
-            // Absent until migration 0027 is applied — an empty list, never a crash.
-            getTodayCareEvents(nextPatient.id).catch(() => [] as CareEventRow[]),
           ]);
           if (!active) return;
           setTasks(nextTasks);
@@ -89,7 +84,6 @@ export default function HomeCare({ role, initialTab = "today" }: { role: HcRole;
           setThresholds(nextThresholds);
           setHistory(nextHistory);
           setFeed(nextFeed);
-          setEvents(nextEvents);
         }
       } catch (cause) {
         if (active) setError(cause instanceof Error ? cause.message : "Could not load Home Care.");
@@ -153,7 +147,7 @@ export default function HomeCare({ role, initialTab = "today" }: { role: HcRole;
   if (!patient) return <Shell><Info title="No patient linked yet">Your centre links your account to the patient at onboarding. The daily plan appears here once that&rsquo;s done.</Info></Shell>;
 
   const data: HcData = {
-    role, patient, day: dayAtHome(patient), tasks, outcomes, meds, medAdmin, plan, readings, history, thresholds, feed, events,
+    role, patient, day: dayAtHome(patient), tasks, outcomes, meds, medAdmin, plan, readings, history, thresholds, feed,
     recordOutcome, saveReadingFields, markMed, clearMed, postStatus, goTab: (nextTab) => setTab(nextTab as HcTab), reload,
   };
 
@@ -163,14 +157,13 @@ export default function HomeCare({ role, initialTab = "today" }: { role: HcRole;
         <div className="hc-app">
           {tab === "today" && <HomeCareToday />}
           {tab === "progress" && <HomeCareProgress />}
-          {tab === "careplan" && <HomeCarePlan />}
           {tab === "messages" && <HomeCareMessages />}
           {tab === "more" && <HomeCareMore />}
           {tab === "medicines" && <SubScreen title="More" onBack={() => setTab("more")}><HomeCareMedicines /></SubScreen>}
+          {tab === "log" && <SubScreen title="More" onBack={() => setTab("more")}><HomeCareLog /></SubScreen>}
           {tab === "help" && <SubScreen title="More" onBack={() => setTab("more")}><HomeCareHelp /></SubScreen>}
-          {recordOpen && <RecordNow onClose={() => setRecordOpen(false)} />}
         </div>
-        <BottomNav tab={tab} setTab={setTab} onRecord={() => setRecordOpen(true)} />
+        <BottomNav tab={tab} setTab={setTab} />
       </div>
     </HcProvider>
   );
@@ -179,38 +172,27 @@ export default function HomeCare({ role, initialTab = "today" }: { role: HcRole;
 const NAV: { key: HcTab; label: string; icon: (props: { size?: number }) => React.ReactNode }[] = [
   { key: "today", label: "Today", icon: HcIcon.Home },
   { key: "progress", label: "Progress", icon: HcIcon.Chart },
-  { key: "careplan", label: "Care plan", icon: HcIcon.Life },
-  { key: "messages", label: "Chat", icon: HcIcon.Chat },
+  { key: "messages", label: "Messages", icon: HcIcon.Chat },
   { key: "more", label: "More", icon: HcIcon.Menu },
 ];
 
 /** Sections opened from More keep More lit, so the bar never looks unrelated
  *  to the screen the person is actually on. */
-const UNDER_MORE: HcTab[] = ["more", "medicines", "help"];
+const UNDER_MORE: HcTab[] = ["more", "medicines", "log", "help"];
 
-function BottomNav({ tab, setTab, onRecord }: { tab: HcTab; setTab: (next: HcTab) => void; onRecord: () => void }) {
+function BottomNav({ tab, setTab }: { tab: HcTab; setTab: (next: HcTab) => void }) {
   return (
     <nav className="hc-nav" aria-label="Home Care sections">
       <div className="hc-nav-in">
-        {NAV.map((item, i) => {
+        {NAV.map((item) => {
           const Icon = item.icon;
           const on = item.key === "more" ? UNDER_MORE.includes(tab) : tab === item.key;
           return (
-            <Fragment key={item.key}>
-              {/* Recording sits at the centre of the bar, not in a corner:
-                  capture is what a caregiver opens this app to do, and it is
-                  reachable from every tab rather than only from Today. */}
-              {i === 2 && (
-                <button type="button" className="hc-nav-rec" aria-label="Record something" onClick={onRecord}>
-                  <HcIcon.Plus size={24} />
-                </button>
-              )}
-              <button type="button" className={`hc-navbtn${on ? " on" : ""}`}
-                aria-current={on ? "page" : undefined} onClick={() => setTab(item.key)}>
-                <span className="nb-ic"><Icon size={22} /></span>
-                <span>{item.label}</span>
-              </button>
-            </Fragment>
+            <button key={item.key} type="button" className={`hc-navbtn${on ? " on" : ""}`}
+              aria-current={on ? "page" : undefined} onClick={() => setTab(item.key)}>
+              <span className="nb-ic"><Icon size={22} /></span>
+              <span>{item.label}</span>
+            </button>
           );
         })}
       </div>

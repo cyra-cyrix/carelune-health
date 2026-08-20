@@ -104,7 +104,6 @@ function data(): HcData {
     history: [],
     thresholds: [],
     feed: [],
-    events: [],
     recordOutcome: vi.fn(),
     saveReadingFields: vi.fn(async () => true),
     markMed: vi.fn(),
@@ -116,37 +115,16 @@ function data(): HcData {
 }
 
 describe("HomeCareToday", () => {
-  it("leads with the greeting, the next activity, and how the day is going", () => {
+  it("shows one operational summary, one active action, and one remaining-day schedule", () => {
     render(<HcProvider value={data()}><HomeCareToday /></HcProvider>);
 
-    expect(screen.getByRole("heading", { level: 1, name: /care$/ })).toBeTruthy();
-    // 3 recordable activities (the medicine hands off to Medicines); the walk is done.
-    expect(screen.getByText("1 of 3 activities recorded")).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: "Today" })).toBeTruthy();
+    expect(screen.getByText("1 of 3 recorded")).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 2, name: "Do this next" })).toBeTruthy();
 
-    // Next up is the earliest unrecorded activity, with its controls in place —
-    // recording must never send the caregiver to another screen.
-    const next = screen.getByRole("region", { name: "Record blood pressure" });
-    expect(within(next).getByText("Next up")).toBeTruthy();
-  });
-
-  it("lists the whole day in one plan, and offers the timeline", () => {
-    render(<HcProvider value={data()}><HomeCareToday /></HcProvider>);
-
-    const plan = screen.getByRole("region", { name: "Today’s plan" });
-    expect(within(plan).getByText("Evening walk")).toBeTruthy();
-    expect(within(plan).getByText("Bedtime positioning")).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "See all" }));
-    expect(screen.getByRole("heading", { level: 1, name: "Today’s timeline" })).toBeTruthy();
-  });
-
-  it("offers the timeline from the header", () => {
-    // Recording itself now lives in the shell's bottom bar, reachable from every
-    // tab rather than only from Today, so it is not asserted here.
-    render(<HcProvider value={data()}><HomeCareToday /></HcProvider>);
-
-    fireEvent.click(screen.getByRole("button", { name: /Timeline/ }));
-    expect(screen.getByRole("heading", { level: 1, name: "Today’s timeline" })).toBeTruthy();
+    const schedule = screen.getByRole("region", { name: "Rest of today" });
+    expect(within(schedule).getAllByText("Evening walk")).toHaveLength(1);
+    expect(within(schedule).queryByText("Record blood pressure")).toBeNull();
   });
 
   it("keeps a medicine task as a handoff to Medicines instead of a second completion", () => {

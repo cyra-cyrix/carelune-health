@@ -1,121 +1,46 @@
-import { useMemo, useState } from "react";
+import { useRef, useState } from "react";
 import { ActionStage } from "./ActionStage";
-import { NotificationBell } from "./Notifications";
-import { HomeCareTimeline } from "./HomeCareTimeline";
 import { HcIcon, OUTCOME_META, useHc, type TaskKind } from "./hc-kit";
-import { activeMedPeriod, MedicationGroup } from "./MedicationGroup";
-import { buildTodayModel, eventTiles, glanceTiles, nextSelectionAfterRecord, type TodayItem } from "./today-model";
-
-/**
- * Today — the caregiver's home screen, arranged per the approved mockup.
- *
- * Reading order matches what a caregiver actually needs: who and which day,
- * the ONE thing due now, how the day is going, then the plan itself. Recording
- * is reachable from three places — the next-up card, any plan row, and the
- * floating button — because the old design forced a trip to a separate Log
- * screen to enter a reading.
- *
- * Colours are the Carelune caregiver tokens (--sky/--ok/--amber). The mockup's
- * teal is deliberately not carried across.
- */
-/** How much of the day to show before "Show more". */
-const VISIBLE_ACTIVITIES = 5;
+import { buildTodayModel, nextSelectionAfterRecord, type TodayItem } from "./today-model";
 
 export function HomeCareToday() {
-  const { patient, day, tasks, outcomes, meds, events, medAdmin, goTab } = useHc();
+  const { patient, day, tasks, outcomes } = useHc();
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [view, setView] = useState<"plan" | "timeline">("plan");
-  const [showAll, setShowAll] = useState(false);
+  const outcomesRef = useRef(outcomes);
+  outcomesRef.current = outcomes;
 
   const model = buildTodayModel(tasks, outcomes, selectedId);
-  /*
-   * Real event counts win over recorded-of-scheduled: "4 feeds" is what a nurse
-   * asks about. Scheduled progress is the fallback until events exist for the day.
-   */
-  const tiles = useMemo(() => {
-    const fromEvents = eventTiles(events);
-    return fromEvents.length ? fromEvents.slice(0, 4) : glanceTiles(model.ordered);
-  }, [events, model.ordered]);
-  const firstName = patient.full_name.split(" ")[0] || patient.full_name;
-
-  // Which round the caregiver is most likely acting on. Null when no medicines.
-  const medPeriod = activeMedPeriod(meds, medAdmin);
-
-  const open = model.active;
+  const patientFirstName = patient.full_name.split(" ")[0] || patient.full_name;
 
   const advance = () => {
-    if (!open) return;
-    setSelectedId(nextSelectionAfterRecord(tasks, outcomes, open.task.id));
+    if (!model.active) return;
+    setSelectedId(nextSelectionAfterRecord(tasks, outcomesRef.current, model.active.task.id));
   };
-
-  if (view === "timeline") {
-    return <HomeCareTimeline onBack={() => setView("plan")} />;
-  }
 
   return (
     <main className="hc-today">
-      <header className="hc-greet">
-        <div className="hc-greet-copy">
-          <p>{greeting()},</p>
-          <h1>{firstName}&rsquo;s care</h1>
+      <header className="hc-today-head">
+        <div>
+          <h1>Today</h1>
+          <p>{patientFirstName}&rsquo;s home recovery · Day {day}</p>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <NotificationBell />
-          <button type="button" className="hc-team-btn" onClick={() => setView("timeline")}>
-            <HcIcon.Clock size={15} /> Timeline
-          </button>
-        </div>
+        <span className="hc-daychip num">Day {day}</span>
       </header>
 
-      <div className="hc-greet-meta">
-        <HcIcon.Calendar size={14} />
-        <span>{today()}</span>
-        <span className="hc-greet-sep" aria-hidden />
-        <span><b>Day {day}</b> of recovery</span>
-      </div>
-
-      {open ? (
-        <section className="hc-next" aria-labelledby="hc-next-title">
-          <span className="hc-next-icon">{kindIcon(open.kind)}</span>
-          <div className="hc-next-body">
-            <p className="hc-next-kicker">Next up</p>
-            <h2 id="hc-next-title">{open.task.title}</h2>
-            <p>{open.task.time_label || "Today"}{open.task.discipline ? ` · ${open.task.discipline}` : ""}</p>
-            <ActionStage task={open.task} onRecorded={advance} />
-          </div>
-          {open.kind === "medicine" && meds.length > 0 && (
-            <div className="hc-next-side">
-              <span className="hc-next-due">Due now</span>
-              <span className="hc-next-count num">{meds.length}</span>
-              <span className="hc-next-unit">medicines</span>
-            </div>
-          )}
-        </section>
-      ) : model.recordableTotal > 0 ? (
-        <section className="hc-today-complete" aria-label="Today complete">
-          <span className="hc-complete-icon"><HcIcon.Check size={20} /></span>
-          <div><b>Care for today is recorded</b><p>Open any activity below if something needs correcting.</p></div>
-        </section>
-      ) : null}
-
-      <section className="hc-glance" aria-labelledby="hc-glance-title">
-        <div className="hc-glance-head">
-          <div>
-            <h2 id="hc-glance-title">Today at a glance</h2>
-            <p>
-              {model.recordableTotal === 0
-                ? "Nothing scheduled yet"
-                : `${model.recordedCount} of ${model.recordableTotal} activities recorded`}
-            </p>
-          </div>
-          <button type="button" className="hc-glance-link" onClick={() => setView("timeline")}>
-            <HcIcon.Clock size={13} /> View timeline
-          </button>
+      <section className="hc-today-summary" aria-labelledby="today-summary-title">
+        <div className="hc-summary-copy">
+          <h2 id="today-summary-title">
+            {model.recordableTotal === 0
+              ? "No scheduled care yet"
+              : model.allRecorded
+                ? "Today’s scheduled care is recorded"
+                : `${model.recordedCount} of ${model.recordableTotal} recorded`}
+          </h2>
+          <p>{summaryLine(model.active, model.recordableTotal)}</p>
         </div>
-
         {model.recordableTotal > 0 && (
           <div
-            className="hc-glance-bar"
+            className="hc-summary-progress"
             role="progressbar"
             aria-label="Scheduled care recorded today"
             aria-valuemin={0}
@@ -125,64 +50,55 @@ export function HomeCareToday() {
             <span style={{ width: `${Math.round((model.recordedCount / model.recordableTotal) * 100)}%` }} />
           </div>
         )}
+      </section>
 
-        {tiles.length > 0 && (
-          <div className="hc-tiles">
-            {tiles.map((t) => (
-              <div key={t.key} className={`hc-tile${t.done ? " done" : t.total != null && t.recorded < t.total ? " due" : ""}`}>
-                <span className="hc-tile-label">{kindIcon(t.kind)} {t.label}</span>
-                <span className="hc-tile-n num">{t.recorded}</span>
-                <span className="hc-tile-sub">{t.total == null ? "recorded" : `of ${t.total}`}</span>
-              </div>
+      {model.active ? (
+        <section className="hc-active-action" aria-labelledby="today-action-title">
+          <div className="hc-section-title">
+            <h2 id="today-action-title">Do this next</h2>
+            <span>{model.active.task.time_label || "Today"}</span>
+          </div>
+          <ActionStage task={model.active.task} onRecorded={advance} />
+        </section>
+      ) : model.recordableTotal > 0 ? (
+        <section className="hc-today-complete" aria-label="Today complete">
+          <span className="hc-complete-icon"><HcIcon.Check size={20} /></span>
+          <div><b>Care for today is recorded</b><p>You can open an activity below if anything needs correcting.</p></div>
+        </section>
+      ) : null}
+
+      {model.rows.length > 0 && (
+        <section className="hc-day-list" aria-labelledby="today-schedule-title" aria-label="Rest of today">
+          <div className="hc-section-title">
+            <h2 id="today-schedule-title">Rest of today</h2>
+            <span>{model.rows.length} {model.rows.length === 1 ? "activity" : "activities"}</span>
+          </div>
+          <div className="hc-schedule">
+            {model.rows.map((item) => (
+              <ScheduleRow key={item.task.id} item={item} onSelect={setSelectedId} />
             ))}
           </div>
-        )}
-      </section>
-
-      {medPeriod && (
-        <MedicationGroup period={medPeriod} onOpenAll={() => goTab("medicines")} />
+        </section>
       )}
-
-      <section className="hc-day-list" aria-labelledby="hc-plan-title">
-        <div className="hc-plan-head">
-          <h2 id="hc-plan-title">Today&rsquo;s plan</h2>
-          <button type="button" className="hc-glance-link" onClick={() => setView("timeline")}>See all</button>
-        </div>
-        {/*
-          Progressive disclosure: enough of the day to orient, not all of it.
-          A full list of every activity is the thing that makes this read as a
-          task manager rather than a companion.
-        */}
-        <div className="hc-schedule">
-          {(showAll ? model.ordered : model.ordered.slice(0, VISIBLE_ACTIVITIES)).map((item) => (
-            <ScheduleRow key={item.task.id} item={item} onSelect={setSelectedId} meds={meds.length} />
-          ))}
-        </div>
-        {model.ordered.length > VISIBLE_ACTIVITIES && !showAll && (
-          <button type="button" className="hc-glance-link" onClick={() => setShowAll(true)}>
-            Show {model.ordered.length - VISIBLE_ACTIVITIES} more
-          </button>
-        )}
-      </section>
 
       <p className="hc-plan-source">Everything here comes from the plan approved by the care team.</p>
     </main>
   );
 }
 
-function greeting(): string {
-  const h = new Date().getHours();
-  if (h < 12) return "Good morning";
-  if (h < 17) return "Good afternoon";
-  return "Good evening";
+function summaryLine(active: TodayItem | null, recordableTotal: number): string {
+  if (recordableTotal === 0) return "The care team has not added activities for today.";
+  if (!active) return "Nothing else needs recording right now.";
+  const when = active.task.time_label ? `${active.task.time_label} · ` : "";
+  return `${when}${active.task.title}`;
 }
 
-function today(): string {
-  return new Date().toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
-}
-
-function ScheduleRow({ item, onSelect, meds }: { item: TodayItem; onSelect: (id: string) => void; meds: number }) {
-  const state = rowStatus(item, meds);
+function ScheduleRow({ item, onSelect }: { item: TodayItem; onSelect: (id: string) => void }) {
+  const state = item.destination === "medicines"
+    ? "Record in Medicines"
+    : item.outcome
+      ? `Recorded: ${OUTCOME_META[item.outcome].label}`
+      : "Not recorded";
   return (
     <button
       type="button"
@@ -194,26 +110,12 @@ function ScheduleRow({ item, onSelect, meds }: { item: TodayItem; onSelect: (id:
       <span className="hc-schedule-icon">{kindIcon(item.kind)}</span>
       <span className="hc-schedule-copy">
         <b>{item.task.title}</b>
-        <small>{item.task.detail || item.task.discipline || "Care"}</small>
+        <small>{item.task.discipline || "Care"}</small>
       </span>
       <span className={`hc-schedule-state${item.outcome ? " recorded" : ""}`}>{state}</span>
       <HcIcon.Right size={16} />
     </button>
   );
-}
-
-/**
- * The status a caregiver can act on, not a bare state word.
- *
- * "Not recorded" tells someone nothing about what is being asked of them, so a
- * row says what it is instead: how many medicines are due, that a therapy
- * session is planned, or that this one is already done.
- */
-function rowStatus(item: TodayItem, meds: number): string {
-  if (item.outcome) return OUTCOME_META[item.outcome].label;
-  if (item.destination === "medicines") return meds > 0 ? `${meds} medicine${meds === 1 ? "" : "s"}` : "In Medicines";
-  if (item.kind === "physio") return "Session planned";
-  return "To record";
 }
 
 function kindIcon(kind: TaskKind) {

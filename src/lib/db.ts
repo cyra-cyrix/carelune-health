@@ -3,7 +3,27 @@
 // each signed-in user may read/write — these helpers never bypass it.
 
 import { supabase } from "./supabase";
+import { isSessionExpired, SESSION_EXPIRED_MESSAGE } from "./authFetch";
 import type { PlanDraft } from "./pathwayValidation";
+
+export { SESSION_EXPIRED_MESSAGE, isSessionExpired };
+
+/**
+ * The signed-in user, read from the LOCAL session.
+ *
+ * Deliberately not `supabase.auth.getUser()`, which performs a network round-trip
+ * to `/auth/v1/user` on every call. That added a request — and an independent
+ * point of failure — before most writes in this file. `getSession()` reads the
+ * stored session, refreshing it first if it has expired, so it returns the same
+ * user id without the extra hop.
+ *
+ * Returns the same `{ user }` shape `getUser()` did, so call sites are unchanged.
+ */
+async function currentAuth(): Promise<{ user: { id: string } | null }> {
+  const { data } = await supabase.auth.getSession();
+  const user = data.session?.user;
+  return { user: user ? { id: user.id } : null };
+}
 
 /* ------------------------------- Row types ------------------------------- */
 
@@ -186,7 +206,7 @@ export async function generateInviteToken(orgId: string): Promise<string> {
 
 /** The signed-in user's own profile row (role, admin flag, org). */
 export async function getMyProfile(): Promise<MyProfile | null> {
-  const { data: auth } = await supabase.auth.getUser();
+  const auth = await currentAuth();
   if (!auth.user) return null;
   const { data, error } = await supabase
     .from("profiles")
@@ -250,7 +270,7 @@ export async function addCaregiver(input: NewCaregiver): Promise<void> {
 
 /** Clear the forced-reset flag after the user sets their own password. */
 export async function clearMustReset(): Promise<void> {
-  const { data: auth } = await supabase.auth.getUser();
+  const auth = await currentAuth();
   if (!auth.user) return;
   const { error } = await supabase
     .from("profiles")
@@ -284,7 +304,7 @@ export async function updateOrgBranding(
 export async function updateMyName(fullName: string): Promise<void> {
   const name = fullName.trim();
   if (!name) return;
-  const { data: auth } = await supabase.auth.getUser();
+  const auth = await currentAuth();
   if (!auth.user) return;
   const { error } = await supabase.from("profiles").update({ full_name: name }).eq("id", auth.user.id);
   if (error) throw new Error(pgErr(error, "Could not save your name."));
@@ -292,7 +312,7 @@ export async function updateMyName(fullName: string): Promise<void> {
 
 /** Admin/doctor: save own basic credentialing (self-attested, 0022). */
 export async function saveDoctorKyc(medRegNo: string | null, specialty: string | null): Promise<void> {
-  const { data: auth } = await supabase.auth.getUser();
+  const auth = await currentAuth();
   if (!auth.user) return;
   const { error } = await supabase
     .from("profiles")
@@ -912,6 +932,10 @@ export type NewTeamUser = {
 /** Pull the real error text out of a failed Edge Function response body. */
 async function edgeError(error: unknown): Promise<string> {
   const ctx = (error as { context?: Response } | null)?.context;
+  // The gateway rejects an unusable token before our function runs, replying
+  // {"code":"UNAUTHORIZED_NO_AUTH_HEADER",…}. authFetch has already refreshed and
+  // retried by now, so tell the user plainly rather than showing that JSON.
+  if (ctx?.status === 401) return SESSION_EXPIRED_MESSAGE;
   if (ctx && typeof ctx.text === "function") {
     try {
       const body = await ctx.clone().text();
@@ -1042,6 +1066,7 @@ export async function structureDischarge(input: {
 
 /** Format a Supabase/Postgres error object (message + code + details + hint). */
 function pgErr(e: unknown, fallback: string): string {
+  if (isSessionExpired(e)) return SESSION_EXPIRED_MESSAGE;
   const o = e as { message?: string; code?: string; details?: string; hint?: string } | null;
   const parts = [o?.message, o?.code ? `[${o.code}]` : "", o?.details, o?.hint].filter(Boolean);
   return parts.length ? parts.join(" · ") : fallback;
@@ -1068,7 +1093,7 @@ export async function activatePlan(args: {
   const { patientId, plan, patch } = args;
   const warnings: string[] = [];
   const me = await getMyProfile();
-  const { data: auth } = await supabase.auth.getUser();
+  const auth = await currentAuth();
   const uid = auth.user?.id ?? null;
   const feedSource = (["nurse", "duty_doctor", "pmr"].includes(me?.role ?? "")
     ? me!.role
@@ -1153,7 +1178,7 @@ export async function listPatients(): Promise<PatientRow[]> {
 /** Patients the signed-in household user (caregiver/family) is linked to, via the
  *  patient_members join — supports one login serving more than one patient. */
 export async function listMyPatients(): Promise<PatientRow[]> {
-  const { data: auth } = await supabase.auth.getUser();
+  const auth = await currentAuth();
   if (!auth.user) return [];
   const { data, error } = await supabase
     .from("patients")
@@ -1201,7 +1226,7 @@ export async function getTodayTaskLogs(patientId: string): Promise<Set<string>> 
 
 /** Mark a task done / not-done for today. Upserts on (task_id, log_date). */
 export async function setTaskDone(patientId: string, taskId: string, done: boolean): Promise<void> {
-  const { data: auth } = await supabase.auth.getUser();
+  const auth = await currentAuth();
   const { error } = await supabase.from("task_logs").upsert(
     {
       patient_id: patientId,
@@ -1251,7 +1276,7 @@ export async function setTaskOutcome(patientId: string, taskId: string, outcome:
     if (error) throw new Error(pgErr(error, "Could not update the task."));
     return;
   }
-  const { data: auth } = await supabase.auth.getUser();
+  const auth = await currentAuth();
   const { error } = await supabase.from("task_logs").upsert(
     {
       patient_id: patientId,
@@ -1317,7 +1342,7 @@ export async function getReadingHistory(patientId: string, days = 7): Promise<Re
 
 /** Save today's readings (one row per patient per day). */
 export async function saveReadings(patientId: string, r: ReadingsInput): Promise<void> {
-  const { data: auth } = await supabase.auth.getUser();
+  const auth = await currentAuth();
   const { error } = await supabase.from("daily_readings").upsert(
     {
       patient_id: patientId,
@@ -1368,7 +1393,7 @@ export async function getMedAdminToday(patientId: string): Promise<Map<string, M
 export async function setMedAdmin(
   patientId: string, medicationId: string, slot: string, status: MedAdminStatus,
 ): Promise<void> {
-  const { data: auth } = await supabase.auth.getUser();
+  const auth = await currentAuth();
   const { error } = await supabase.from("med_admin").upsert(
     {
       patient_id: patientId,
@@ -1422,7 +1447,7 @@ export async function getThresholds(patientId: string): Promise<ThresholdRow[]> 
 export async function saveThreshold(
   patientId: string, param: string, min: number | null, max: number | null, unit: string | null,
 ): Promise<void> {
-  const { data: auth } = await supabase.auth.getUser();
+  const auth = await currentAuth();
   const { error } = await supabase.from("reading_thresholds").upsert(
     {
       patient_id: patientId,
@@ -1461,7 +1486,7 @@ export type NewApproval = {
 
 /** Raise a query / suggestion for the doctor (nurse query, duty med suggestion). */
 export async function raiseApproval(patientId: string, a: NewApproval): Promise<void> {
-  const { data: auth } = await supabase.auth.getUser();
+  const auth = await currentAuth();
   const { error } = await supabase.from("approvals").insert({
     patient_id: patientId,
     type: a.type,
@@ -1532,7 +1557,7 @@ export async function addUpdate(
   patientId: string,
   u: { source: UpdateRow["source"]; author_name: string; body: string; flag?: string },
 ): Promise<void> {
-  const { data: auth } = await supabase.auth.getUser();
+  const auth = await currentAuth();
   const { error } = await supabase.from("daily_updates").insert({
     patient_id: patientId,
     source: u.source,
@@ -1551,7 +1576,7 @@ export async function decideApproval(
   id: string,
   status: "approved" | "declined" | "suggested",
 ): Promise<void> {
-  const { data: auth } = await supabase.auth.getUser();
+  const auth = await currentAuth();
   const { error } = await supabase
     .from("approvals")
     .update({ status, decided_by: auth.user?.id ?? null, decided_at: new Date().toISOString() })
@@ -1588,7 +1613,7 @@ export async function getQueryReplies(patientId: string): Promise<QueryMessageRo
  */
 export async function postQueryReply(queryId: string, patientId: string, body: string): Promise<void> {
   const me = await getMyProfile();
-  const { data: auth } = await supabase.auth.getUser();
+  const auth = await currentAuth();
   const { error: mErr } = await supabase.from("query_messages").insert({
     query_id: queryId,
     patient_id: patientId,
@@ -1616,7 +1641,7 @@ export type MedicationInput = {
 
 /** Add a medicine. RLS allows this for the PMR only. */
 export async function addMedication(patientId: string, m: MedicationInput): Promise<MedicationRow> {
-  const { data: auth } = await supabase.auth.getUser();
+  const auth = await currentAuth();
   const { data, error } = await supabase
     .from("medications")
     .insert({ patient_id: patientId, ...m, updated_by: auth.user?.id ?? null })
@@ -1627,7 +1652,7 @@ export async function addMedication(patientId: string, m: MedicationInput): Prom
 }
 
 export async function updateMedication(id: string, m: MedicationInput): Promise<void> {
-  const { data: auth } = await supabase.auth.getUser();
+  const auth = await currentAuth();
   const { error } = await supabase
     .from("medications")
     .update({ ...m, updated_by: auth.user?.id ?? null, updated_at: new Date().toISOString() })

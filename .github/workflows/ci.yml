@@ -1,0 +1,58 @@
+# Carelune CI — the gate between a pull request and app.carelune.in.
+#
+# The application build deploys from `main`, so anything merged there can reach
+# real patients. These are exactly the checks that were previously only ever run
+# by hand: the strict typecheck (esbuild does NOT type-check during a build), the
+# unit suite, and the marketing/app separation assertions.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# A newer push supersedes an in-flight run for the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: typecheck · tests · build · separation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The ONLY real type-check — `vite build` uses esbuild and strips types
+      # without checking them.
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Unit tests
+        run: npx vitest run
+
+      # Placeholder, non-secret Supabase values: the build only inlines them, and
+      # keeping them fake means CI never needs access to the real project.
+      - name: Build both sites
+        run: npm run build
+        env:
+          VITE_SUPABASE_URL: https://example.supabase.co
+          VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_placeholder
+
+      # Asserts the app stays noindex + PWA-only, the marketing site stays
+      # indexable and worker-free, and that no root netlify.toml has appeared to
+      # override either site's build settings.
+      - name: Verify marketing/app separation
+        run: npm run verify:separation

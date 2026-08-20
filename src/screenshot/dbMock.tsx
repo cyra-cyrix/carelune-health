@@ -235,6 +235,10 @@ const basePlan: PlanDraft = {
   clinical_summary: "62-year-old man recovering from a left-MCA ischaemic stroke with mild right-sided weakness. Medically stable, at home on day 12, mobilising with assistance.",
   diagnosis: [{ text: "Ischaemic stroke (left MCA)", provenance: "document" }, { text: "Type 2 diabetes mellitus", provenance: "document" }],
   procedure: null,
+  wound_care: [],
+  targets: [
+    { text: "Walk 50 m with a stick, unaided by a second person", by_day: 21, provenance: "doctor" },
+  ],
   medicines: [
     { name: "Aspirin", dose: "75 mg", freq: "0-0-1", timing: "After food", note: "", provenance: "document" },
     { name: "Atorvastatin", dose: "40 mg", freq: "0-0-1", timing: "At night", note: "", provenance: "document" },

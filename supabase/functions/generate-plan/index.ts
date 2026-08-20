@@ -32,6 +32,8 @@ const json = (obj: unknown, status = 200) =>
 const asStr = (v: unknown) => (typeof v === "string" ? v : v == null ? "" : String(v));
 const arr = (v: unknown) => (Array.isArray(v) ? v : []);
 const FACT = ["document", "doctor"];
+// Regimen content the model MAY propose where the documents are silent (D-002).
+const REGIMEN = [...FACT, "pathway", "ai_structured", "ai_suggested"];
 
 /* -- server-side strict validation (mirror of src/lib/pathwayValidation.ts) -- */
 function validatePlan(p: Record<string, unknown>, enabled: string[]): string[] {
@@ -44,8 +46,9 @@ function validatePlan(p: Record<string, unknown>, enabled: string[]): string[] {
     else if (!allowed.includes(String(f.provenance))) e.push(`${label}[${i}] provenance invalid`);
   });
   facts("diagnosis", FACT);
-  facts("diet", FACT);
-  facts("precautions", [...FACT, "pathway"]);
+  facts("diet", REGIMEN);
+  facts("precautions", REGIMEN);
+  facts("targets", REGIMEN);
   facts("investigations", [...FACT, "pathway"]);
   if (p.procedure && isObj(p.procedure) && !FACT.includes(String(p.procedure.provenance))) e.push("procedure provenance must be document/doctor");
   arr(p.medicines).forEach((m, i) => {
@@ -54,37 +57,79 @@ function validatePlan(p: Record<string, unknown>, enabled: string[]): string[] {
   });
   arr(p.observations).forEach((o, i) => {
     if (!isObj(o) || !ok(o.module)) e.push(`observations[${i}] needs module`);
-    else if (!enabled.includes(String(o.module))) e.push(`observations[${i}] module not enabled for pathway`);
+    // Only constrain modules when a legacy pathway actually enabled a set.
+    else if (enabled.length && !enabled.includes(String(o.module))) e.push(`observations[${i}] module not enabled for pathway`);
   });
+  // Scheduled work must be time-bound sanely; day 1 is the discharge day.
+  for (const label of ["daily_tasks", "therapy_tasks", "wound_care"]) {
+    arr(p[label]).forEach((t, i) => {
+      if (!isObj(t) || !ok(t.title)) return e.push(`${label}[${i}] needs a title`);
+      const from = t.from_day, thru = t.through_day;
+      const bad = (v: unknown) => v !== null && v !== undefined && (typeof v !== "number" || !Number.isInteger(v) || v < 1);
+      if (bad(from)) e.push(`${label}[${i}].from_day must be a whole day >= 1`);
+      if (bad(thru)) e.push(`${label}[${i}].through_day must be a whole day >= 1`);
+      if (typeof from === "number" && typeof thru === "number" && thru < from)
+        e.push(`${label}[${i}] ends before it starts`);
+    });
+  }
   const esc = p.escalation;
   if (!isObj(esc) || !ok(esc.routine) || !ok(esc.urgent) || !ok(esc.emergency)) e.push("escalation incomplete");
   return e;
 }
 
-const SYSTEM_PROMPT = `You are a careful clinical scribe assembling a DRAFT home-recovery plan for a doctor to review, for a post-discharge programme in India. You are given: (A) patient FACTS already extracted from the discharge documents, (B) the doctor's three instructions, and (C) the list of monitoring modules the approved pathway enables (for context only).
+const STANDARDS_HINT = [
+  "WHO Rehabilitation 2030",
+  "AHA/ASA stroke rehabilitation and recovery",
+  "ERAS Society post-operative recovery",
+  "NICE post-surgical and rehabilitation guidance",
+  "ACSM exercise prescription",
+  "ESPEN / BDA nutrition",
+  "WOCN / EWMA wound care",
+].join("; ");
 
-STRICT SAFETY RULES:
-- Never invent diagnoses, medicines, doses, investigations, diets or restrictions. Use ONLY the FACTS or the DOCTOR's instructions.
-- Copy medicines EXACTLY from the facts (name/dose/freq/timing). Provenance "document".
-- Diagnosis/procedure/investigations come from facts (provenance "document"). Precautions/diet may come from facts ("document") or the doctor ("doctor"). A milestone/target stated by the doctor is provenance "doctor".
-- Convert care into simple caregiver-facing daily_tasks and therapy_tasks. Task provenance is "document", "doctor", or "pathway".
-- If important information is missing or the documents conflict, DO NOT guess — add a short note to "missing" or "conflicts".
+const SYSTEM_PROMPT = `You are a continuing-care clinician assembling a DRAFT home-recovery programme for the TREATING DOCTOR to review, edit and approve, for a patient discharged to home care in India. You are given (A) FACTS extracted from the patient's discharge documents and (B) any instructions the doctor added.
 
-Return ONLY JSON:
+TWO KINDS OF CONTENT — this distinction is the safety spine of the product:
+
+1. FACTS — diagnoses, procedure, medicines, doses, investigations. NEVER invent, infer, adjust or "correct" these. Copy them exactly from the FACTS with provenance "document" (or "doctor" if the doctor stated them). A medicine that is not in the documents does not appear in the plan. Never change a dose, never add a drug, never suggest a referral.
+
+2. REGIMEN — exercise, diet, wound care, monitoring, precautions, targets, education. Where the documents specify it, use it with provenance "document". Where the documents are SILENT, you MAY propose what international standard-of-care would ordinarily include for this diagnosis/procedure at this stage of recovery — and you MUST mark it provenance "ai_suggested". The doctor rules on every ai_suggested line before anything is activated; nothing reaches the family until then.
+
+Draw on established international guidance appropriate to the condition, for example: ${STANDARDS_HINT}. List in "standards" ONLY the families you actually applied. Never claim certification, endorsement, accreditation or compliance — this is a draft written with reference to them.
+
+TIME-BOUND EVERYTHING. Day 1 is the discharge day. Every task carries from_day, and through_day when it should stop or change. Build a PROGRESSION — protection and small volumes early, graded increase later — not one instruction repeated for the whole programme.
+
+SAFETY RULES:
+- Any precaution, restriction or contraindication stated in the documents OVERRIDES anything you would otherwise propose. Re-read them before proposing exercise or diet.
+- If you are unsure, do NOT guess: add a short, specific question to "missing" for the doctor to answer.
+- If the documents disagree with each other, record it in "conflicts". Never silently pick one.
+- Write for the person doing the work: a family caregiver with no clinical training. Short, plain, imperative sentences. No abbreviations, no jargon.
+- Anything genuinely dangerous to get wrong belongs in warning_signs, with the escalation route.
+
+Return ONLY valid JSON in exactly this shape:
 {
- "clinical_summary": "one plain sentence",
+ "clinical_summary": "one plain sentence a family would understand",
  "diagnosis": [{"text":"…","provenance":"document"}],
- "procedure": {"text":"…","provenance":"document"} ,
+ "procedure": {"text":"…","provenance":"document"} or null,
  "medicines": [{"name":"…","dose":"…","freq":"…","timing":"…","note":"…","provenance":"document"}],
  "investigations": [{"text":"…","provenance":"document"}],
- "diet": [{"text":"…","provenance":"document"}],
+ "targets": [{"text":"what good recovery looks like, measurable","by_day":21,"provenance":"ai_suggested"}],
+ "therapy_tasks": [{"time_label":"08:00","discipline":"Physiotherapy","title":"…","detail":"how to do it, plainly","from_day":1,"through_day":7,"provenance":"ai_suggested"}],
+ "daily_tasks": [{"time_label":"08:00","discipline":"Nursing","title":"…","detail":"…","from_day":1,"through_day":null,"provenance":"document"}],
+ "wound_care": [{"time_label":"09:00","discipline":"Wound care","title":"…","detail":"…","from_day":1,"through_day":14,"provenance":"ai_suggested"}],
+ "diet": [{"text":"…","provenance":"ai_suggested"}],
  "precautions": [{"text":"…","provenance":"document"}],
- "daily_tasks": [{"time_label":"08:00","discipline":"Nursing","title":"…","detail":"","provenance":"document"}],
- "therapy_tasks": [{"time_label":"10:00","discipline":"Physiotherapy","title":"…","detail":"","provenance":"pathway"}],
- "missing": ["…"],
+ "observations": [{"module":"vitals","frequency":"daily","recorded_by":"caregiver"}],
+ "milestones": [{"key":"walk_50m","name":"…","by_day":21}],
+ "warning_signs": [{"text":"…","severity":"urgent"}],
+ "escalation": {"routine":"…","urgent":"…","emergency":"…"},
+ "education": [{"title":"…","status":"pending"}],
+ "review_dates": [{"date":"YYYY-MM-DD","purpose":"…"}],
+ "standards": ["…"],
+ "missing": ["a specific question for the doctor"],
  "conflicts": ["…"]
 }
-If procedure is not stated, use null. Output valid JSON only.`;
+"wound_care" is [] when there was no procedure or wound. Output valid JSON only, no prose.`;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -113,20 +158,16 @@ Deno.serve(async (req) => {
     const { data: pat } = await admin.from("patients")
       .select("id, full_name, centre_id, pathway_pack_id, pathway_version_id").eq("id", patientId).maybeSingle();
     if (!pat || pat.centre_id !== prof.centre_id) return json({ error: "Patient not found for your institution." }, 404);
-    if (!pat.pathway_version_id) return json({ error: "Assign and approve a pathway version for this patient first." }, 409);
+    // A governed pathway is OPTIONAL now (docs/DECISIONS.md D-001). The plan is
+    // built from this patient's own documents; if a legacy pathway version happens
+    // to be assigned we still read it for monitoring-module context, but its
+    // absence never blocks the doctor.
 
-    // Load the governed, already-stored pathway structure (NOT sent by the client).
-    const { data: ver } = await admin.from("pathway_versions")
-      .select("id, status, config, pathway_id, pathways(name, pack_id)").eq("id", pat.pathway_version_id).maybeSingle();
-    if (!ver) return json({ error: "Pathway version not found." }, 404);
-    // The governing version must be approved (platform) OR institution-approved.
-    const { data: instApproved } = await admin.from("institution_pathway_versions")
-      .select("id").eq("centre_id", pat.centre_id).eq("version_id", ver.id).maybeSingle();
-    if (ver.status !== "approved" && !instApproved) {
-      return json({ error: "This pathway version is not clinically approved for your institution." }, 409);
-    }
+    const { data: ver } = pat.pathway_version_id
+      ? await admin.from("pathway_versions").select("id, config").eq("id", pat.pathway_version_id).maybeSingle()
+      : { data: null };
 
-    const cfg = (ver.config ?? {}) as Record<string, unknown>;
+    const cfg = (ver?.config ?? {}) as Record<string, unknown>;
     const modules = arr(cfg.modules) as Record<string, unknown>[];
     const enabled = modules.map((m) => asStr(m.key)).filter(Boolean);
 
@@ -153,27 +194,35 @@ Deno.serve(async (req) => {
     let ai: Record<string, unknown>;
     try { ai = JSON.parse((await aiRes.json())?.choices?.[0]?.message?.content ?? "{}"); } catch { return json({ error: "Model did not return valid JSON." }, 502); }
 
-    // Pathway-sourced sections come straight from the stored config (never the model).
-    const observations = modules.map((m) => ({
+    /*
+     * These sections used to come exclusively from a governed pathway config. With
+     * pathways removed (D-001) the model supplies them, and a legacy config — when
+     * one happens to still be attached — takes precedence over the model's version.
+     */
+    const cfgObservations = modules.map((m) => ({
       module: asStr(m.key),
       frequency: asStr(m.frequency) || "daily",
       recorded_by: asStr(m.recorded_by) || "caregiver",
     })).filter((o) => enabled.includes(o.module));
-    const milestones = arr(cfg.milestones).map((m) => {
+    const observations = cfgObservations.length ? cfgObservations : arr(ai.observations);
+    const milestones = (arr(cfg.milestones).length ? arr(cfg.milestones) : arr(ai.milestones)).map((m) => {
       const o = (m ?? {}) as Record<string, unknown>;
       return { key: asStr(o.key), name: asStr(o.name), by_day: typeof o.by_day === "number" ? o.by_day : null };
     }).filter((m) => m.name);
     if (asStr(intake?.milestone_goal)) {
       milestones.push({ key: "doctor_goal", name: `${asStr(intake?.milestone_goal)}${intake?.milestone_by ? ` (by ${asStr(intake?.milestone_by)})` : ""}`, by_day: null });
     }
-    const warning_signs = arr(cfg.warning_signs).map((w) => {
+    const warning_signs = (arr(cfg.warning_signs).length ? arr(cfg.warning_signs) : arr(ai.warning_signs)).map((w) => {
       const o = (w ?? {}) as Record<string, unknown>;
       return { text: asStr(o.text), severity: asStr(o.severity) === "attention" ? "attention" : "urgent" };
     }).filter((w) => w.text);
     const escalation = (cfg.escalation && typeof cfg.escalation === "object")
       ? cfg.escalation
-      : { routine: "nurse", urgent: "doctor", emergency: "Call 112 or 108, or go to the nearest hospital" };
-    const education = arr(cfg.education).map((ed) => {
+      : (ai.escalation && typeof ai.escalation === "object")
+        ? ai.escalation
+        // Frozen emergency wording — never let the model author the 112/108 line.
+        : { routine: "nurse", urgent: "doctor", emergency: "Call 112 or 108, or go to the nearest hospital" };
+    const education = (arr(cfg.education).length ? arr(cfg.education) : arr(ai.education)).map((ed) => {
       const o = (ed ?? {}) as Record<string, unknown>;
       return { title: asStr(o.title), status: asStr(o.status) || "approval_pending" };
     }).filter((ed) => ed.title);
@@ -192,7 +241,10 @@ Deno.serve(async (req) => {
       investigations: arr(ai.investigations),
       daily_tasks: arr(ai.daily_tasks),
       therapy_tasks: arr(ai.therapy_tasks),
+      wound_care: arr(ai.wound_care),
       diet: arr(ai.diet),
+      targets: arr(ai.targets),
+      standards: arr(ai.standards).map(asStr).filter(Boolean),
       observations,
       milestones,
       precautions,

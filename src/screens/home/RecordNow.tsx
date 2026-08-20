@@ -30,9 +30,10 @@ export function RecordNow({ onClose }: { onClose: () => void }) {
   return (
     <BottomSheet title="Record now" onClose={onClose}>
       {params.length === 0 ? (
-        <p className="hc-empty-note">
-          The care team has not prescribed anything to record for {patient.full_name.split(" ")[0]} yet.
-        </p>
+        <div className="hc-empty">
+          <b>Nothing to record yet</b>
+          <p>The care team has not prescribed anything for {patient.full_name.split(" ")[0]} to record.</p>
+        </div>
       ) : (
         <div className="hc-rec-grid">
           {params.map((p) => {
@@ -80,14 +81,14 @@ function ParamSheet({
 
   return (
     <BottomSheet title={param.label} onClose={onBack}>
-      <ParamControl param={param} value={value} onChange={setValue} />
-      <div className="hc-sheet-actions">
-        <button type="button" className="hc-btn-ghost" onClick={onBack}>Back</button>
-        <button type="button" className="hc-btn" onClick={save} disabled={state === "saving" || !value.trim()}>
-          {state === "saving" ? "Saving…" : state === "saved" ? "Saved ✓" : "Save"}
-        </button>
+      <div className="hc-field" style={{ marginTop: 6 }}>
+        <ParamControl param={param} value={value} onChange={setValue} />
       </div>
-      {state === "error" && <p className="hc-err">Could not save. Try again.</p>}
+      <button type="button" className="hc-save" onClick={save} disabled={state === "saving" || !value.trim()}>
+        {state === "saving" ? "Saving…" : <><HcIcon.Check size={16} /> Save {param.short || param.label}</>}
+      </button>
+      {state === "error" && <p className="hc-save-error">Could not save. Try again.</p>}
+      <button type="button" className="hc-help-link" onClick={onBack}>Back</button>
     </BottomSheet>
   );
 }

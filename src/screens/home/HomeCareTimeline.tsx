@@ -114,11 +114,10 @@ export function HomeCareTimeline({ onBack }: { onBack: () => void }) {
       </nav>
 
       {shown.length === 0 ? (
-        <p className="hc-empty-note">
-          {entries.length === 0
-            ? "Nothing recorded yet today. It appears here as you record it."
-            : "Nothing under this filter today."}
-        </p>
+        <div className="hc-empty">
+          <b>{entries.length === 0 ? "Nothing recorded yet today" : "Nothing under this filter"}</b>
+          <p>{entries.length === 0 ? "Activities appear here as you record them." : "Try another filter."}</p>
+        </div>
       ) : (
         <div className="hc-tl">
           {shown.map((e) => (

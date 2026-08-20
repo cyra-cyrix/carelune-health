@@ -128,7 +128,7 @@ export function HomeCareToday() {
         </div>
         <div className="hc-schedule">
           {model.ordered.map((item) => (
-            <ScheduleRow key={item.task.id} item={item} onSelect={setSelectedId} />
+            <ScheduleRow key={item.task.id} item={item} onSelect={setSelectedId} meds={meds.length} />
           ))}
         </div>
       </section>
@@ -160,12 +160,8 @@ function today(): string {
   return new Date().toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
 }
 
-function ScheduleRow({ item, onSelect }: { item: TodayItem; onSelect: (id: string) => void }) {
-  const state = item.destination === "medicines"
-    ? "Record in Medicines"
-    : item.outcome
-      ? `Recorded: ${OUTCOME_META[item.outcome].label}`
-      : "Not recorded";
+function ScheduleRow({ item, onSelect, meds }: { item: TodayItem; onSelect: (id: string) => void; meds: number }) {
+  const state = rowStatus(item, meds);
   return (
     <button
       type="button"
@@ -177,12 +173,26 @@ function ScheduleRow({ item, onSelect }: { item: TodayItem; onSelect: (id: strin
       <span className="hc-schedule-icon">{kindIcon(item.kind)}</span>
       <span className="hc-schedule-copy">
         <b>{item.task.title}</b>
-        <small>{item.task.discipline || "Care"}</small>
+        <small>{item.task.detail || item.task.discipline || "Care"}</small>
       </span>
       <span className={`hc-schedule-state${item.outcome ? " recorded" : ""}`}>{state}</span>
       <HcIcon.Right size={16} />
     </button>
   );
+}
+
+/**
+ * The status a caregiver can act on, not a bare state word.
+ *
+ * "Not recorded" tells someone nothing about what is being asked of them, so a
+ * row says what it is instead: how many medicines are due, that a therapy
+ * session is planned, or that this one is already done.
+ */
+function rowStatus(item: TodayItem, meds: number): string {
+  if (item.outcome) return OUTCOME_META[item.outcome].label;
+  if (item.destination === "medicines") return meds > 0 ? `${meds} medicine${meds === 1 ? "" : "s"}` : "In Medicines";
+  if (item.kind === "physio") return "Session planned";
+  return "To record";
 }
 
 function kindIcon(kind: TaskKind) {

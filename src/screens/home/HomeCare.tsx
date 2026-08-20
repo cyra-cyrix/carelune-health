@@ -13,6 +13,7 @@ import { HcProvider, dayAtHome, HcIcon, type HcData, type HcRole } from "./hc-ki
 import { HomeCareToday } from "./HomeCareToday";
 import { HomeCareMedicines } from "./HomeCareMedicines";
 import { HomeCareLog } from "./HomeCareLog";
+import { HomeCarePlan } from "./HomeCarePlan";
 import { HomeCareProgress } from "./HomeCareProgress";
 import { HomeCareHelp } from "./HomeCareHelp";
 import { HomeCareMessages } from "./HomeCareMessages";
@@ -29,7 +30,7 @@ const EMPTY_READINGS: ReadingsInput = {
 
 /** Four sections live in the bottom bar; medicines, log and help are opened
  *  from More (and from an action that hands off, e.g. a medicine task). */
-export type HcTab = "today" | "progress" | "messages" | "more" | "medicines" | "log" | "help";
+export type HcTab = "today" | "progress" | "careplan" | "messages" | "more" | "medicines" | "log" | "help";
 
 export default function HomeCare({ role, initialTab = "today" }: { role: HcRole; initialTab?: HcTab }) {
   const { profile } = useBranding();
@@ -157,6 +158,7 @@ export default function HomeCare({ role, initialTab = "today" }: { role: HcRole;
         <div className="hc-app">
           {tab === "today" && <HomeCareToday />}
           {tab === "progress" && <HomeCareProgress />}
+          {tab === "careplan" && <HomeCarePlan />}
           {tab === "messages" && <HomeCareMessages />}
           {tab === "more" && <HomeCareMore />}
           {tab === "medicines" && <SubScreen title="More" onBack={() => setTab("more")}><HomeCareMedicines /></SubScreen>}
@@ -172,7 +174,8 @@ export default function HomeCare({ role, initialTab = "today" }: { role: HcRole;
 const NAV: { key: HcTab; label: string; icon: (props: { size?: number }) => React.ReactNode }[] = [
   { key: "today", label: "Today", icon: HcIcon.Home },
   { key: "progress", label: "Progress", icon: HcIcon.Chart },
-  { key: "messages", label: "Messages", icon: HcIcon.Chat },
+  { key: "careplan", label: "Care plan", icon: HcIcon.Life },
+  { key: "messages", label: "Chat", icon: HcIcon.Chat },
   { key: "more", label: "More", icon: HcIcon.Menu },
 ];
 

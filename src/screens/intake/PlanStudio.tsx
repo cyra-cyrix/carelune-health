@@ -124,6 +124,19 @@ function PreparePanel({
   }, [patient?.id]);
 
   /*
+   * The document was already provided during patient setup, so asking for it a
+   * second time was a screen that existed only to hold a button. When a document
+   * is present we draft immediately and the doctor lands on the plan itself.
+   * The ref guard means a failed attempt is not retried in a loop — the doctor
+   * gets the error and an explicit retry instead.
+   */
+  const autoDrafted = useRef(false);
+  useEffect(() => {
+    if (!patient || docs === null || autoDrafted.current) return;
+    if (docs.length > 0 && docId) { autoDrafted.current = true; void run(); }
+  }, [patient?.id, docs, docId]);
+
+  /*
    * Uploading lives on THIS screen. It used to be a different page, which meant a
    * doctor holding a discharge sheet had to leave the drafting screen, upload, and
    * come back. Photographs are first-class: extract-facts reads JPG/PNG with the
@@ -162,6 +175,8 @@ function PreparePanel({
       const saved = await getPatientPlan(patient.id);
       if (saved) onGenerated(saved);
       else if (generated) onGenerated(generated as unknown as PatientPlanRow);
+      // Without this the screen would sit on the progress steps for ever.
+      else setErr("The draft was generated but could not be loaded. Try again.");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Could not draft the programme.");
       setStep(0);
@@ -174,18 +189,30 @@ function PreparePanel({
     { label: "Ready for your review", caption: "You edit and approve everything", state: step > 2 ? "done" : "idle" },
   ];
 
+  const drafting = busy || (docs !== null && docs.length > 0 && !err);
+
+  if (drafting) {
+    return (
+      <div className="mx-auto max-w-[560px]">
+        <Panel label="Working" title="Drafting the recovery programme">
+          <p className="-mt-2 mb-4 text-[13px] leading-relaxed text-sage-600">
+            Reading {docs?.find((d) => d.id === docId)?.file_name ?? "the discharge document"} and
+            building a 30-day programme — targets, exercise, diet, medicines, wound care and what to
+            monitor, each with dates.
+          </p>
+          <JourneySteps steps={journey} />
+        </Panel>
+      </div>
+    );
+  }
+
   return (
-    <div className="mx-auto max-w-[760px]">
-      <Panel label="Step 1" title="Draft this patient's recovery programme">
+    <div className="mx-auto max-w-[620px]">
+      <Panel label="Needed" title="Add the discharge document">
         <p className="-mt-2 mb-4 text-[13px] leading-relaxed text-sage-600">
-          Carelune reads the discharge document and drafts a complete 30-day programme —
-          targets, exercise, diet, medicines, wound care and what to monitor, each with dates.
-          You review and change anything before it starts.
+          Carelune drafts the recovery programme from it. A clear photo of the sheet works.
         </p>
 
-        <span className="mb-1.5 block text-[12.5px] font-semibold text-sage-600">Discharge document</span>
-
-        {/* PDF or photograph — both are read; a photo of a paper sheet is the common case. */}
         <input
           ref={fileRef}
           type="file"
@@ -202,49 +229,17 @@ function PreparePanel({
           onChange={(e) => { void onFile(e.target.files?.[0]); e.target.value = ""; }}
         />
         <div className="flex flex-wrap gap-2">
-          <PrimaryButton onClick={() => fileRef.current?.click()} disabled={uploading || busy}>
+          <PrimaryButton onClick={() => fileRef.current?.click()} disabled={uploading}>
             {uploading ? "Uploading…" : "Upload PDF or photo"}
           </PrimaryButton>
-          <GhostButton onClick={() => cameraRef.current?.click()} disabled={uploading || busy}>
-            Take a photo
-          </GhostButton>
+          <GhostButton onClick={() => cameraRef.current?.click()} disabled={uploading}>Take a photo</GhostButton>
         </div>
-        <p className="mt-1.5 text-[11.5px] text-sage-500">
-          PDF, JPG or PNG, up to 10&nbsp;MB. A clear photo of the discharge sheet works — Carelune reads it.
-        </p>
 
-        {docs === null ? (
-          <div className="mt-3"><Skeleton className="h-16" /></div>
-        ) : docs.length > 0 ? (
-          <div className="mt-3 space-y-2">
-            {docs.map((d) => (
-              <button
-                key={d.id}
-                type="button"
-                role="radio"
-                aria-checked={docId === d.id}
-                onClick={() => setDocId(d.id)}
-                className={`tap flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left transition-colors ${
-                  docId === d.id ? "bg-sky-50 ring-2 ring-sky-500" : "bg-mist-100 ring-1 ring-ink/[0.04] hover:ring-ink/10"
-                }`}
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13.5px] font-semibold text-ink">{d.file_name}</span>
-                  <span className="mt-0.5 block text-[11.5px] text-sage-500">
-                    {d.mime?.startsWith("image/") ? "Photo" : "PDF"}
-                    {d.doc_type ? ` · ${d.doc_type.replace(/_/g, " ")}` : ""}
-                  </span>
-                </span>
-              </button>
-            ))}
-          </div>
-        ) : null}
-
-        <details className="mt-3 group">
+        <details className="mt-3">
           <summary className="tap cursor-pointer list-none text-[12.5px] font-semibold text-sky-700 hover:text-sky-800">
             No file? Paste the text instead
           </summary>
-          <div className="mt-2">
+          <div className="mt-2 space-y-3">
             <textarea
               value={pasted}
               onChange={(e) => setPasted(e.target.value)}
@@ -253,42 +248,38 @@ function PreparePanel({
               className={`${inputCls} resize-y`}
               aria-label="Paste the discharge summary"
             />
+            <Field label="Anything you want included? (optional)" hint="Carried through as a non-negotiable.">
+              <input
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="e.g. No weight-bearing on the left leg for 3 weeks"
+                className={inputCls}
+              />
+            </Field>
+            <PrimaryButton onClick={run} disabled={!hasSource}>Draft from pasted text</PrimaryButton>
           </div>
         </details>
 
-        <div className="mt-4">
-          <Field label="Anything you want included? (optional)" hint="Your instruction is carried through as a non-negotiable.">
-            <input
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="e.g. No weight-bearing on the left leg for 3 weeks"
-              className={inputCls}
-            />
-          </Field>
-        </div>
-
-        {busy && <div className="mt-5"><JourneySteps steps={journey} /></div>}
         {err && <div className="mt-4"><ErrorNote>{err}</ErrorNote></div>}
-
-        <div className="mt-5 flex flex-wrap items-center gap-3">
-          <PrimaryButton onClick={run} disabled={!hasSource || busy}>
-            {busy ? "Drafting…" : "Draft the recovery programme"}
-          </PrimaryButton>
-          {!hasSource && !busy && (
-            <span className="text-[11.5px] text-sage-500">Select or paste the discharge document to continue.</span>
-          )}
-        </div>
+        {err && (
+          <div className="mt-3">
+            <GhostButton onClick={() => { autoDrafted.current = false; void run(); }} disabled={!hasSource}>
+              Try again
+            </GhostButton>
+          </div>
+        )}
 
         <p className="mt-4 border-t border-line pt-3 text-[11.5px] leading-relaxed text-sage-500">
           Drafted with reference to international continuing-care guidance — WHO Rehabilitation 2030,
           AHA/ASA stroke recovery, ERAS post-operative recovery, NICE rehabilitation, ACSM exercise
           prescription, ESPEN nutrition and WOCN/EWMA wound care. A draft for your clinical judgement,
-          not a certified or accredited protocol. Diagnoses and medicines are copied from the document
-          and never invented; anything Carelune proposes is marked for your approval.
+          not a certified protocol. Diagnoses and medicines are copied from the document and never
+          invented; anything Carelune proposes is marked for your approval.
         </p>
       </Panel>
     </div>
   );
+
 }
 
 

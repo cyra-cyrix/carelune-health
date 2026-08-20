@@ -1,8 +1,23 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActionStage } from "./ActionStage";
-import { HcIcon, OUTCOME_META, useHc, type TaskKind } from "./hc-kit";
-import { buildTodayModel, nextSelectionAfterRecord, type TodayItem } from "./today-model";
+import { HcIcon, OUTCOME_META, useHc, type Period, type TaskKind } from "./hc-kit";
+import {
+  buildPeriodBlocks, buildTodayModel, initialBlockKey, nextSelectionAfterRecord,
+  type PeriodBlock, type TodayItem,
+} from "./today-model";
 
+/**
+ * Today — one time block at a time.
+ *
+ * The day used to be a single column: the next activity, then every remaining
+ * activity beneath it, scrolling from morning to bedtime. On a phone that put
+ * bedtime care and 6am vitals in the same list, and recording anything other
+ * than "next" meant hunting down the page or leaving for the Log screen.
+ *
+ * Now the day is four cards — Morning, Afternoon, Evening, Bedtime — swiped
+ * horizontally, and recording happens inside the card. Nothing sends the
+ * caregiver to another screen to enter a reading.
+ */
 export function HomeCareToday() {
   const { patient, day, tasks, outcomes } = useHc();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -10,11 +25,42 @@ export function HomeCareToday() {
   outcomesRef.current = outcomes;
 
   const model = buildTodayModel(tasks, outcomes, selectedId);
+  const blocks = buildPeriodBlocks(model.ordered);
   const patientFirstName = patient.full_name.split(" ")[0] || patient.full_name;
 
-  const advance = () => {
-    if (!model.active) return;
-    setSelectedId(nextSelectionAfterRecord(tasks, outcomesRef.current, model.active.task.id));
+  const [openBlock, setOpenBlock] = useState<Period | null>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const cardRefs = useRef(new Map<Period, HTMLElement>());
+
+  // Land on the block that still needs work, once, without stealing the caregiver's
+  // place if they have already swiped somewhere.
+  // Not every environment implements scrollIntoView (jsdom does not), and it must
+  // never take the screen down with it — the tab strip still moves without it.
+  const revealCard = (key: Period, behavior: ScrollBehavior) => {
+    const el = cardRefs.current.get(key);
+    if (typeof el?.scrollIntoView === "function") {
+      el.scrollIntoView({ inline: "center", block: "nearest", behavior });
+    }
+  };
+
+  const landed = useRef(false);
+  useEffect(() => {
+    if (landed.current || !blocks.length) return;
+    landed.current = true;
+    const key = initialBlockKey(blocks);
+    if (!key) return;
+    setOpenBlock(key);
+    // `auto` not `smooth`: a scroll animation on first paint reads as a glitch.
+    revealCard(key, "auto");
+  }, [blocks.length]);
+
+  const goTo = (key: Period) => {
+    setOpenBlock(key);
+    revealCard(key, "smooth");
+  };
+
+  const advance = (item: TodayItem) => {
+    setSelectedId(nextSelectionAfterRecord(tasks, outcomesRef.current, item.task.id));
   };
 
   return (
@@ -36,7 +82,13 @@ export function HomeCareToday() {
                 ? "Today’s scheduled care is recorded"
                 : `${model.recordedCount} of ${model.recordableTotal} recorded`}
           </h2>
-          <p>{summaryLine(model.active, model.recordableTotal)}</p>
+          <p>
+            {model.recordableTotal === 0
+              ? "The care team has not added activities for today."
+              : model.allRecorded
+                ? "Nothing outstanding. Open any card to correct something."
+                : "Work through one time of day at a time — swipe for the next."}
+          </p>
         </div>
         {model.recordableTotal > 0 && (
           <div
@@ -52,32 +104,48 @@ export function HomeCareToday() {
         )}
       </section>
 
-      {model.active ? (
-        <section className="hc-active-action" aria-labelledby="today-action-title">
-          <div className="hc-section-title">
-            <h2 id="today-action-title">Do this next</h2>
-            <span>{model.active.task.time_label || "Today"}</span>
-          </div>
-          <ActionStage task={model.active.task} onRecorded={advance} />
-        </section>
-      ) : model.recordableTotal > 0 ? (
-        <section className="hc-today-complete" aria-label="Today complete">
-          <span className="hc-complete-icon"><HcIcon.Check size={20} /></span>
-          <div><b>Care for today is recorded</b><p>You can open an activity below if anything needs correcting.</p></div>
-        </section>
-      ) : null}
+      {blocks.length > 0 && (
+        <>
+          {/* Jump between times of day without swiping — and a visible position marker. */}
+          <nav className="hc-block-tabs" aria-label="Time of day">
+            {blocks.map((b) => (
+              <button
+                key={b.key}
+                type="button"
+                onClick={() => goTo(b.key)}
+                aria-current={openBlock === b.key}
+                className={`hc-block-tab${openBlock === b.key ? " on" : ""}${b.done ? " done" : ""}`}
+              >
+                {b.label}
+                {b.recordable > 0 && (
+                  <span className="hc-block-tab-count num">
+                    {b.done ? <HcIcon.Check size={12} /> : `${b.recorded}/${b.recordable}`}
+                  </span>
+                )}
+              </button>
+            ))}
+          </nav>
 
-      {model.rows.length > 0 && (
-        <section className="hc-day-list" aria-labelledby="today-schedule-title" aria-label="Rest of today">
-          <div className="hc-section-title">
-            <h2 id="today-schedule-title">Rest of today</h2>
-            <span>{model.rows.length} {model.rows.length === 1 ? "activity" : "activities"}</span>
-          </div>
-          <div className="hc-schedule">
-            {model.rows.map((item) => (
-              <ScheduleRow key={item.task.id} item={item} onSelect={setSelectedId} />
+          <div className="hc-block-track" ref={trackRef}>
+            {blocks.map((b) => (
+              <BlockCard
+                key={b.key}
+                block={b}
+                activeId={model.active?.task.id ?? null}
+                onRef={(el) => { if (el) cardRefs.current.set(b.key, el); }}
+                onVisible={() => setOpenBlock(b.key)}
+                onSelect={setSelectedId}
+                onRecorded={advance}
+              />
             ))}
           </div>
+        </>
+      )}
+
+      {blocks.length === 0 && (
+        <section className="hc-today-complete" aria-label="Nothing scheduled">
+          <span className="hc-complete-icon"><HcIcon.Check size={20} /></span>
+          <div><b>Nothing scheduled yet</b><p>Activities appear here once the care team approves the plan.</p></div>
         </section>
       )}
 
@@ -86,11 +154,65 @@ export function HomeCareToday() {
   );
 }
 
-function summaryLine(active: TodayItem | null, recordableTotal: number): string {
-  if (recordableTotal === 0) return "The care team has not added activities for today.";
-  if (!active) return "Nothing else needs recording right now.";
-  const when = active.task.time_label ? `${active.task.time_label} · ` : "";
-  return `${when}${active.task.title}`;
+/** One time-of-day card. Recording happens in place, never on another screen. */
+function BlockCard({
+  block, activeId, onRef, onVisible, onSelect, onRecorded,
+}: {
+  block: PeriodBlock;
+  activeId: string | null;
+  onRef: (el: HTMLElement | null) => void;
+  onVisible: () => void;
+  onSelect: (id: string) => void;
+  onRecorded: (item: TodayItem) => void;
+}) {
+  const ref = useRef<HTMLElement | null>(null);
+
+  // Keep the tab strip honest when the caregiver swipes rather than taps.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(
+      (entries) => entries.forEach((e) => { if (e.isIntersecting && e.intersectionRatio > 0.6) onVisible(); }),
+      { root: el.parentElement, threshold: [0.6] },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [onVisible]);
+
+  return (
+    <section
+      ref={(el) => { ref.current = el; onRef(el); }}
+      className={`hc-block-card${block.done ? " done" : ""}`}
+      aria-label={`${block.label}, ${block.range}`}
+    >
+      <div className="hc-block-head">
+        <div>
+          <h2>{block.label}</h2>
+          <p className="num">{block.range}</p>
+        </div>
+        {block.recordable > 0 && (
+          <span className={`hc-block-badge${block.done ? " done" : ""} num`}>
+            {block.done ? "Done" : `${block.recorded}/${block.recordable}`}
+          </span>
+        )}
+      </div>
+
+      <div className="hc-block-items">
+        {block.items.map((item) => {
+          const open = item.task.id === activeId;
+          return (
+            <div key={item.task.id} className={`hc-block-item${open ? " open" : ""}`}>
+              {open ? (
+                <ActionStage task={item.task} onRecorded={() => onRecorded(item)} />
+              ) : (
+                <ScheduleRow item={item} onSelect={onSelect} />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
 }
 
 function ScheduleRow({ item, onSelect }: { item: TodayItem; onSelect: (id: string) => void }) {

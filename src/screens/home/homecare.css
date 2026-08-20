@@ -737,3 +737,95 @@
   min-height: var(--cl-target); font: inherit; font-size: 13px; font-weight: 800;
   color: var(--sky-ink); background: none; border: 0; cursor: pointer;
 }
+
+/* ---------------------------------------------------------------------------
+   Today — time-of-day cards
+   The day is swiped one block at a time instead of scrolled as one long column,
+   so 6am vitals and bedtime care are never in the same list on a phone.
+   --------------------------------------------------------------------------- */
+
+.hc-block-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 2px 16px 0;
+  margin: 0 -16px;
+  scrollbar-width: none;
+}
+.hc-block-tabs::-webkit-scrollbar { display: none; }
+
+.hc-block-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 8px 13px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--hc-surface-2, #eef1f6);
+  color: var(--hc-muted, #5b6b7f);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.hc-block-tab.on { background: var(--hc-accent, #168bff); color: #fff; }
+.hc-block-tab.done:not(.on) { color: var(--hc-good, #128a5b); }
+.hc-block-tab-count {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11.5px;
+  font-weight: 700;
+  opacity: 0.85;
+}
+
+/* The slider itself. Scroll-snap does the work — no carousel library, and it
+   keeps native momentum and accessibility on touch devices. */
+.hc-block-track {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px 16px 4px;
+  margin: 0 -16px;
+  scrollbar-width: none;
+}
+.hc-block-track::-webkit-scrollbar { display: none; }
+
+.hc-block-card {
+  flex: 0 0 min(100%, 430px);
+  scroll-snap-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 20px;
+  background: var(--hc-surface, #fff);
+  box-shadow: 0 1px 2px rgba(16, 26, 40, 0.06), 0 8px 24px -12px rgba(16, 26, 40, 0.18);
+}
+
+.hc-block-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.hc-block-head h2 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
+.hc-block-head p { margin: 2px 0 0; font-size: 12.5px; color: var(--hc-muted, #5b6b7f); }
+
+.hc-block-badge {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--hc-surface-2, #eef1f6);
+  color: var(--hc-muted, #5b6b7f);
+  font-size: 12px;
+  font-weight: 700;
+}
+.hc-block-badge.done { background: rgba(18, 138, 91, 0.12); color: var(--hc-good, #128a5b); }
+
+.hc-block-items { display: flex; flex-direction: column; gap: 8px; }
+/* An open item holds the recording controls inline — this is the whole point:
+   the caregiver never leaves the card to enter a reading. */
+.hc-block-item.open { margin: 2px 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hc-block-track { scroll-behavior: auto; }
+}

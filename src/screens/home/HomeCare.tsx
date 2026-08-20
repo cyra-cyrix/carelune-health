@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useBranding } from "../../branding/BrandingProvider";
 import {
   getMyPatient, getCareTasks, getTodayTaskOutcomes, setTaskOutcome,
@@ -14,6 +14,7 @@ import { HomeCareToday } from "./HomeCareToday";
 import { HomeCareMedicines } from "./HomeCareMedicines";
 import { HomeCareLog } from "./HomeCareLog";
 import { HomeCarePlan } from "./HomeCarePlan";
+import { RecordNow } from "./RecordNow";
 import { HomeCareProgress } from "./HomeCareProgress";
 import { HomeCareHelp } from "./HomeCareHelp";
 import { HomeCareMessages } from "./HomeCareMessages";
@@ -35,6 +36,7 @@ export type HcTab = "today" | "progress" | "careplan" | "messages" | "more" | "m
 export default function HomeCare({ role, initialTab = "today" }: { role: HcRole; initialTab?: HcTab }) {
   const { profile } = useBranding();
   const [tab, setTab] = useState<HcTab>(initialTab);
+  const [recordOpen, setRecordOpen] = useState(false);
   const [patient, setPatient] = useState<PatientRow | null>(null);
   const [tasks, setTasks] = useState<CareTaskRow[]>([]);
   const [outcomes, setOutcomes] = useState<Map<string, TaskOutcome>>(new Map());
@@ -168,8 +170,9 @@ export default function HomeCare({ role, initialTab = "today" }: { role: HcRole;
           {tab === "medicines" && <SubScreen title="More" onBack={() => setTab("more")}><HomeCareMedicines /></SubScreen>}
           {tab === "log" && <SubScreen title="More" onBack={() => setTab("more")}><HomeCareLog /></SubScreen>}
           {tab === "help" && <SubScreen title="More" onBack={() => setTab("more")}><HomeCareHelp /></SubScreen>}
+          {recordOpen && <RecordNow onClose={() => setRecordOpen(false)} />}
         </div>
-        <BottomNav tab={tab} setTab={setTab} />
+        <BottomNav tab={tab} setTab={setTab} onRecord={() => setRecordOpen(true)} />
       </div>
     </HcProvider>
   );
@@ -187,19 +190,29 @@ const NAV: { key: HcTab; label: string; icon: (props: { size?: number }) => Reac
  *  to the screen the person is actually on. */
 const UNDER_MORE: HcTab[] = ["more", "medicines", "log", "help"];
 
-function BottomNav({ tab, setTab }: { tab: HcTab; setTab: (next: HcTab) => void }) {
+function BottomNav({ tab, setTab, onRecord }: { tab: HcTab; setTab: (next: HcTab) => void; onRecord: () => void }) {
   return (
     <nav className="hc-nav" aria-label="Home Care sections">
       <div className="hc-nav-in">
-        {NAV.map((item) => {
+        {NAV.map((item, i) => {
           const Icon = item.icon;
           const on = item.key === "more" ? UNDER_MORE.includes(tab) : tab === item.key;
           return (
-            <button key={item.key} type="button" className={`hc-navbtn${on ? " on" : ""}`}
-              aria-current={on ? "page" : undefined} onClick={() => setTab(item.key)}>
-              <span className="nb-ic"><Icon size={22} /></span>
-              <span>{item.label}</span>
-            </button>
+            <Fragment key={item.key}>
+              {/* Recording sits at the centre of the bar, not in a corner:
+                  capture is what a caregiver opens this app to do, and it is
+                  reachable from every tab rather than only from Today. */}
+              {i === 2 && (
+                <button type="button" className="hc-nav-rec" aria-label="Record something" onClick={onRecord}>
+                  <HcIcon.Plus size={24} />
+                </button>
+              )}
+              <button type="button" className={`hc-navbtn${on ? " on" : ""}`}
+                aria-current={on ? "page" : undefined} onClick={() => setTab(item.key)}>
+                <span className="nb-ic"><Icon size={22} /></span>
+                <span>{item.label}</span>
+              </button>
+            </Fragment>
           );
         })}
       </div>

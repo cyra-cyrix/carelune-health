@@ -3,19 +3,14 @@ import { addCareEvent, uploadPatientDocument, type CareEventKind } from "../../l
 import { prescribedParams, type MonitorParam } from "../../domain/monitoring";
 import { ParamControl } from "./ActionStage";
 import { BottomSheet, HcIcon, useHc, useSubmit } from "./hc-kit";
+import { nextPosition, POSITIONS, rankRecordOptions, repeatLabel, type RecordOption } from "./record-model";
 
 /*
  * Countable events. These are the things that happen several times a day, so a
  * single daily value cannot represent them — a feed at 07:00 and another at
  * 11:00 are two events, not one field being overwritten.
  */
-const EVENT_TILES: { kind: CareEventKind; label: string; unit?: string }[] = [
-  { kind: "feed", label: "Feed", unit: "mL" },
-  { kind: "positioning", label: "Position" },
-  { kind: "urine", label: "Urine", unit: "mL" },
-  { kind: "bowel", label: "Bowel" },
-  { kind: "secretion", label: "Secretion" },
-];
+
 
 /**
  * Record Now — the floating "+" sheet.
@@ -27,9 +22,9 @@ const EVENT_TILES: { kind: CareEventKind; label: string; unit?: string }[] = [
  * is what makes a clinical app feel unusable.
  */
 export function RecordNow({ onClose }: { onClose: () => void }) {
-  const { plan, readings, saveReadingFields, patient, reload } = useHc();
+  const { plan, readings, saveReadingFields, patient, reload, events } = useHc();
   const [param, setParam] = useState<MonitorParam | null>(null);
-  const [event, setEvent] = useState<(typeof EVENT_TILES)[number] | null>(null);
+  const [event, setEvent] = useState<RecordOption | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const photoRef = useRef<HTMLInputElement>(null);
@@ -63,6 +58,26 @@ export function RecordNow({ onClose }: { onClose: () => void }) {
     (plan?.content?.daily_tasks ?? []).map((t) => t.title),
   );
 
+  const options = rankRecordOptions(events);
+
+  /** Record again with the same values — the commonest action, at one tap. */
+  const repeat = async (o: RecordOption) => {
+    setBusy(true); setErr(null);
+    try {
+      await addCareEvent(patient.id, patient.centre_id, {
+        kind: o.kind,
+        detail: o.kind === "positioning" ? nextPosition(o.lastDetail) : (o.lastDetail ?? undefined),
+        amount: o.lastAmount,
+        unit: o.unit,
+      });
+      reload();
+      onClose();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not record that.");
+      setBusy(false);
+    }
+  };
+
   if (event) {
     return (
       <EventSheet
@@ -91,17 +106,43 @@ export function RecordNow({ onClose }: { onClose: () => void }) {
           <p>The care team has not prescribed anything for {patient.full_name.split(" ")[0]} to record.</p>
         </div>
       ) : (
-        <div className="hc-rec-grid">
-          {EVENT_TILES.map((t) => (
-            <button key={t.kind} type="button" className="hc-rec-tile" onClick={() => setEvent(t)}>
-              <span className="i">{eventIcon(t.kind)}</span>
-              {t.label}
+        <>
+          {/*
+            One tap for the thing most likely being done right now, with the
+            values from last time. A caregiver on a tube-fed patient records the
+            same feed a dozen times a day; making them re-enter 150 mL each time
+            is the difference between a tool and a chore.
+          */}
+          {options.filter((o) => repeatLabel(o) && o.score <= 60).slice(0, 2).map((o) => (
+            <button key={`again-${o.kind}`} type="button" className="hc-rec-again" disabled={busy} onClick={() => void repeat(o)}>
+              <span className="i">{eventIcon(o.kind)}</span>
+              <span className="t">
+                <b>{o.label} again</b>
+                <small>{o.kind === "positioning" ? `Next: ${nextPosition(o.lastDetail)}` : repeatLabel(o)}</small>
+              </span>
+              <HcIcon.Right size={16} />
             </button>
           ))}
-          <button type="button" className="hc-rec-tile" disabled={busy} onClick={() => cameraRef.current?.click()}>
-            <span className="i"><HcIcon.Plus size={15} /></span>
-            {busy ? "Uploading…" : "Photo"}
-          </button>
+        <div className="hc-rec-grid">
+          {options.map((o) =>
+            o.kind === "photo" ? (
+              <button key="photo" type="button" className="hc-rec-tile" disabled={busy} onClick={() => cameraRef.current?.click()}>
+                <span className="i"><HcIcon.Plus size={15} /></span>
+                {busy ? "Uploading…" : "Photo"}
+              </button>
+            ) : (
+              <button
+                key={o.kind}
+                type="button"
+                className={`hc-rec-tile${o.hint?.startsWith("Due") || o.hint === "Not recorded today" ? " due" : ""}`}
+                onClick={() => setEvent(o)}
+              >
+                <span className="i">{eventIcon(o.kind)}</span>
+                {o.label}
+                {o.count > 0 && <span className="hc-rec-count num">{o.count}</span>}
+              </button>
+            ),
+          )}
           {params.map((p) => {
             const recorded = !!(readings[p.field] ?? "").trim();
             return (
@@ -117,6 +158,7 @@ export function RecordNow({ onClose }: { onClose: () => void }) {
             );
           })}
         </div>
+        </>
       )}
       <input ref={photoRef} type="file" accept="image/jpeg,image/png" className="hidden"
         onChange={(e) => { void onPhoto(e.target.files?.[0]); e.target.value = ""; }} />
@@ -184,12 +226,13 @@ function paramIcon(key: string) {
 function EventSheet({
   tile, onBack, onSave,
 }: {
-  tile: { kind: CareEventKind; label: string; unit?: string };
+  tile: RecordOption;
   onBack: () => void;
   onSave: (detail: string, amount: number | null) => Promise<void>;
 }) {
-  const [amount, setAmount] = useState("");
-  const [detail, setDetail] = useState("");
+  // Prefill from last time: correcting a number is faster than typing one.
+  const [amount, setAmount] = useState(tile.lastAmount != null ? String(tile.lastAmount) : "");
+  const [detail, setDetail] = useState(tile.kind === "positioning" ? nextPosition(tile.lastDetail) : "");
   const { state, run } = useSubmit();
 
   const save = () =>
@@ -200,6 +243,16 @@ function EventSheet({
 
   return (
     <BottomSheet title={tile.label} onClose={onBack}>
+      {tile.hint && <p className="hc-muted" style={{ marginTop: 2 }}>{tile.hint}{tile.count > 0 ? ` · ${tile.count} today` : ""}</p>}
+      {tile.kind === "positioning" && (
+        <div className="hc-choices" style={{ marginTop: 8 }}>
+          {POSITIONS.map((pos) => (
+            <button key={pos} type="button" className={`hc-choice${detail === pos ? " on" : ""}`} onClick={() => setDetail(pos)}>
+              {pos}
+            </button>
+          ))}
+        </div>
+      )}
       {tile.unit && (
         <div className="hc-field" style={{ marginTop: 6 }}>
           <label className="hc-lab" htmlFor="ev-amt">How much ({tile.unit})</label>

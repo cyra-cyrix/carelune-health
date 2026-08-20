@@ -865,3 +865,31 @@
 .hc-note-row b { display: block; font-size: 13.5px; color: var(--ink); }
 .hc-note-row small { display: block; margin-top: 2px; font-size: 12px; color: var(--slate); }
 .hc-note-row.unread b::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: var(--sky); vertical-align: middle; }
+
+/* "Feed again" — the one-tap repeat, above the grid because it is the
+   commonest action, not a secondary one. */
+.hc-rec-again {
+  display: flex; align-items: center; gap: 12px; width: 100%; margin-bottom: 8px;
+  padding: 12px 14px; border: 0; border-radius: var(--r-md); background: var(--sky-wash);
+  box-shadow: inset 0 0 0 1px rgba(22, 139, 255, 0.18); font: inherit; text-align: left; cursor: pointer;
+}
+.hc-rec-again .i { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--white); color: var(--sky-ink); }
+.hc-rec-again .t { flex: 1; min-width: 0; }
+.hc-rec-again b { display: block; font-size: 14px; font-weight: 700; color: var(--ink); }
+.hc-rec-again small { display: block; margin-top: 1px; font-size: 12px; color: var(--slate); }
+
+/* A tile that is due, and the count of what has happened today. */
+.hc-rec-tile.due { border-color: var(--amber); box-shadow: inset 0 0 0 1px var(--amber); }
+.hc-rec-count {
+  position: absolute; top: 6px; right: 8px; min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: 999px; background: var(--ok-wash); color: var(--ok);
+  font-size: 10.5px; font-weight: 750; line-height: 16px;
+}
+.hc-rec-tile { position: relative; }
+
+/* The + as the centre of the bar: capture is what this app is for. */
+.hc-nav-rec {
+  display: grid; place-items: center; width: 52px; height: 52px; margin-top: -18px;
+  border: 4px solid var(--white); border-radius: 50%; background: var(--sky-ink);
+  color: #fff; box-shadow: var(--shadow-lift); cursor: pointer;
+}

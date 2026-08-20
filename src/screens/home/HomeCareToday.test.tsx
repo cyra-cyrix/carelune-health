@@ -140,11 +140,13 @@ describe("HomeCareToday", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Today’s timeline" })).toBeTruthy();
   });
 
-  it("opens Record now from the floating button", () => {
+  it("offers the timeline from the header", () => {
+    // Recording itself now lives in the shell's bottom bar, reachable from every
+    // tab rather than only from Today, so it is not asserted here.
     render(<HcProvider value={data()}><HomeCareToday /></HcProvider>);
 
-    fireEvent.click(screen.getByRole("button", { name: "Record something now" }));
-    expect(screen.getByText("Record now")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Timeline/ }));
+    expect(screen.getByRole("heading", { level: 1, name: "Today’s timeline" })).toBeTruthy();
   });
 
   it("keeps a medicine task as a handoff to Medicines instead of a second completion", () => {

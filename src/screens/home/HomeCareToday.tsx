@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import { ActionStage } from "./ActionStage";
-import { RecordNow } from "./RecordNow";
 import { NotificationBell } from "./Notifications";
 import { HomeCareTimeline } from "./HomeCareTimeline";
 import { HcIcon, OUTCOME_META, useHc, type TaskKind } from "./hc-kit";
@@ -21,7 +20,6 @@ import { buildTodayModel, eventTiles, glanceTiles, nextSelectionAfterRecord, typ
 export function HomeCareToday() {
   const { patient, day, tasks, outcomes, meds, events } = useHc();
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [recordOpen, setRecordOpen] = useState(false);
   const [view, setView] = useState<"plan" | "timeline">("plan");
 
   const model = buildTodayModel(tasks, outcomes, selectedId);
@@ -54,8 +52,8 @@ export function HomeCareToday() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <NotificationBell />
-          <button type="button" className="hc-team-btn" onClick={() => setRecordOpen(true)}>
-            <HcIcon.Users size={15} /> Record
+          <button type="button" className="hc-team-btn" onClick={() => setView("timeline")}>
+            <HcIcon.Clock size={15} /> Timeline
           </button>
         </div>
       </header>
@@ -143,17 +141,6 @@ export function HomeCareToday() {
           ))}
         </div>
       </section>
-
-      <button
-        type="button"
-        className="hc-fab"
-        aria-label="Record something now"
-        onClick={() => setRecordOpen(true)}
-      >
-        <HcIcon.Plus size={24} />
-      </button>
-
-      {recordOpen && <RecordNow onClose={() => setRecordOpen(false)} />}
 
       <p className="hc-plan-source">Everything here comes from the plan approved by the care team.</p>
     </main>

@@ -5,16 +5,14 @@ import {
   listOrgs,
   createOrg,
   setInstitutionStatus,
-  listPathwayPacks,
   type OrgSummary,
   type NewOrg,
   type InstitutionType,
-  type PathwayPackRow,
 } from "../../lib/db";
 import { credentialsText, shareOnWhatsApp, generatePassword } from "../../lib/share";
 import { loginUrl as appLoginUrl } from "../../config/urls";
 import {
-  Card, Field, inputCls, PrimaryButton, PackCard, PathwayStatusBadge, Chip,
+  Card, Field, inputCls, PrimaryButton, Chip,
   EmptyState, Skeleton, ErrorNote, Kpi, SectionHeader,
 } from "../../components/system";
 
@@ -32,14 +30,14 @@ const freshDraft = (): NewOrg => ({
 });
 
 /**
- * Carelune platform console (Super Admin). Create an institution — its type, its
- * admin (HOD) account, and the Continuum Care pathway packs it may run — in one
- * elegant flow. Assignment of packs is service_role-only (the HOD cannot self-enable).
+ * Carelune platform console (Super Admin). Create an institution — its type and
+ * its admin (HOD) account — and hand that admin a secure first-login. The
+ * institution then declares the recovery departments it serves during its own
+ * setup; clinical content is decided per patient by their treating doctor.
  */
 export default function SuperAdmin() {
   const { signOut } = useAuth();
   const [orgs, setOrgs] = useState<OrgSummary[]>([]);
-  const [packs, setPacks] = useState<PathwayPackRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -71,9 +69,7 @@ export default function SuperAdmin() {
 
   const load = async () => {
     try {
-      const [o, p] = await Promise.all([listOrgs(), listPathwayPacks().catch(() => [] as PathwayPackRow[])]);
-      setOrgs(o);
-      setPacks(p);
+      setOrgs(await listOrgs());
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load the console.");
@@ -82,12 +78,6 @@ export default function SuperAdmin() {
     }
   };
   useEffect(() => { void load(); }, []);
-
-  const togglePack = (key: string) =>
-    setDraft((d) => ({
-      ...d,
-      pathway_keys: d.pathway_keys.includes(key) ? d.pathway_keys.filter((k) => k !== key) : [...d.pathway_keys, key],
-    }));
 
   const canCreate = draft.org_name.trim() && draft.admin_email.trim() && draft.admin_password && draft.institution_type;
 
@@ -139,19 +129,19 @@ export default function SuperAdmin() {
       <main className="mx-auto max-w-[1140px] px-5 py-7 lg:px-8">
         <h1 className="font-display text-[26px] font-semibold tracking-tight text-ink">Institutions</h1>
         <p className="mt-1 text-[14px] text-sage-500">
-          Create an institution, assign its Continuum Care programmes, and hand the admin a secure first-login.
+          Create an institution and hand its admin a secure first-login.
         </p>
 
         <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
           <Kpi label="Institutions" value={loading ? "—" : orgs.length} />
           <Kpi label="Active" value={loading ? "—" : activeCount} hint="setup complete" />
-          <Kpi label="Programmes" value={loading ? "—" : packs.length} hint="governed packs" />
+          <Kpi label="Patients" value={loading ? "—" : orgs.reduce((n, o) => n + (o.patient_count ?? 0), 0)} hint="across institutions" />
         </div>
 
         <div className="mt-6 grid gap-6 lg:grid-cols-[1.05fr_1fr]">
           {/* Create */}
           <Card>
-            <SectionHeader title="New institution" sub="Type, admin account, and enabled programmes." />
+            <SectionHeader title="New institution" sub="Type and admin account." />
             <div className="mt-4 space-y-4">
               <Field label="Institution name">
                 <input value={draft.org_name} onChange={(e) => setDraft({ ...draft, org_name: e.target.value })} placeholder="e.g. Sunrise Spine & Rehab" className={inputCls} />
@@ -176,28 +166,16 @@ export default function SuperAdmin() {
                 </div>
               </div>
 
-              <div>
-                <span className="mb-1.5 block text-[12.5px] font-semibold text-sage-600">Continuum Care programmes</span>
-                <div className="space-y-2">
-                  {packs.length === 0 ? (
-                    <p className="text-[12.5px] text-sage-500">No pathway packs found (run migration 0013).</p>
-                  ) : (
-                    packs.map((p) => (
-                      <div key={p.id} className="relative">
-                        <PackCard
-                          name={p.name} specialty={p.specialty} description={p.description}
-                          selected={draft.pathway_keys.includes(p.key)} onToggle={() => togglePack(p.key)}
-                        />
-                        <span className="pointer-events-none absolute right-11 top-4"><PathwayStatusBadge status={p.status} /></span>
-                      </div>
-                    ))
-                  )}
-                </div>
-                <p className="mt-1.5 text-[11.5px] leading-relaxed text-sage-500">
-                  Programmes are draft pathways and require institutional clinical approval before any patient plan is activated.
-                </p>
-              </div>
-
+              {/*
+               * The programme picker is gone. Choosing a pathway pack here forced a
+               * clinical decision on the platform operator before the institution had
+               * even signed in, and then blocked that institution's own doctor behind a
+               * second "approve this template" gate. The institution now declares the
+               * recovery departments it serves during its own setup, and each patient's
+               * plan is built from that patient's discharge document and approved by the
+               * treating doctor. `pathway_keys` is still sent (empty) so the
+               * platform-admin Edge Function contract is unchanged.
+               */}
               <div className="h-px bg-line" />
               <p className="text-[12.5px] font-semibold text-sage-600">Admin (HOD) account</p>
               <Field label="Admin full name">
@@ -225,7 +203,6 @@ export default function SuperAdmin() {
                   <p className="text-[13px] font-semibold text-ink">{created.org_name} created.</p>
                   <p className="mt-1 text-[12px] text-sage-600">
                     {created.admin_email} · temporary password <span className="font-semibold text-ink">{created.admin_password}</span>
-                    {created.pathway_keys.length ? ` · ${created.pathway_keys.length} programme${created.pathway_keys.length > 1 ? "s" : ""}` : ""}
                   </p>
                   <button type="button" onClick={shareCreated} className="tap mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-brand-800 px-3.5 py-1.5 text-[13px] font-semibold text-white hover:bg-brand-900">
                     <Icon.Phone width={14} height={14} /> Share on WhatsApp
@@ -270,11 +247,6 @@ export default function SuperAdmin() {
                             )}
                           </div>
                           <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                            {o.pathways.length === 0 ? (
-                              <span className="text-[11.5px] text-sage-400">No programmes assigned</span>
-                            ) : (
-                              o.pathways.map((k) => <Chip key={k} tone="sky">{k === "spine" ? "Spine" : k === "joint" ? "Joint" : "Neuro"}</Chip>)
-                            )}
                           </div>
                           <div className="mt-1 text-[12px] text-sage-500">{o.admin_name ? `${o.admin_name} · ` : ""}{o.admin_email || "no admin"}</div>
                         </div>

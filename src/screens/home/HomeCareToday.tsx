@@ -2,7 +2,8 @@ import { useMemo, useState } from "react";
 import { ActionStage } from "./ActionStage";
 import { NotificationBell } from "./Notifications";
 import { HomeCareTimeline } from "./HomeCareTimeline";
-import { HcIcon, OUTCOME_META, useHc, PERIODS, type TaskKind } from "./hc-kit";
+import { HcIcon, OUTCOME_META, useHc, type TaskKind } from "./hc-kit";
+import { activeMedPeriod, MedicationGroup } from "./MedicationGroup";
 import { buildTodayModel, eventTiles, glanceTiles, nextSelectionAfterRecord, type TodayItem } from "./today-model";
 
 /**
@@ -17,10 +18,14 @@ import { buildTodayModel, eventTiles, glanceTiles, nextSelectionAfterRecord, typ
  * Colours are the Carelune caregiver tokens (--sky/--ok/--amber). The mockup's
  * teal is deliberately not carried across.
  */
+/** How much of the day to show before "Show more". */
+const VISIBLE_ACTIVITIES = 5;
+
 export function HomeCareToday() {
   const { patient, day, tasks, outcomes, meds, events, medAdmin, goTab } = useHc();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<"plan" | "timeline">("plan");
+  const [showAll, setShowAll] = useState(false);
 
   const model = buildTodayModel(tasks, outcomes, selectedId);
   /*
@@ -33,21 +38,9 @@ export function HomeCareToday() {
   }, [events, model.ordered]);
   const firstName = patient.full_name.split(" ")[0] || patient.full_name;
 
-  /*
-   * Medicines summarised on the home screen. It was two taps away under More,
-   * which is the wrong depth for the thing most likely to be missed — and a
-   * missed dose is not the same class of mistake as a missed note.
-   */
-  const medSlots = meds.flatMap((m) => {
-    const text = `${m.freq ?? ""} ${m.timing ?? ""}`.toLowerCase();
-    const nums = (m.freq ?? "").match(/\d/g);
-    if (nums) return PERIODS.slice(0, nums.length).filter((_, i) => Number(nums[i]) > 0).map((p) => `${m.id}|${p.key}`);
-    if (/morning|breakfast/.test(text)) return [`${m.id}|morning`];
-    if (/night|bed/.test(text)) return [`${m.id}|bedtime`];
-    return [`${m.id}|morning`];
-  });
-  const medsDue = medSlots.length;
-  const medsGiven = medSlots.filter((k) => medAdmin.get(k) === "given").length;
+  // Which round the caregiver is most likely acting on. Null when no medicines.
+  const medPeriod = activeMedPeriod(meds, medAdmin);
+
   const open = model.active;
 
   const advance = () => {
@@ -146,27 +139,8 @@ export function HomeCareToday() {
         )}
       </section>
 
-      {meds.length > 0 && (
-        <section className="hc-medsum" aria-labelledby="hc-medsum-title">
-          <div className="hc-plan-head">
-            <h2 id="hc-medsum-title">Medicines</h2>
-            <button type="button" className="hc-glance-link" onClick={() => goTab("medicines")}>Open</button>
-          </div>
-          <button type="button" className="hc-medsum-btn" onClick={() => goTab("medicines")}>
-            <span className="i"><HcIcon.Pill size={18} /></span>
-            <span className="t">
-              <b>{medsGiven} of {medsDue} doses given today</b>
-              <small>
-                {medsDue === 0
-                  ? "Nothing scheduled"
-                  : medsGiven >= medsDue
-                    ? "All recorded"
-                    : `${medsDue - medsGiven} still to record`}
-              </small>
-            </span>
-            <HcIcon.Right size={16} />
-          </button>
-        </section>
+      {medPeriod && (
+        <MedicationGroup period={medPeriod} onOpenAll={() => goTab("medicines")} />
       )}
 
       <section className="hc-day-list" aria-labelledby="hc-plan-title">
@@ -174,11 +148,21 @@ export function HomeCareToday() {
           <h2 id="hc-plan-title">Today&rsquo;s plan</h2>
           <button type="button" className="hc-glance-link" onClick={() => setView("timeline")}>See all</button>
         </div>
+        {/*
+          Progressive disclosure: enough of the day to orient, not all of it.
+          A full list of every activity is the thing that makes this read as a
+          task manager rather than a companion.
+        */}
         <div className="hc-schedule">
-          {model.ordered.map((item) => (
+          {(showAll ? model.ordered : model.ordered.slice(0, VISIBLE_ACTIVITIES)).map((item) => (
             <ScheduleRow key={item.task.id} item={item} onSelect={setSelectedId} meds={meds.length} />
           ))}
         </div>
+        {model.ordered.length > VISIBLE_ACTIVITIES && !showAll && (
+          <button type="button" className="hc-glance-link" onClick={() => setShowAll(true)}>
+            Show {model.ordered.length - VISIBLE_ACTIVITIES} more
+          </button>
+        )}
       </section>
 
       <p className="hc-plan-source">Everything here comes from the plan approved by the care team.</p>

@@ -18,9 +18,9 @@ import { useHc, BottomSheet, HcIcon, currentPeriod, PERIODS, HOUSEHOLD_LABEL, us
    hardcoded or invented; the doctor's plan is the source of truth.
    ========================================================================== */
 
-type MedPlan = { slots: Period[]; interval: string | null; prn: boolean; food: "before" | "after" | null; clock: string | null };
+export type MedPlan = { slots: Period[]; interval: string | null; prn: boolean; food: "before" | "after" | null; clock: string | null };
 
-function parseMed(m: MedicationRow): MedPlan {
+export function parseMed(m: MedicationRow): MedPlan {
   const text = `${m.freq ?? ""} ${m.timing ?? ""} ${m.note ?? ""}`.toLowerCase();
   const prn = /need|sos|prn|required/.test(text);
   const interval = text.match(/every\s+[\w-]+\s*(?:hours?|hrs?|h)\b/)?.[0] ?? (/hourly/.test(text) ? "hourly" : null);

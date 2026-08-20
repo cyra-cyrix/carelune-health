@@ -20,6 +20,8 @@ interface Entry {
   detail: string;
   filter: Exclude<Filter, "all">;
   done: boolean;
+  /** Set when the entry carries an attachment, so the row can show a thumbnail. */
+  hasPhoto?: boolean;
 }
 
 /**
@@ -30,7 +32,7 @@ interface Entry {
  * we hold: task outcomes, today's readings, and care-team feed posts.
  */
 export function HomeCareTimeline({ onBack }: { onBack: () => void }) {
-  const { tasks, outcomes, readings, feed, plan, patient } = useHc();
+  const { tasks, outcomes, readings, feed, plan, patient, events } = useHc();
   const [filter, setFilter] = useState<Filter>("all");
 
   const entries = useMemo<Entry[]>(() => {
@@ -69,6 +71,23 @@ export function HomeCareTimeline({ onBack }: { onBack: () => void }) {
       });
     }
 
+    // Recorded events (0027). Absent until the migration is applied, in which
+    // case this simply contributes nothing.
+    for (const ev of events) {
+      const when = new Date(ev.occurred_at);
+      out.push({
+        id: `event-${ev.id}`,
+        at: niceTime(ev.occurred_at),
+        time: when.getHours() * 60 + when.getMinutes(),
+        title: ev.kind === "photo" ? "Photo" : ev.kind.charAt(0).toUpperCase() + ev.kind.slice(1),
+        detail: [ev.amount != null ? `${ev.amount}${ev.unit ? ` ${ev.unit}` : ""}` : "", ev.detail]
+          .filter(Boolean).join(" · ") || "Recorded",
+        filter: ev.kind === "therapy" ? "therapy" : ev.kind === "medicine" ? "medicines" : "care",
+        done: true,
+        hasPhoto: !!ev.document_id,
+      });
+    }
+
     for (const u of feed) {
       out.push({
         id: `feed-${u.id}`,
@@ -82,7 +101,7 @@ export function HomeCareTimeline({ onBack }: { onBack: () => void }) {
     }
 
     return out.sort((a, b) => a.time - b.time);
-  }, [tasks, outcomes, readings, feed, plan, patient.diagnosis]);
+  }, [tasks, outcomes, readings, feed, events, plan, patient.diagnosis]);
 
   const shown = filter === "all" ? entries : entries.filter((e) => e.filter === filter);
 
@@ -125,8 +144,13 @@ export function HomeCareTimeline({ onBack }: { onBack: () => void }) {
               <span className="hc-tl-time num">{e.at}</span>
               <span className="hc-tl-rail" aria-hidden><span className="hc-tl-dot" /></span>
               <span className="hc-tl-body">
-                <b>{e.title}</b>
-                <small>{e.detail}</small>
+                <span className="hc-tl-body-row">
+                  <span>
+                    <b>{e.title}</b>
+                    <small>{e.detail}</small>
+                  </span>
+                  {e.hasPhoto && <span className="hc-tl-thumb" aria-label="Has a photo"><HcIcon.Plus size={14} /></span>}
+                </span>
               </span>
             </div>
           ))}

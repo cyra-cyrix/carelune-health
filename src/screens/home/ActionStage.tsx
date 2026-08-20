@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import type { CareTaskRow, TaskOutcome, ReadingsInput } from "../../lib/db";
 import { PARAM_CATALOGUE, type MonitorParam } from "../../domain/monitoring";
 import { useHc, classifyTask, HcIcon, OUTCOME_META, useNow, useSubmit } from "./hc-kit";
+import { CareAttachment } from "./CareAttachment";
 
 /* ============================================================================
    Action Stage — the centre of Today. Renders the CORRECT input for the task in
@@ -330,12 +331,16 @@ function OutcomeRenderer({ task, kind, onRecorded }: { task: CareTaskRow; kind: 
   };
   const label: Record<string, string> | undefined = kind === "physio" ? PHYSIO_LABEL : undefined;
   return (
-    <div className="hc-outcomes" style={{ marginTop: 16, gridTemplateColumns: set.length === 3 ? "1fr 1fr 1fr" : "1fr 1fr" }}>
-      {set.map((o) => (
-        <button key={o} type="button" className={`hc-outcome ${o}${current === o ? " on" : ""}`} onClick={() => pick(o)}>
-          {current === o && <HcIcon.Check size={15} />}{label?.[o] ?? OUTCOME_META[o].label}
-        </button>
-      ))}
-    </div>
+    <>
+      <div className="hc-outcomes" style={{ marginTop: 16, gridTemplateColumns: set.length === 3 ? "1fr 1fr 1fr" : "1fr 1fr" }}>
+        {set.map((o) => (
+          <button key={o} type="button" className={`hc-outcome ${o}${current === o ? " on" : ""}`} onClick={() => pick(o)}>
+            {current === o && <HcIcon.Check size={15} />}{label?.[o] ?? OUTCOME_META[o].label}
+          </button>
+        ))}
+      </div>
+      {/* Offered only once something has been recorded, and never required. */}
+      {current && <CareAttachment activity={task.title} />}
+    </>
   );
 }

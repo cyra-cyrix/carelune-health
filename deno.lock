@@ -1,6 +1,7 @@
 {
   "version": "5",
   "specifiers": {
+    "jsr:@std/encoding@1": "1.0.11",
     "jsr:@supabase/supabase-js@2": "2.112.3",
     "npm:@supabase/auth-js@2.112.3": "2.112.3",
     "npm:@supabase/functions-js@2.112.3": "2.112.3",
@@ -25,6 +26,9 @@
     "npm:vitest@^4.1.10": "4.1.10_jsdom@30.0.1_vite@6.4.3"
   },
   "jsr": {
+    "@std/encoding@1.0.11": {
+      "integrity": "e7cef2f0b3153bccc17431e7c864a1de03a4b6d9647389c43e08aaa775d37385"
+    },
     "@supabase/supabase-js@2.112.3": {
       "integrity": "114dd7d327daa11fb5b876bc447c47a8c1b9bf3f0d0ed05b308a60639b134b7b",
       "dependencies": [

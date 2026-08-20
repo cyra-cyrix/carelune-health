@@ -87,24 +87,46 @@ const STANDARDS_HINT = [
   "WOCN / EWMA wound care",
 ].join("; ");
 
-const SYSTEM_PROMPT = `You are a continuing-care clinician assembling a DRAFT home-recovery programme for the TREATING DOCTOR to review, edit and approve, for a patient discharged to home care in India. You are given (A) FACTS extracted from the patient's discharge documents and (B) any instructions the doctor added.
+const SYSTEM_PROMPT = `You are a continuing-care rehabilitation clinician drafting a 30-day home-recovery programme for the TREATING DOCTOR to review, edit and approve, for a patient discharged to home care in India. You are given (A) FACTS extracted from the discharge document, including a FUNCTION block describing the patient's deficits, and (B) any instruction the doctor added.
 
 TWO KINDS OF CONTENT — this distinction is the safety spine of the product:
 
-1. FACTS — diagnoses, procedure, medicines, doses, investigations. NEVER invent, infer, adjust or "correct" these. Copy them exactly from the FACTS with provenance "document" (or "doctor" if the doctor stated them). A medicine that is not in the documents does not appear in the plan. Never change a dose, never add a drug, never suggest a referral.
+1. FACTS — diagnoses, procedure, medicines, doses, investigations. NEVER invent, infer, adjust or "correct" these. Copy them exactly, provenance "document" (or "doctor"). A medicine not in the documents does not appear. Never change a dose, add a drug, or suggest a referral.
 
-2. REGIMEN — exercise, diet, wound care, monitoring, precautions, targets, education. Where the documents specify it, use it with provenance "document". Where the documents are SILENT, you MAY propose what international standard-of-care would ordinarily include for this diagnosis/procedure at this stage of recovery — and you MUST mark it provenance "ai_suggested". The doctor rules on every ai_suggested line before anything is activated; nothing reaches the family until then.
+2. REGIMEN — therapy, diet, wound care, monitoring, precautions, targets, education. Where the document specifies it, use it (provenance "document"). Where the document is SILENT, you MUST still build a complete programme from international standard-of-care for these deficits, marked provenance "ai_suggested". The doctor rules on every ai_suggested line before activation.
 
-Draw on established international guidance appropriate to the condition, for example: ${STANDARDS_HINT}. List in "standards" ONLY the families you actually applied. Never claim certification, endorsement, accreditation or compliance — this is a draft written with reference to them.
+BUILD A MULTIDISCIPLINARY PROGRAMME — this is the core of the task.
+Read the FUNCTION block and, for EVERY deficit it records, include concrete daily work from the discipline that treats it. A recovery plan that names a deficit and then schedules nothing for it is a failure.
 
-TIME-BOUND EVERYTHING. Day 1 is the discharge day. Every task carries from_day, and through_day when it should stop or change. Build a PROGRESSION — protection and small volumes early, graded increase later — not one instruction repeated for the whole programme.
+  weakness / mobility        -> Physiotherapy: positioning, bed mobility, sitting and standing balance,
+                                transfers, gait re-education, graded strengthening.
+  upper_limb                 -> Occupational therapy: reach and grasp, hand function, and retraining the
+                                actual activities of daily living — feeding, dressing, grooming, bathing.
+  swallowing                 -> Speech & swallow therapy: safe-swallow positioning, prescribed diet
+                                consistency, oral care, aspiration precautions, feed handling if the
+                                patient is on RT/NG/PEG.
+  communication              -> Speech & language therapy: comprehension and expression work, and how the
+                                family should communicate with the patient.
+  cognition                  -> Orientation, attention and memory work, with a safe daily routine.
+  continence / skin          -> Nursing: toileting schedule, catheter care, two-hourly positioning,
+                                pressure-area and skin checks.
+  respiratory                -> Chest physiotherapy, breathing exercises, nebulisation, suction, positioning.
+  pain                       -> Non-drug measures alongside whatever the document already prescribes.
+  ALWAYS                     -> Diet and hydration appropriate to the swallowing status and comorbidities;
+                                falls prevention; carer education.
 
-SAFETY RULES:
-- Any precaution, restriction or contraindication stated in the documents OVERRIDES anything you would otherwise propose. Re-read them before proposing exercise or diet.
-- If you are unsure, do NOT guess: add a short, specific question to "missing" for the doctor to answer.
-- If the documents disagree with each other, record it in "conflicts". Never silently pick one.
-- Write for the person doing the work: a family caregiver with no clinical training. Short, plain, imperative sentences. No abbreviations, no jargon.
-- Anything genuinely dangerous to get wrong belongs in warning_signs, with the escalation route.
+Put each task in therapy_tasks (therapy disciplines) or daily_tasks (nursing and routine care), and set "discipline" to the profession that owns it: Physiotherapy, Occupational therapy, Speech & language therapy, Dietetics, Nursing, Respiratory therapy.
+
+TIME-BOUND AND PROGRESS EVERYTHING. Day 1 is the discharge day. Every task carries from_day and, where it changes or stops, through_day. Build a real progression across roughly week 1, weeks 2-3 and week 4 — protection and small volumes first, then graded increase. Do not repeat one undated instruction for thirty days. Give sets, repetitions or durations a family can follow.
+
+SAFETY:
+- Precautions and restrictions in the document OVERRIDE anything you would otherwise propose. If the patient is nil-by-mouth, do not schedule oral feeding; schedule the feed and swallow work that is safe.
+- If a deficit is recorded but you cannot safely plan for it without more information, add a specific question to "missing". Never guess a deficit that is not documented, and never leave a documented deficit unaddressed in silence.
+- If documents disagree, record it in "conflicts". Do not silently pick one.
+- Write for a family caregiver with no clinical training: short, plain, imperative sentences. No abbreviations.
+- Contact and emergency wording: keep it general; do not invent phone numbers.
+
+Draw on established international guidance for the condition, for example: WHO Rehabilitation 2030; AHA/ASA stroke rehabilitation and recovery; ERAS post-operative recovery; NICE rehabilitation guidance; ACSM exercise prescription; ESPEN/BDA nutrition and dysphagia guidance; WOCN/EWMA wound care. List in "standards" only the families you actually applied. Never claim certification, endorsement or compliance.
 
 Return ONLY valid JSON in exactly this shape:
 {
@@ -113,8 +135,8 @@ Return ONLY valid JSON in exactly this shape:
  "procedure": {"text":"…","provenance":"document"} or null,
  "medicines": [{"name":"…","dose":"…","freq":"…","timing":"…","note":"…","provenance":"document"}],
  "investigations": [{"text":"…","provenance":"document"}],
- "targets": [{"text":"what good recovery looks like, measurable","by_day":21,"provenance":"ai_suggested"}],
- "therapy_tasks": [{"time_label":"08:00","discipline":"Physiotherapy","title":"…","detail":"how to do it, plainly","from_day":1,"through_day":7,"provenance":"ai_suggested"}],
+ "targets": [{"text":"measurable recovery target","by_day":21,"provenance":"ai_suggested"}],
+ "therapy_tasks": [{"time_label":"08:00","discipline":"Physiotherapy","title":"…","detail":"sets, reps, how to do it safely","from_day":1,"through_day":7,"provenance":"ai_suggested"}],
  "daily_tasks": [{"time_label":"08:00","discipline":"Nursing","title":"…","detail":"…","from_day":1,"through_day":null,"provenance":"document"}],
  "wound_care": [{"time_label":"09:00","discipline":"Wound care","title":"…","detail":"…","from_day":1,"through_day":14,"provenance":"ai_suggested"}],
  "diet": [{"text":"…","provenance":"ai_suggested"}],
@@ -129,7 +151,43 @@ Return ONLY valid JSON in exactly this shape:
  "missing": ["a specific question for the doctor"],
  "conflicts": ["…"]
 }
-"wound_care" is [] when there was no procedure or wound. Output valid JSON only, no prose.`;
+"wound_care" is [] when there is no wound or procedure. Output valid JSON only, no prose.`;
+
+/*
+ * Deterministic coverage check — the safety net behind the prompt.
+ *
+ * A documented deficit with nothing scheduled for it is the failure mode that
+ * matters here: the plan looks complete and silently omits the therapy the
+ * patient actually needs. We do not trust the model to police this, so we check
+ * the finished plan against the FUNCTION block and turn every gap into an
+ * explicit question for the doctor rather than letting it pass unseen.
+ */
+const COVERAGE: { field: string; disciplines: string[]; label: string }[] = [
+  { field: "weakness", disciplines: ["physiotherap"], label: "physiotherapy for the documented weakness" },
+  { field: "mobility", disciplines: ["physiotherap"], label: "mobility or gait work" },
+  { field: "upper_limb", disciplines: ["occupational"], label: "occupational therapy for hand/arm function and daily activities" },
+  { field: "swallowing", disciplines: ["speech", "swallow", "dietetic"], label: "swallow-safety work for the documented swallowing problem" },
+  { field: "communication", disciplines: ["speech"], label: "speech and language work for the documented communication problem" },
+  { field: "cognition", disciplines: ["speech", "occupational", "nursing"], label: "cognitive or orientation work" },
+  { field: "continence", disciplines: ["nursing"], label: "nursing care for continence" },
+  { field: "skin", disciplines: ["nursing", "wound"], label: "skin and pressure-area care" },
+  { field: "respiratory", disciplines: ["respiratory", "physiotherap"], label: "chest or breathing care" },
+];
+
+function coverageGaps(fnBlock: Record<string, unknown>, tasks: Record<string, unknown>[]): string[] {
+  const present = tasks
+    .map((t) => `${asStr(t.discipline)} ${asStr(t.title)} ${asStr(t.detail)}`.toLowerCase())
+    .join(" | ");
+  const gaps: string[] = [];
+  for (const rule of COVERAGE) {
+    const stated = asStr(fnBlock[rule.field]).trim();
+    if (!stated) continue;
+    if (!rule.disciplines.some((d) => present.includes(d))) {
+      gaps.push(`The document records "${stated}" but the plan has no ${rule.label}. Add it or confirm it is not needed.`);
+    }
+  }
+  return gaps;
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -176,8 +234,21 @@ Deno.serve(async (req) => {
     const { data: intake } = await admin.from("patient_plan_intake")
       .select("milestone_goal, milestone_by, monitor_focus, non_negotiables").eq("patient_id", patientId).maybeSingle();
 
+    const factsObj = (factsRow.facts ?? {}) as Record<string, unknown>;
+    const fnBlock = (factsObj.function ?? {}) as Record<string, unknown>;
+    // Restate the deficits explicitly. Buried inside the facts blob they were
+    // being skimmed over, which is how a patient needing swallow and speech work
+    // ended up with a two-task plan.
+    const deficits = Object.entries(fnBlock)
+      .filter(([, v]) => asStr(v).trim())
+      .map(([k, v]) => `- ${k.replace(/_/g, " ")}: ${asStr(v)}`)
+      .join("\n") || "- none recorded in the document";
+    const advised = arr(factsObj.therapies_advised).map(asStr).filter(Boolean);
+
     const userContent = [
       `FACTS (from discharge documents):\n${JSON.stringify(factsRow.facts)}`,
+      `DOCUMENTED DEFICITS — every one of these needs work scheduled for it:\n${deficits}`,
+      `THERAPIES THE DOCUMENT ADVISES: ${advised.length ? advised.join(", ") : "none named — decide from the deficits above"}`,
       `DOCTOR INSTRUCTIONS:\n- Expected milestone: ${asStr(intake?.milestone_goal)} (by ${asStr(intake?.milestone_by)})\n- Monitor more closely: ${asStr(intake?.monitor_focus)}\n- Non-negotiable boundaries: ${asStr(intake?.non_negotiables)}`,
       `ENABLED MONITORING MODULES (context): ${enabled.join(", ")}`,
     ].join("\n\n");
@@ -186,7 +257,7 @@ Deno.serve(async (req) => {
       method: "POST",
       headers: { Authorization: `Bearer ${openaiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model, temperature: 0.1, response_format: { type: "json_object" },
+        model, temperature: 0.2, max_tokens: 8000, response_format: { type: "json_object" },
         messages: [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: userContent }],
       }),
     });
@@ -252,7 +323,12 @@ Deno.serve(async (req) => {
       escalation,
       education,
       review_dates: [],
-      missing: arr(ai.missing).map(asStr).filter(Boolean),
+      missing: [
+        ...arr(ai.missing).map(asStr).filter(Boolean),
+        // A documented deficit with nothing scheduled becomes an explicit question
+        // rather than a silent omission.
+        ...coverageGaps(fnBlock, [...arr(ai.therapy_tasks), ...arr(ai.daily_tasks), ...arr(ai.wound_care)] as Record<string, unknown>[]),
+      ],
       conflicts: arr(ai.conflicts).map(asStr).filter(Boolean),
     };
 

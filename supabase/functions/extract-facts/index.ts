@@ -39,6 +39,11 @@ STRICT RULES:
 - Copy medicine name/dose/frequency/timing EXACTLY as written. Do not standardise or correct them.
 - If something is not stated, omit it and add a short note to "missing". Do not guess.
 - If the document states two contradictory things, list both and add a note to "conflicts".
+- The "function" block decides which therapies this patient needs, so read the whole document for it —
+  nursing notes, therapy notes and advice-at-discharge, not just the diagnosis line. Copy what is
+  stated (e.g. "RT feed, nil orally", "right hemiparesis power 3/5", "expressive aphasia"). Leave a
+  field empty ONLY when the document genuinely says nothing about it; never guess a deficit.
+- "therapies_advised" lists therapies the document itself advises. Do not add therapies it never mentions.
 
 Return ONLY JSON with this shape (every item's provenance is "document"):
 {
@@ -49,6 +54,19 @@ Return ONLY JSON with this shape (every item's provenance is "document"):
   "precautions": [{"text":"…","provenance":"document"}],
   "diet": [{"text":"…","provenance":"document"}],
   "baseline_function": "one short phrase on function at discharge, if stated, else empty",
+  "function": {
+    "mobility": "walking/transfer ability as stated, else empty",
+    "weakness": "side and limbs affected, power grades if given, else empty",
+    "upper_limb": "hand/arm function, grip, dexterity as stated, else empty",
+    "swallowing": "dysphagia, aspiration risk, NG/PEG/RT feed, diet consistency as stated, else empty",
+    "communication": "aphasia, dysarthria, comprehension as stated, else empty",
+    "cognition": "orientation, memory, GCS as stated, else empty",
+    "continence": "bladder/bowel, catheter as stated, else empty",
+    "skin": "pressure areas, wounds, ulcers as stated, else empty",
+    "respiratory": "tracheostomy, oxygen, suction, nebulisation as stated, else empty",
+    "pain": "site and severity as stated, else empty"
+  },
+  "therapies_advised": ["each therapy the document advises, e.g. physiotherapy, occupational therapy, speech and swallow therapy"],
   "dates": {"discharged_on":"YYYY-MM-DD or empty","surgery_on":"YYYY-MM-DD or empty"},
   "missing": ["short note on each important item NOT stated"],
   "conflicts": ["short note on each contradiction found"]
@@ -157,8 +175,19 @@ Deno.serve(async (req) => {
     const procedure = parsed.procedure && typeof parsed.procedure === "object"
       ? { text: asStr((parsed.procedure as Record<string, unknown>).text), provenance: "document" as const }
       : null;
+    const fn = (parsed.function ?? {}) as Record<string, unknown>;
     const facts = {
       diagnoses: arr(parsed.diagnoses).map(fact).filter((d) => d.text),
+      // The functional picture is what decides whether this patient needs
+      // physiotherapy, OT, speech and swallow work or dietetic input. Dropping it
+      // here is why generated plans were thin.
+      function: {
+        mobility: asStr(fn.mobility), weakness: asStr(fn.weakness), upper_limb: asStr(fn.upper_limb),
+        swallowing: asStr(fn.swallowing), communication: asStr(fn.communication),
+        cognition: asStr(fn.cognition), continence: asStr(fn.continence), skin: asStr(fn.skin),
+        respiratory: asStr(fn.respiratory), pain: asStr(fn.pain),
+      },
+      therapies_advised: arr(parsed.therapies_advised).map(asStr).filter(Boolean),
       procedure: procedure && procedure.text ? procedure : null,
       medicines: arr(parsed.medicines).map((m) => {
         const o = (m ?? {}) as Record<string, unknown>;

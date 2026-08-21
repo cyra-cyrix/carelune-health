@@ -6,11 +6,13 @@ import {
   type Tone,
 } from "../../components/clinical";
 import { deriveAttention, BANDS, type Attention, type Band } from "./attention-model";
+import { activityStatusLabel, buildCareActivity, type CareActivity, type ProgrammeActivity } from "../../domain/careActivity";
 import {
   listPatients,
   getPendingApprovalCounts,
   getFamilyQueryCounts,
   getReadingHistory,
+  getProgrammeActivity,
   type PatientRow,
   type PendingCount,
   type ReadingRow,
@@ -64,7 +66,7 @@ function computeSignal(readings: ReadingRow[]): Signal | null {
   };
 }
 
-type Enriched = Attention & { p: PatientRow; isNew: boolean; isActive: boolean; sig: Signal | null | undefined };
+type Enriched = Attention & { p: PatientRow; isNew: boolean; isActive: boolean; sig: Signal | null | undefined; activity: CareActivity };
 
 const BAND_TONE: Record<Band, Tone> = {
   decision: "escalation", change: "attention", concern: "calm", stable: "recovery",
@@ -98,6 +100,9 @@ export default function Caseload({
   const [pending, setPending] = useState<Record<string, PendingCount>>({});
   const [queries, setQueries] = useState<Record<string, PendingCount>>({});
   const [signals, setSignals] = useState<Record<string, Signal | null>>({});
+  /* Programme activity for the patients on a Carelune programme. Recovery
+     patients are simply absent from this map and keep the legacy path. */
+  const [programmes, setProgrammes] = useState<Record<string, ProgrammeActivity>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterKey>("all");
@@ -122,6 +127,11 @@ export default function Caseload({
         setPending(allCounts);
         setQueries(familyCounts);
         setLoading(false);
+        // Never blocks the list: a programme patient falls back to the legacy
+        // reading rather than the caseload failing to render.
+        getProgrammeActivity(ids)
+          .then((m) => active && setProgrammes(m))
+          .catch(() => active && setProgrammes({}));
         // Trajectories load progressively — a slow/failed read never blocks the list.
         for (const p of ps.filter((x) => x.status === "active").slice(0, 24)) {
           getReadingHistory(p.id, 7)
@@ -152,9 +162,18 @@ export default function Caseload({
         showPending,
         countType,
       });
-      return { ...attention, p, isNew: p.status === "pending", isActive: p.status === "active", sig };
+      /* One factual read path for both products. The band, reason and action
+         below are still the legacy model's — this only decides what "last
+         update" means for a patient who records through check-ins. */
+      const activity = buildCareActivity({
+        patientId: p.id,
+        attention,
+        programme: programmes[p.id] ?? null,
+        explicitConcerns: showPending ? (queries[p.id]?.pending ?? 0) : 0,
+      });
+      return { ...attention, p, isNew: p.status === "pending", isActive: p.status === "active", sig, activity };
     });
-  }, [patients, pending, queries, signals, showPending, countType]);
+  }, [patients, pending, queries, signals, programmes, showPending, countType]);
 
   // Listed under this band (one row per patient, no duplicates in the page).
   const bandOf = (key: Band) => enrich.filter((e) => e.band === key);
@@ -360,8 +379,12 @@ function AttentionRow({ e, onOpen }: { e: Enriched; onOpen: () => void }) {
             {urgent && <StatusTag tone="escalation">Urgent</StatusTag>}
             {isNew && <StatusTag tone="calm">New</StatusTag>}
             <span className="text-[12.5px] text-sage-500">
-              {isNew ? "Registered" : `Day ${dayAtHome(p)}`}
-              {p.diagnosis[0] ? ` · ${p.diagnosis[0]}` : ""}
+              {/* A programme patient is placed by their own programme and day;
+                  a recovery patient reads exactly as before. */}
+              {e.activity.source === "programme_checkin" && e.activity.programmeName
+                ? `${e.activity.programmeName}${e.activity.programmeDay ? ` · Day ${e.activity.programmeDay}` : ""}`
+                : isNew ? "Registered" : `Day ${dayAtHome(p)}`}
+              {e.activity.source === "legacy_recovery" && p.diagnosis[0] ? ` · ${p.diagnosis[0]}` : ""}
             </span>
           </div>
 
@@ -385,7 +408,10 @@ function AttentionRow({ e, onOpen }: { e: Enriched; onOpen: () => void }) {
           <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[12.5px] text-sage-600">
             <div className="flex gap-1.5"><dt className="font-semibold text-sage-500">Changed</dt><dd>{e.changed}</dd></div>
             <div className="flex gap-1.5"><dt className="font-semibold text-sage-500">Pending</dt><dd>{e.action}</dd></div>
-            <div className="flex gap-1.5"><dt className="font-semibold text-sage-500">Updated</dt><dd>{e.lastUpdate}</dd></div>
+            <div className="flex gap-1.5">
+              <dt className="font-semibold text-sage-500">Updated</dt>
+              <dd>{activityStatusLabel(e.activity)}</dd>
+            </div>
           </dl>
         </div>
 

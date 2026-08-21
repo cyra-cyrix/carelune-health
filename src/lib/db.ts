@@ -8,6 +8,7 @@ import type { PlanDraft } from "./pathwayValidation";
 import { validateServiceDraft } from "../domain/serviceDraft";
 import type { ProgrammePeriod, ServiceDraft, SuggestedService } from "../domain/serviceDraft";
 import type { DraftAnswer } from "../domain/checkin";
+import type { LatestCheckinFacts, ProgrammeActivity } from "../domain/careActivity";
 
 export { SESSION_EXPIRED_MESSAGE, isSessionExpired };
 
@@ -2048,4 +2049,60 @@ export async function submitProgrammeCheckin(input: {
   });
   if (error) throw new Error(error.message);
   return data as CheckinSubmissionRow;
+}
+
+/**
+ * Programme activity for a caseload, in two reads (0030 + 0028 tables).
+ *
+ * Facts only: which programme, how often a check-in is expected, and when the
+ * last one arrived with how many answers. Never the answers themselves — the
+ * caseload has no business interpreting them (see domain/careActivity.ts).
+ * Patients with no service enrolment simply do not appear in the result.
+ */
+export async function getProgrammeActivity(patientIds: string[]): Promise<Record<string, ProgrammeActivity>> {
+  if (patientIds.length === 0) return {};
+
+  const [{ data: subs, error: sErr }, { data: subm, error: cErr }] = await Promise.all([
+    supabase
+      .from("subscriptions")
+      .select("patient_id, package_snapshot")
+      .in("patient_id", patientIds)
+      .not("service_package_id", "is", null),
+    supabase
+      .from("checkin_submissions")
+      .select("patient_id, submitted_at, local_date, programme_day, programme_period_label, checkin_responses(count)")
+      .in("patient_id", patientIds)
+      .order("local_date", { ascending: false }),
+  ]);
+  if (sErr) throw sErr;
+  if (cErr) throw cErr;
+
+  // The first row per patient is their latest — the query is already ordered.
+  const latest = new Map<string, LatestCheckinFacts>();
+  for (const row of (subm ?? []) as unknown[]) {
+    const r = row as Record<string, unknown>;
+    const pid = String(r.patient_id);
+    if (latest.has(pid)) continue;
+    const counts = r.checkin_responses as { count: number }[] | undefined;
+    latest.set(pid, {
+      submitted_at: String(r.submitted_at),
+      local_date: String(r.local_date),
+      programme_day: (r.programme_day as number | null) ?? null,
+      programme_period_label: (r.programme_period_label as string | null) ?? null,
+      responses: counts?.[0]?.count ?? 0,
+    });
+  }
+
+  const out: Record<string, ProgrammeActivity> = {};
+  for (const row of (subs ?? []) as unknown[]) {
+    const r = row as Record<string, unknown>;
+    const pid = String(r.patient_id);
+    const snap = (r.package_snapshot ?? {}) as EnrolledPackageSnapshot;
+    out[pid] = {
+      programmeName: snap.name ?? null,
+      checkinFrequency: snap.checkin_frequency ?? null,
+      latest: latest.get(pid) ?? null,
+    };
+  }
+  return out;
 }

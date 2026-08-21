@@ -33,7 +33,14 @@ export type DraftAnswer = {
 };
 
 const YES_NO = /^(are|is|was|were|do|does|did|have|has|had|can|could|any|anything)\b/i;
-const SCALE = /\b(rate|rating|scale|score|out of 10|how many|how much)\b/i;
+/*
+ * A 0–10 scale is only offered where the question EXPLICITLY asks to rate
+ * something. "How many feeds did your baby have?" is a count, not a severity —
+ * putting it on a 0–10 rating strip silently turns a factual number into
+ * something that reads like a clinical score, and caps it at ten. Counts and
+ * frequencies take words until the engine stores an explicit numeric type.
+ */
+const SCALE = /\b(rate|rating|severity|score|on a scale|out of 10)\b/i;
 
 /** The presentation type for one question. Text is the safe default. */
 export function deriveInputType(label: string): CheckinInputType {

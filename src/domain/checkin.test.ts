@@ -16,9 +16,17 @@ describe("deriving how a question is answered", () => {
     expect(deriveInputType("Any new numbness or weakness?")).toBe("yes_no");
   });
 
-  it("takes a number when the question asks for one", () => {
+  it("offers a scale only where the question asks to rate something", () => {
     expect(deriveInputType("How would you rate your pain today?")).toBe("scale");
-    expect(deriveInputType("How many feeds and wet nappies did your baby have?")).toBe("scale");
+    expect(deriveInputType("Rate the severity of your headache")).toBe("scale");
+    expect(deriveInputType("Pain score out of 10?")).toBe("scale");
+  });
+
+  it("does not turn a count or a frequency into a clinical scale", () => {
+    // A count is a fact, not a severity — and it is not capped at ten.
+    expect(deriveInputType("How many feeds did your baby have?")).toBe("text");
+    expect(deriveInputType("How much rest did you manage?")).toBe("text");
+    expect(deriveInputType("How often did you walk today?")).toBe("text");
   });
 
   it("falls back to words, which can express anything", () => {

@@ -17,7 +17,7 @@
 --   * a package can neither escape its parent's organisation nor set its own fee.
 -- ============================================================================
 begin;
-select plan(34);
+select plan(35);
 
 -- become a signed-in user (SET ROLE + JWT claims, like PostgREST)
 create or replace function _as(uid text, urole text default 'authenticated') returns void
@@ -165,6 +165,9 @@ select is((select status from confirm_centre_service('51111111-1111-1111-1111-11
 select is((select confirmed_by_provider_by from centre_services where id='51111111-1111-1111-1111-111111111111'),
           'b1000000-0000-0000-0000-000000000005'::uuid,
           'the confirming approver is stamped on the service');
+select is((select status from service_packages where id='61111111-1111-1111-1111-111111111111'),
+          'active',
+          'confirming the service brings its packages to life (0028)');
 select throws_like(
   $$select confirm_centre_service('51111111-1111-1111-1111-111111111111')$$,
   '%awaiting provider confirmation%',

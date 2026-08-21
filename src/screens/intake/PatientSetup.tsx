@@ -11,6 +11,7 @@ import {
   Card, Field, inputCls, PrimaryButton, GhostButton, Chip,
   Skeleton, ErrorNote, SectionHeader,
 } from "../../components/system";
+import AssignProgramme from "../provider/AssignProgramme";
 
 const DOC_TYPES: { key: DocumentRow["doc_type"]; label: string }[] = [
   { key: "discharge_summary", label: "Discharge summary" },
@@ -102,6 +103,9 @@ export default function PatientSetup({
 
         <div className="mt-6 space-y-5">
           <TeamSection patientId={patientId} />
+          {/* Renders nothing for an organisation with no confirmed service, so a
+              legacy recovery centre's setup page is exactly what it was. */}
+          <AssignProgramme patientId={patientId} patientName={patient?.full_name} />
           <DocumentsSection patientId={patientId} extras={extras} onExtras={setExtras} />
 
           {continueErr && <ErrorNote>{continueErr}</ErrorNote>}

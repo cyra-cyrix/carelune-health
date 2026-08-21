@@ -455,6 +455,31 @@ export type SubscriptionRow = {
   trial_ends: string | null;
   pay_mode: string;
   started_at: string;
+  /* 0028 — set only when the patient is enrolled in a service package. A legacy
+   * recovery subscription leaves every one of these NULL. The snapshots are the
+   * patient's own frozen copy: they never move when the package is edited. */
+  centre_service_id?: string | null;
+  service_package_id?: string | null;
+  package_snapshot?: EnrolledPackageSnapshot | null;
+  programme_config_snapshot?: ProgrammeConfig | null;
+  price_snapshot?: number | null;
+  platform_fee_pct_snapshot?: number | null;
+  currency_snapshot?: string | null;
+};
+
+/** What the patient enrolled into, frozen at enrolment. */
+export type EnrolledPackageSnapshot = {
+  service_name?: string;
+  name?: string;
+  positioning?: string | null;
+  duration_days?: number;
+  monitoring_domains?: string[];
+  checkin_frequency?: string | null;
+  review_frequency?: string | null;
+  support_level?: string | null;
+  includes?: string[];
+  milestones?: unknown;
+  typical_duration_days?: number | null;
 };
 
 /** The patient's subscription, if the family has accepted the package. */
@@ -1823,6 +1848,7 @@ export type ServicePackageRow = {
   includes: string[];
   milestones: unknown;
   price: number | null;
+  currency: string;
   platform_fee_pct: number;
   status: string;
 };
@@ -1855,7 +1881,7 @@ export async function getCentreServices(): Promise<CentreServiceRow[]> {
         "typical_duration_days, programme_config, source_provenance, ai_model, " +
         "provider_approver_profile_id, confirmed_by_provider_at, published_at, " +
         "service_packages(id, name, positioning, sort_order, duration_days, monitoring_domains, " +
-        "checkin_frequency, review_frequency, support_level, includes, milestones, price, platform_fee_pct, status)",
+        "checkin_frequency, review_frequency, support_level, includes, milestones, price, currency, platform_fee_pct, status)",
     )
     .neq("status", "retired")
     .order("created_at", { ascending: false });
@@ -1886,4 +1912,23 @@ export async function confirmCentreService(serviceId: string, note?: string): Pr
     p_note: note?.trim() ? note.trim() : null,
   });
   if (error) throw new Error(error.message);
+}
+
+/**
+ * Enrol a patient into a published service package (0028).
+ *
+ * The browser sends a patient and a package — nothing else. The database reads
+ * the service, the name, duration, monitoring, cadences, price, platform fee
+ * and programme out of the published package itself and freezes them onto the
+ * subscription, so a client cannot influence any of it. Eligibility (same
+ * centre, service published, package active, patient visible to the caller) is
+ * checked server-side; a rejection here is an authorization answer.
+ */
+export async function assignServicePackage(patientId: string, packageId: string): Promise<SubscriptionRow> {
+  const { data, error } = await supabase.rpc("assign_service_package", {
+    p_patient: patientId,
+    p_package: packageId,
+  });
+  if (error) throw new Error(error.message);
+  return data as SubscriptionRow;
 }

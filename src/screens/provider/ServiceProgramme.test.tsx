@@ -53,9 +53,9 @@ function service(over: Partial<CentreServiceRow> = {}): CentreServiceRow {
     confirmed_by_provider_at: null,
     published_at: null,
     packages: [
-      { id: "p1", name: "Basic Recovery", positioning: "Lightest option", sort_order: 0, duration_days: 30, monitoring_domains: ["Pain"], checkin_frequency: "Twice a week", review_frequency: "Weekly review", support_level: "Basic", includes: ["Check-ins"], milestones: ["Pain settling"], price: null, platform_fee_pct: 20, status: "draft" },
-      { id: "p2", name: "Standard Recovery", positioning: "Middle option", sort_order: 1, duration_days: 60, monitoring_domains: ["Pain", "Walking and mobility"], checkin_frequency: "Three times a week", review_frequency: "Weekly review", support_level: "Moderate", includes: ["Check-ins"], milestones: ["Walking without support"], price: null, platform_fee_pct: 20, status: "draft" },
-      { id: "p3", name: "Comprehensive Recovery", positioning: "Most complete", sort_order: 2, duration_days: 84, monitoring_domains: ["Pain", "Walking and mobility", "Wound recovery"], checkin_frequency: "Daily", review_frequency: "Twice weekly review", support_level: "Full", includes: ["Check-ins"], milestones: ["Recovery closed"], price: null, platform_fee_pct: 20, status: "draft" },
+      { id: "p1", name: "Basic Recovery", positioning: "Lightest option", sort_order: 0, duration_days: 30, monitoring_domains: ["Pain"], checkin_frequency: "Twice a week", review_frequency: "Weekly review", support_level: "Basic", includes: ["Check-ins"], milestones: ["Pain settling"], price: 12000, currency: "INR", platform_fee_pct: 20, status: "draft" },
+      { id: "p2", name: "Standard Recovery", positioning: "Middle option", sort_order: 1, duration_days: 60, monitoring_domains: ["Pain", "Walking and mobility"], checkin_frequency: "Three times a week", review_frequency: "Weekly review", support_level: "Moderate", includes: ["Check-ins"], milestones: ["Walking without support"], price: 12000, currency: "INR", platform_fee_pct: 20, status: "draft" },
+      { id: "p3", name: "Comprehensive Recovery", positioning: "Most complete", sort_order: 2, duration_days: 84, monitoring_domains: ["Pain", "Walking and mobility", "Wound recovery"], checkin_frequency: "Daily", review_frequency: "Twice weekly review", support_level: "Full", includes: ["Check-ins"], milestones: ["Recovery closed"], price: 12000, currency: "INR", platform_fee_pct: 20, status: "draft" },
     ],
     ...over,
   };
@@ -147,9 +147,9 @@ describe("Level-2 confirmation — what the clinician reads", () => {
           ],
         },
         packages: [
-          { id: "l1", name: "Essential Feeding Support", positioning: "Lightest option", sort_order: 0, duration_days: 30, monitoring_domains: ["Feeding experience"], checkin_frequency: "Daily", review_frequency: "Twice-weekly consultant review", support_level: "Basic", includes: ["Feeding check-in"], milestones: ["Comfortable latch"], price: null, platform_fee_pct: 20, status: "draft" },
-          { id: "l2", name: "Guided Mother & Baby Support", positioning: "Middle option", sort_order: 1, duration_days: 60, monitoring_domains: ["Feeding experience", "Maternal rest"], checkin_frequency: "5 a week", review_frequency: "Weekly consultant review", support_level: "Moderate", includes: ["Feeding check-in"], milestones: ["Feeding established"], price: null, platform_fee_pct: 20, status: "draft" },
-          { id: "l3", name: "Complete Postpartum Support", positioning: "Most complete", sort_order: 2, duration_days: 84, monitoring_domains: ["Feeding experience", "Emotional wellbeing"], checkin_frequency: "3 a week", review_frequency: "Weekly consultant review", support_level: "Full", includes: ["Feeding check-in"], milestones: ["Confident continuing independently"], price: null, platform_fee_pct: 20, status: "draft" },
+          { id: "l1", name: "Essential Feeding Support", positioning: "Lightest option", sort_order: 0, duration_days: 30, monitoring_domains: ["Feeding experience"], checkin_frequency: "Daily", review_frequency: "Twice-weekly consultant review", support_level: "Basic", includes: ["Feeding check-in"], milestones: ["Comfortable latch"], price: 12000, currency: "INR", platform_fee_pct: 20, status: "draft" },
+          { id: "l2", name: "Guided Mother & Baby Support", positioning: "Middle option", sort_order: 1, duration_days: 60, monitoring_domains: ["Feeding experience", "Maternal rest"], checkin_frequency: "5 a week", review_frequency: "Weekly consultant review", support_level: "Moderate", includes: ["Feeding check-in"], milestones: ["Feeding established"], price: 12000, currency: "INR", platform_fee_pct: 20, status: "draft" },
+          { id: "l3", name: "Complete Postpartum Support", positioning: "Most complete", sort_order: 2, duration_days: 84, monitoring_domains: ["Feeding experience", "Emotional wellbeing"], checkin_frequency: "3 a week", review_frequency: "Weekly consultant review", support_level: "Full", includes: ["Feeding check-in"], milestones: ["Confident continuing independently"], price: 12000, currency: "INR", platform_fee_pct: 20, status: "draft" },
         ],
       }),
     ]);

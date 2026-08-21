@@ -1,3 +1,8 @@
+// FIRST, deliberately: creating the client below starts auth-js's session
+// detection, which reads the password-recovery hash and then erases it from the
+// URL. Importing this module here guarantees the link is captured before that
+// can happen, whatever order anything else imports things in.
+import "../auth/recoveryLink";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createAuthFetch } from "./authFetch";
 

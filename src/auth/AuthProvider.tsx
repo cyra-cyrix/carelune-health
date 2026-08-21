@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
 import { appUrl, passwordRecoveryRedirectUrl } from "../config/urls";
+import { capturedRecoveryLink, clearCapturedRecoveryLink } from "./recoveryLink";
 
 export type AuthResult = { error: string | null; needsEmailConfirm?: boolean };
 
@@ -12,11 +13,17 @@ type AuthContextValue = {
   loading: boolean;
   /** True while the user arrived via a password-reset link and must set a new password. */
   passwordRecovery: boolean;
+  /** Set when the reset link itself was expired or malformed. */
+  recoveryError: string | null;
   signIn: (email: string, password: string) => Promise<AuthResult>;
   signUp: (email: string, password: string) => Promise<AuthResult>;
   signOut: () => Promise<void>;
   sendPasswordReset: (email: string) => Promise<AuthResult>;
   updatePassword: (newPassword: string) => Promise<AuthResult>;
+  /** Leave recovery and resume normal routing. Only ever called after a successful update. */
+  completeRecovery: () => void;
+  /** Dismiss a dead-link message and fall back to the sign-in screen. */
+  dismissRecoveryError: () => void;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -29,7 +36,17 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [passwordRecovery, setPasswordRecovery] = useState(false);
+  // Seeded from the URL captured at load. The `PASSWORD_RECOVERY` event below
+  // usually fires before this component mounts (auth-js reads and strips the
+  // hash during its own async init), so the event alone cannot be trusted to
+  // arrive — see ./recoveryLink for the full account.
+  const [passwordRecovery, setPasswordRecovery] = useState(
+    () => capturedRecoveryLink().kind === "recovery",
+  );
+  const [recoveryError, setRecoveryError] = useState<string | null>(() => {
+    const link = capturedRecoveryLink();
+    return link.kind === "error" ? link.message : null;
+  });
 
   useEffect(() => {
     let active = true;
@@ -57,6 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user: session?.user ?? null,
       loading,
       passwordRecovery,
+      recoveryError,
       async signIn(email, password) {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         return { error: error?.message ?? null };
@@ -84,11 +102,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async updatePassword(newPassword) {
         const { error } = await supabase.auth.updateUser({ password: newPassword });
         if (error) return { error: error.message };
-        setPasswordRecovery(false);
+        // Recovery is NOT cleared here: the screen needs to stay mounted to show
+        // its success state. It calls completeRecovery() when the person continues.
         return { error: null };
       },
+      completeRecovery() {
+        clearCapturedRecoveryLink();
+        setPasswordRecovery(false);
+      },
+      dismissRecoveryError() {
+        clearCapturedRecoveryLink();
+        setRecoveryError(null);
+      },
     }),
-    [session, loading, passwordRecovery],
+    [session, loading, passwordRecovery, recoveryError],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

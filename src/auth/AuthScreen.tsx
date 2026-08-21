@@ -5,6 +5,7 @@ import LegalPage, { LEGAL_PATHS, LEGAL_READY, type LegalPath } from "../screens/
 import { marketingBaseUrl } from "../config/urls";
 import { computeAuthView } from "./authView";
 import { useAuth } from "./AuthProvider";
+import { PASSWORD_RULE_HINT, validateNewPassword } from "./passwordPolicy";
 
 type Mode = "signin" | "reset";
 
@@ -22,7 +23,7 @@ const SUBMIT =
  * the branded auth screen; otherwise renders the app.
  */
 export function AuthGate({ children }: { children: ReactNode }) {
-  const { loading, session, passwordRecovery } = useAuth();
+  const { loading, session, passwordRecovery, recoveryError } = useAuth();
   // Path routing (no router lib) on the APPLICATION domain. Here "/" and "/login"
   // both resolve to sign-in — the public marketing landing lives on the marketing
   // origin and is intentionally NOT bundled into this build. `?register=<token>`
@@ -53,11 +54,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     const p = window.location.pathname;
     const onLegal = LEGAL_READY && (LEGAL_PATHS as readonly string[]).includes(p);
-    if (!loading && !session && !passwordRecovery && p !== "/login" && !onLegal) {
+    if (!loading && !session && !passwordRecovery && !recoveryError && p !== "/login" && !onLegal) {
       window.history.replaceState({}, "", "/login" + window.location.hash);
       setPath("/login");
     }
-  }, [loading, session, passwordRecovery]);
+  }, [loading, session, passwordRecovery, recoveryError]);
 
   // The routing decision is a pure helper (unit-tested in node); this component
   // just renders the chosen view + runs the URL-normalisation effects above.
@@ -65,6 +66,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     loading,
     hasSession: !!session,
     passwordRecovery,
+    recoveryError: !!recoveryError,
     path,
     legalReady: LEGAL_READY,
     legalPaths: LEGAL_PATHS,
@@ -83,6 +85,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
       );
     case "recovery":
       return <SetNewPassword />;
+    case "recovery-error":
+      return <RecoveryLinkProblem message={recoveryError ?? ""} />;
     case "signin":
       // No session → sign-in. "Back to home" leaves the app for the public marketing site.
       return <AuthScreen onHome={() => { window.location.href = marketingBaseUrl(); }} />;
@@ -287,41 +291,101 @@ export function AuthScreen({ onHome }: { onHome?: () => void } = {}) {
   );
 }
 
+/**
+ * The Carelune "create new password" step for someone who arrived on a recovery
+ * link. AuthGate renders this INSTEAD of the application, so a recovery session
+ * — which is a fully authenticated session — can never reach a role workspace
+ * before the password has actually been changed.
+ */
 function SetNewPassword() {
-  const { updatePassword } = useAuth();
+  const { updatePassword, completeRecovery } = useAuth();
   const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    const problem = validateNewPassword(password, confirm);
+    if (problem) {
+      setError(problem);
+      return;
+    }
     setError(null);
     setBusy(true);
     try {
       const { error } = await updatePassword(password);
       if (error) setError(error);
+      else setDone(true);
     } finally {
       setBusy(false);
     }
   };
 
+  // Success. Routing stays held here until the person continues, so the change
+  // is unambiguously confirmed rather than flashing past into a dashboard.
+  if (done) {
+    return (
+      <AuthShell>
+        <h2 className="font-display text-[26px] font-semibold tracking-[-0.01em] text-ink">
+          Password updated
+        </h2>
+        <p className="mt-1.5 text-[13.5px] leading-relaxed text-sage-600">
+          Your new password is saved. You can use it the next time you sign in.
+        </p>
+        <p
+          role="status"
+          className="mt-5 rounded-2xl bg-good-100 px-3.5 py-2.5 text-[13px] text-good-600 ring-1 ring-good-500/20"
+        >
+          Password changed successfully.
+        </p>
+        <button type="button" onClick={completeRecovery} className={`${SUBMIT} !mt-5`}>
+          Continue to Carelune
+        </button>
+      </AuthShell>
+    );
+  }
+
   return (
     <AuthShell>
-      <h2 className="font-display text-[26px] font-semibold tracking-[-0.01em] text-ink">Set a new password</h2>
-      <p className="mt-1.5 text-[13.5px] text-sage-600">Choose a new password for your account.</p>
-      <form onSubmit={submit} className="mt-7 space-y-3">
-        <label htmlFor="new-password" className="mb-1.5 block text-[12.5px] font-semibold text-sage-600">New password</label>
-        <input
-          id="new-password"
-          type="password"
-          autoComplete="new-password"
-          required
-          minLength={6}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="••••••••"
-          className={FIELD}
-        />
+      <h2 className="font-display text-[26px] font-semibold tracking-[-0.01em] text-ink">
+        Create new password
+      </h2>
+      <p className="mt-1.5 text-[13.5px] leading-relaxed text-sage-600">
+        Choose a new password for your Carelune account. {PASSWORD_RULE_HINT}
+      </p>
+      <form onSubmit={submit} className="mt-7 space-y-3" noValidate>
+        <div>
+          <label htmlFor="new-password" className="mb-1.5 block text-[12.5px] font-semibold text-sage-600">
+            New password
+          </label>
+          <input
+            id="new-password"
+            type="password"
+            autoComplete="new-password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+            className={FIELD}
+          />
+        </div>
+        <div>
+          <label htmlFor="confirm-password" className="mb-1.5 block text-[12.5px] font-semibold text-sage-600">
+            Confirm password
+          </label>
+          <input
+            id="confirm-password"
+            type="password"
+            autoComplete="new-password"
+            required
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            placeholder="••••••••"
+            className={FIELD}
+          />
+        </div>
         {error && (
           <p role="alert" className="rounded-2xl bg-coral-100 px-3.5 py-2 text-[13px] text-coral-600 ring-1 ring-coral-200">
             {error}
@@ -331,6 +395,31 @@ function SetNewPassword() {
           {busy ? "Saving…" : "Save new password"}
         </button>
       </form>
+    </AuthShell>
+  );
+}
+
+/**
+ * An expired or already-used reset link. Without this the person would be
+ * dropped on the sign-in screen with no explanation of why the link did nothing.
+ */
+function RecoveryLinkProblem({ message }: { message: string }) {
+  const { dismissRecoveryError } = useAuth();
+  return (
+    <AuthShell>
+      <h2 className="font-display text-[26px] font-semibold tracking-[-0.01em] text-ink">
+        This link has expired
+      </h2>
+      <p role="alert" className="mt-5 rounded-2xl bg-coral-100 px-3.5 py-2.5 text-[13px] leading-relaxed text-coral-600 ring-1 ring-coral-200">
+        {message}
+      </p>
+      <p className="mt-4 text-[13.5px] leading-relaxed text-sage-600">
+        Your password has not been changed. Request a fresh link from the sign-in
+        screen and open it on this device.
+      </p>
+      <button type="button" onClick={dismissRecoveryError} className={`${SUBMIT} !mt-5`}>
+        Back to sign in
+      </button>
     </AuthShell>
   );
 }

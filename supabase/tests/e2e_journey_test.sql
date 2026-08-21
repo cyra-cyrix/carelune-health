@@ -71,7 +71,7 @@ update patients set pathway_version_id=(
 -- 1. a nurse cannot activate a plan
 reset role; select _as('a7000000-0000-0000-0000-000000000002');
 select throws_like($$select activate_patient_plan((select id from patient_plans where patient_id='7a000000-0000-0000-0000-0000000000a1' and version=1))$$,
-  '%Only a doctor%', 'a nurse cannot activate a care plan');
+  '%treating doctor%', 'a nurse cannot activate a care plan');
 
 -- 2. a DRAFT (unapproved) plan cannot be activated even by the doctor
 reset role; select _as('a7000000-0000-0000-0000-000000000001');

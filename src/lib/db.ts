@@ -6,7 +6,7 @@ import { supabase } from "./supabase";
 import { isSessionExpired, SESSION_EXPIRED_MESSAGE } from "./authFetch";
 import type { PlanDraft } from "./pathwayValidation";
 import { validateServiceDraft } from "../domain/serviceDraft";
-import type { ServiceDraft, SuggestedService } from "../domain/serviceDraft";
+import type { ProgrammePeriod, ServiceDraft, SuggestedService } from "../domain/serviceDraft";
 
 export { SESSION_EXPIRED_MESSAGE, isSessionExpired };
 
@@ -1790,4 +1790,100 @@ export async function createProviderService(input: NewProviderService): Promise<
   if (error) throw new Error(await edgeError(error));
   if (data?.error) throw new Error(data.error);
   return data as CreatedProviderService;
+}
+
+/* ============================================================================
+   The provider's own configured services (D-003 Level 2).
+
+   Reads are plain RLS-scoped selects: 0027 lets same-centre STAFF read
+   `centre_services` / `service_packages`, and household accounts none of it.
+   The single provider-side write is the confirm_centre_service() RPC, which
+   checks internally that the caller is the designated approver.
+   ========================================================================== */
+
+/** The stored programme configuration a service is rendered from. */
+export type ProgrammeConfig = {
+  provider_summary?: string;
+  monitoring_domains?: string[];
+  patient_inputs?: { label: string; reason: string }[];
+  care_team?: string[];
+  programme_outline?: ProgrammePeriod[];
+};
+
+export type ServicePackageRow = {
+  id: string;
+  name: string;
+  positioning: string | null;
+  sort_order: number;
+  duration_days: number;
+  monitoring_domains: string[];
+  checkin_frequency: string | null;
+  review_frequency: string | null;
+  support_level: string | null;
+  includes: string[];
+  milestones: unknown;
+  price: number | null;
+  platform_fee_pct: number;
+  status: string;
+};
+
+export type CentreServiceRow = {
+  id: string;
+  name: string;
+  summary: string | null;
+  status: "draft" | "pending_provider_confirmation" | "published" | "retired";
+  patient_type: string | null;
+  entry_point: string | null;
+  objective: string | null;
+  end_condition: string | null;
+  typical_duration_days: number | null;
+  programme_config: ProgrammeConfig;
+  source_provenance: string;
+  ai_model: string | null;
+  provider_approver_profile_id: string | null;
+  confirmed_by_provider_at: string | null;
+  published_at: string | null;
+  packages: ServicePackageRow[];
+};
+
+/** Every service configured for the signed-in user's own organisation. */
+export async function getCentreServices(): Promise<CentreServiceRow[]> {
+  const { data, error } = await supabase
+    .from("centre_services")
+    .select(
+      "id, name, summary, status, patient_type, entry_point, objective, end_condition, " +
+        "typical_duration_days, programme_config, source_provenance, ai_model, " +
+        "provider_approver_profile_id, confirmed_by_provider_at, published_at, " +
+        "service_packages(id, name, positioning, sort_order, duration_days, monitoring_domains, " +
+        "checkin_frequency, review_frequency, support_level, includes, milestones, price, platform_fee_pct, status)",
+    )
+    .neq("status", "retired")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+
+  // PostgREST's generated types can't express the embedded select, so widen once.
+  return ((data ?? []) as unknown[]).map((row) => {
+    const r = row as Record<string, unknown>;
+    const packages = ((r.service_packages ?? []) as ServicePackageRow[])
+      .slice()
+      .sort((a, b) => a.sort_order - b.sort_order);
+    return {
+      ...(r as unknown as Omit<CentreServiceRow, "packages" | "programme_config">),
+      programme_config: (r.programme_config ?? {}) as ProgrammeConfig,
+      packages,
+    };
+  });
+}
+
+/**
+ * Level 2. Only the approver named on the service may call this; the RPC checks
+ * the caller's organisation, their designation and the service's state itself,
+ * so a rejection here is an authorization answer, not a UI guess.
+ */
+export async function confirmCentreService(serviceId: string, note?: string): Promise<void> {
+  const { error } = await supabase.rpc("confirm_centre_service", {
+    p_service: serviceId,
+    p_note: note?.trim() ? note.trim() : null,
+  });
+  if (error) throw new Error(error.message);
 }

@@ -1,9 +1,11 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { CareluneProvider } from "./store/carelune";
 import { useAuth } from "./auth/AuthProvider";
 import { BrandingProvider, useBranding } from "./branding/BrandingProvider";
 import { APP_ROLE_META, appRoleFromUser, type AppRole } from "./domain/appRoles";
+import { getCentreServices, type CentreServiceRow } from "./lib/db";
+import { ServiceAwaitingBanner } from "./screens/provider/ServiceAwaitingBanner";
 import { LoopMark } from "./components/ui";
 import { InstallPrompt } from "./pwa/InstallPrompt";
 
@@ -14,6 +16,8 @@ const OrgSetup = lazy(() => import("./screens/admin/OrgSetup"));
 const Team = lazy(() => import("./screens/admin/Team"));
 const RegistrationLink = lazy(() => import("./screens/admin/RegistrationLink"));
 const Programme = lazy(() => import("./screens/admin/Programme"));
+// The provider's own configured service + the D-003 Level-2 confirmation.
+const ServiceProgramme = lazy(() => import("./screens/provider/ServiceProgramme"));
 const SuperAdmin = lazy(() => import("./screens/platform/SuperAdmin"));
 const ForcePasswordReset = lazy(() => import("./screens/auth/ForcePasswordReset"));
 // Family + Caregiver share one mobile Home Care surface (role decides record
@@ -132,6 +136,21 @@ function PmrWorkspace() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const { profile } = useBranding();
   const isAdmin = profile?.is_admin ?? false;
+
+  /*
+   * The centre's configured services decide two things here: whether the
+   * Programme tab shows the real service or the legacy package screen, and
+   * whether this clinician is being waited on for a Level-2 confirmation.
+   * Loaded once and shared, so the caseload does not fetch it twice.
+   */
+  const [services, setServices] = useState<CentreServiceRow[]>([]);
+  useEffect(() => { void getCentreServices().then(setServices).catch(() => setServices([])); }, [screen]);
+  const awaitingMe = services.some(
+    (s) => s.status === "pending_provider_confirmation" && s.provider_approver_profile_id === profile?.id,
+  );
+  // A designated approver reaches their service even without administering the
+  // organisation — designation is the authority (D-003).
+  const canSeeProgramme = isAdmin || awaitingMe || services.length > 0;
   const inCaseload = screen === "caseload" || screen === "patient" || screen === "setup" || screen === "planstudio" || screen === "onboard";
 
   const open = (id: string, status?: string) => {
@@ -151,9 +170,9 @@ function PmrWorkspace() {
               Team
             </SubnavBtn>
           )}
-          {isAdmin && (
+          {canSeeProgramme && (
             <SubnavBtn active={screen === "programme"} onClick={() => setScreen("programme")}>
-              Programme
+              Programme{awaitingMe ? " ·" : ""}
             </SubnavBtn>
           )}
           <RegLinkBtn active={screen === "reglink"} onClick={() => setScreen("reglink")} />
@@ -161,7 +180,12 @@ function PmrWorkspace() {
       </div>
 
       <Suspense fallback={<PanelLoader />}>
-        {screen === "caseload" && <Caseload onOpen={open} />}
+        {screen === "caseload" && (
+          <>
+            <ServiceAwaitingBanner services={services} myId={profile?.id} onOpen={() => setScreen("programme")} />
+            <Caseload onOpen={open} />
+          </>
+        )}
         {screen === "patient" && selectedId && (
           <PatientProgress patientId={selectedId} onBack={() => setScreen("caseload")} />
         )}
@@ -179,7 +203,12 @@ function PmrWorkspace() {
           <Onboard patientId={selectedId} onExit={() => setScreen("caseload")} />
         )}
         {screen === "team" && <Team />}
-        {screen === "programme" && <Programme onBack={() => setScreen("caseload")} />}
+        {/* A configured service supersedes the legacy one-package screen. */}
+        {screen === "programme" && (
+          services.length > 0
+            ? <ServiceProgramme onBack={() => setScreen("caseload")} />
+            : <Programme onBack={() => setScreen("caseload")} />
+        )}
         {screen === "reglink" && <RegistrationLink onBack={() => setScreen("caseload")} />}
       </Suspense>
     </>

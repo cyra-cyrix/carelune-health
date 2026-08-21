@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { registerPatient, getPublicOrgInfo, type PublicOrgInfo } from "../../lib/db";
 import { loginUrl } from "../../config/urls";
 import { registrationCopy } from "../../domain/registrationCopy";
+import { APP_TITLE, registrationTitle } from "./registrationTitle";
 
 const inr = (n: number | null | undefined) => (n == null ? null : `₹${n.toLocaleString("en-IN")}`);
 
@@ -52,6 +53,17 @@ export default function RegisterPatient({ token }: { token: string }) {
       live = false;
     };
   }, [token]);
+
+  // The tab title follows the same resolution as the page: neutral until the
+  // organisation is known, then the institution's own name.
+  useEffect(() => {
+    document.title = registrationTitle(org, orgLoading);
+  }, [org, orgLoading]);
+  // Restore only on unmount — doing it in the effect above would set the
+  // platform title momentarily on every resolution step.
+  useEffect(() => () => {
+    document.title = APP_TITLE;
+  }, []);
 
   const institution = org?.institution_name?.trim() || "Your care team";
   // Everything the screen says about the programme comes from whatever the

@@ -12,6 +12,19 @@
     <meta name="description" content="Secure Carelune workspace. Sign-in required." />
     <title>Carelune</title>
 
+    <!-- White-label guard for the public patient registration/invite route.
+         The title above is parsed before the (deferred) app module runs, so
+         setting it from React alone would still show the platform name in the
+         tab for a moment. A family opening an invite link must never see it, so
+         the neutral title is applied here, during parse. RegisterPatient then
+         replaces it with the institution's own name once the token resolves.
+         Every other surface keeps the title above. -->
+    <script>
+      if (window.location.search.indexOf("register=") !== -1) {
+        document.title = "Patient Registration";
+      }
+    </script>
+
     <link rel="icon" href="/icons/icon.svg" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
 

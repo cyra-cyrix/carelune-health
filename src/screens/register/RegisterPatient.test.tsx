@@ -18,6 +18,7 @@ vi.mock("../../lib/db", () => ({
 import { getPublicOrgInfo } from "../../lib/db";
 
 import RegisterPatient from "./RegisterPatient";
+import { APP_TITLE, NEUTRAL_TITLE } from "./registrationTitle";
 
 const legacy = (over: Partial<PublicOrgInfo> = {}): PublicOrgInfo =>
   ({ kind: "legacy", institution_name: "Punarvas Hospital", logo_url: null,
@@ -101,5 +102,55 @@ describe("registration page institution branding", () => {
     render(<RegisterPatient token="tok" />);
     await waitFor(() => expect(identity()?.textContent).toBe("Punarvas Hospital"));
     expect(document.body.textContent).not.toContain("Carelune");
+  });
+});
+
+describe("registration tab title, in the browser", () => {
+  beforeEach(() => {
+    // Whatever the previous page left behind.
+    document.title = APP_TITLE;
+  });
+
+  it("1. never shows the platform name in the tab, at any point", async () => {
+    let release!: (v: PublicOrgInfo) => void;
+    vi.mocked(getPublicOrgInfo).mockReturnValue(new Promise<PublicOrgInfo>((r) => { release = r; }));
+
+    const view = render(<RegisterPatient token="tok" />);
+    expect(document.title).not.toContain(APP_TITLE);
+
+    release(universal());
+    await waitFor(() => expect(document.title).toContain("Punarvas Hospital"));
+    expect(document.title).not.toContain(APP_TITLE);
+    view.unmount();
+  });
+
+  it("2. becomes the organisation's own title once resolved", async () => {
+    vi.mocked(getPublicOrgInfo).mockResolvedValue(universal());
+    render(<RegisterPatient token="tok" />);
+    await waitFor(() =>
+      expect(document.title).toBe("Punarvas Hospital — Neurological Rehabilitation Programme"),
+    );
+  });
+
+  it("3. uses a neutral title while the organisation is loading", () => {
+    vi.mocked(getPublicOrgInfo).mockReturnValue(new Promise<PublicOrgInfo>(() => {}));
+    render(<RegisterPatient token="tok" />);
+    expect(document.title).toBe(NEUTRAL_TITLE);
+  });
+
+  it("4. keeps the neutral title when the lookup fails", async () => {
+    vi.mocked(getPublicOrgInfo).mockRejectedValue(new Error("network"));
+    render(<RegisterPatient token="tok" />);
+    await waitFor(() => expect(identity()?.textContent).toBe("Your care team"));
+    expect(document.title).toBe(NEUTRAL_TITLE);
+  });
+
+  it("5. restores the normal application title on navigating away", async () => {
+    vi.mocked(getPublicOrgInfo).mockResolvedValue(universal());
+    const view = render(<RegisterPatient token="tok" />);
+    await waitFor(() => expect(document.title).toContain("Punarvas Hospital"));
+
+    view.unmount();
+    expect(document.title).toBe(APP_TITLE);
   });
 });

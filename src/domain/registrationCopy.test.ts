@@ -6,6 +6,7 @@ import type { PublicOrgInfo, PublicServiceInfo } from "../lib/db";
 const LEGACY: PublicOrgInfo = {
   kind: "legacy",
   institution_name: "Sanjeevani Spine",
+  logo_url: null,
   package_price: 5999,
   trial_days: 7,
 };
@@ -14,6 +15,7 @@ const LEGACY: PublicOrgInfo = {
 const service = (over: Partial<PublicServiceInfo>): PublicServiceInfo => ({
   kind: "service",
   institution_name: "Sanjeevani Spine",
+  logo_url: null,
   package_price: 18000,
   trial_days: 0,
   service_name: "Spine Recovery",

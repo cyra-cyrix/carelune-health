@@ -54,15 +54,38 @@ Deno.serve(async (req) => {
       if (!token) return json({ error: "Missing registration token." }, 400);
 
       // A universal service invitation (0031) is tried FIRST. The token alone
-      // decides which kind of link this is — the browser never says. Only the
-      // fields listed here are returned: no centre/service/package ids, and
-      // never the platform fee.
+      // decides which kind of link this is — the browser never says.
       const { data: invite } = await admin.rpc("service_invite_for_token", { t: token });
+
+      let centreId: string | null = invite?.centre_id ?? null;
+      if (!centreId) {
+        const { data: legacyCentre, error: tErr } = await admin.rpc("centre_id_for_token", { t: token });
+        if (tErr) return json({ error: `Token lookup failed: ${tErr.message}` }, 500);
+        centreId = legacyCentre ?? null;
+      }
+      if (!centreId) return json({ error: "This registration link is invalid or has expired." }, 403);
+
+      // The organisation's own patient-facing identity, resolved from the token.
+      //
+      // `name` is the fallback for an organisation that never set a separate
+      // display name. Without it this returned null for a perfectly
+      // well-identified institution, and the page fell back to the generic
+      // "Your care team" — which is what families were seeing.
+      const { data: c } = await admin
+        .from("centres")
+        .select("display_name, name, logo_url, package_price, trial_days")
+        .eq("id", centreId)
+        .maybeSingle();
+
+      const institution_name = c?.display_name?.trim() || c?.name?.trim() || null;
+      const logo_url = c?.logo_url ?? null;
+
       if (invite) {
         return json({
           ok: true,
           kind: "service",
-          institution_name: invite.institution_name ?? null,
+          institution_name,
+          logo_url,
           service_name: invite.service_name ?? null,
           package_name: invite.package_name ?? null,
           positioning: invite.positioning ?? null,
@@ -78,20 +101,11 @@ Deno.serve(async (req) => {
         });
       }
 
-      const { data: centreId, error: tErr } = await admin.rpc("centre_id_for_token", { t: token });
-      if (tErr) return json({ error: `Token lookup failed: ${tErr.message}` }, 500);
-      if (!centreId) return json({ error: "This registration link is invalid or has expired." }, 403);
-
-      const { data: c } = await admin
-        .from("centres")
-        .select("display_name, package_price, trial_days")
-        .eq("id", centreId)
-        .maybeSingle();
-
       return json({
         ok: true,
         kind: "legacy",
-        institution_name: c?.display_name ?? null,
+        institution_name,
+        logo_url,
         package_price: c?.package_price ?? null,
         trial_days: c?.trial_days ?? 0,
       });

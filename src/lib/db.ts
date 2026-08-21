@@ -248,6 +248,8 @@ export async function registerPatient(
  */
 type PublicInfoBase = {
   institution_name: string | null;
+  /** The organisation's own patient-facing logo, when it has configured one. */
+  logo_url: string | null;
   package_price: number | null;
   trial_days: number;
 };
@@ -285,6 +287,7 @@ export async function getPublicOrgInfo(token: string): Promise<PublicOrgInfo> {
 
   const base = {
     institution_name: data?.institution_name ?? null,
+    logo_url: data?.logo_url ?? null,
     package_price: data?.package_price ?? null,
     trial_days: data?.trial_days ?? 0,
   };

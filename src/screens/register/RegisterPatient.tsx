@@ -36,8 +36,21 @@ export default function RegisterPatient({ token }: { token: string }) {
 
   // White-label institution + price for the token-linked link (public lookup).
   const [org, setOrg] = useState<PublicOrgInfo | null>(null);
+  // Distinct from "no organisation": until this settles we know nothing, and
+  // must not claim the family is registering with a generic "Your care team".
+  const [orgLoading, setOrgLoading] = useState(true);
   useEffect(() => {
-    void getPublicOrgInfo(token).then(setOrg).catch(() => setOrg(null));
+    let live = true;
+    setOrgLoading(true);
+    void getPublicOrgInfo(token)
+      .then((o) => live && setOrg(o))
+      .catch(() => live && setOrg(null))
+      .finally(() => {
+        if (live) setOrgLoading(false);
+      });
+    return () => {
+      live = false;
+    };
   }, [token]);
 
   const institution = org?.institution_name?.trim() || "Your care team";
@@ -76,13 +89,41 @@ export default function RegisterPatient({ token }: { token: string }) {
     window.location.href = loginUrl();
   };
 
+  if (orgLoading) {
+    return (
+      <div className="min-h-screen bg-mist px-4 py-8">
+        <div className="mx-auto w-full max-w-md" aria-busy="true" aria-label="Loading your care team's programme">
+          <div className="flex items-center gap-2.5">
+            <span className="h-9 w-9 shrink-0 animate-pulse rounded-lg bg-mist-200" />
+            <div className="space-y-1.5">
+              <div className="h-4 w-44 animate-pulse rounded bg-mist-200" />
+              <div className="h-2.5 w-28 animate-pulse rounded bg-mist-200" />
+            </div>
+          </div>
+          <div className="mt-6 space-y-4">
+            <div className="h-32 animate-pulse rounded-2xl bg-white/70" />
+            <div className="h-48 animate-pulse rounded-2xl bg-white/70" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-mist px-4 py-8">
       <div className="mx-auto w-full max-w-md">
         <div className="flex items-center gap-2.5">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-600 text-[15px] font-bold text-white">
-            {(institution?.trim()?.[0] ?? "•").toUpperCase()}
-          </span>
+          {org?.logo_url ? (
+            <img
+              src={org.logo_url}
+              alt={institution}
+              className="h-9 w-9 shrink-0 rounded-lg object-contain"
+            />
+          ) : (
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-600 text-[15px] font-bold text-white">
+              {(institution?.trim()?.[0] ?? "\u2022").toUpperCase()}
+            </span>
+          )}
           <div>
             <div className="font-display text-lg font-semibold tracking-tight text-ink">{institution}</div>
             <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-sage-500">{copy.eyebrow}</div>

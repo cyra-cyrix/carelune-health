@@ -106,7 +106,11 @@ Return JSON only, matching this shape exactly. No prose outside the JSON, no ext
   ]
 }
 
-Give at least 3 packages per service, of clearly different lengths. Give at least 2 outline periods where the service runs longer than a few weeks. Suggest a second service only when the provider clearly runs one.`;
+Give at least 3 packages per service, of clearly different lengths, and order them from the shortest to the longest. The packages are a ladder a patient chooses from: as the duration grows, the support must grow with it, so the longest option is the most complete one and the shortest is the lightest. Never offer a long package with less support than a shorter one.
+
+Every specific thing you were told the provider wants to keep track of must appear in that service's monitoring_domains. Do not drop one because it seems minor, and do not merge two distinct ones into a single vague area.
+
+Give at least 2 outline periods where the service runs longer than a few weeks. Suggest a second service only when the provider clearly runs one.`;
 
 /* --------------------------------- handler --------------------------------- */
 
@@ -172,7 +176,12 @@ Deno.serve(async (req) => {
 
     let parsed: unknown;
     try {
-      parsed = JSON.parse((await aiRes.json())?.choices?.[0]?.message?.content ?? "{}");
+      const payload = await aiRes.json();
+      // Development cost observability. Token counts only — no prompt, no reply,
+      // no key. Server-side log; nothing is added to the response.
+      const u = payload?.usage ?? {};
+      console.log(`[analyse-provider-service] model=${model} prompt_tokens=${u.prompt_tokens ?? "?"} completion_tokens=${u.completion_tokens ?? "?"} total_tokens=${u.total_tokens ?? "?"}`);
+      parsed = JSON.parse(payload?.choices?.[0]?.message?.content ?? "{}");
     } catch {
       return json({ error: "Carelune could not read the reply. Try again." }, 502);
     }

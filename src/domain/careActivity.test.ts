@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activityStatusLabel, buildCareActivity, localDateOf, type ProgrammeActivity } from "./careActivity";
+import { activityStateTag, activityStatusLabel, buildCareActivity, localDateOf, type ProgrammeActivity } from "./careActivity";
 import type { Attention } from "../screens/pmr/attention-model";
 
 /** A recovery patient's attention, exactly as the existing model produces it. */
@@ -164,5 +164,29 @@ describe("the same adapter for a different specialty", () => {
     expect(out.programmeDay).toBe(22);
     expect(activityStatusLabel(out)).toBe("Check-in received today · 6 responses");
     expect(JSON.stringify(out)).not.toMatch(/wound|spine|recovery continuum/i);
+  });
+});
+
+describe("a programme patient is never labelled clinically stable", () => {
+  it("says what is operationally known instead", () => {
+    const received = buildCareActivity({ patientId: "p", attention: attention({ band: "stable" }), programme: programme(), explicitConcerns: 0, now: FRIDAY });
+    expect(activityStateTag(received)).toBe("Update received");
+    expect(activityStateTag(received)).not.toMatch(/stable/i);
+
+    const waiting = buildCareActivity({
+      patientId: "p", attention: attention({ band: "stable" }), explicitConcerns: 0, now: FRIDAY,
+      programme: programme({ latest: null }),
+    });
+    expect(activityStateTag(waiting)).toBe("No action pending");
+    expect(activityStateTag(waiting)).not.toMatch(/stable/i);
+  });
+
+  it("leaves a recovery patient's card exactly as it was", () => {
+    const legacy = buildCareActivity({ patientId: "p", attention: attention({ band: "stable" }), programme: null, explicitConcerns: 0, now: FRIDAY });
+    // No extra tag is rendered for them at all.
+    expect(activityStateTag(legacy)).toBeNull();
+    // And the model that decides their band is untouched.
+    expect(legacy.attention.band).toBe("stable");
+    expect(legacy.latestUpdateLabel).toBe("Last recorded today");
   });
 });

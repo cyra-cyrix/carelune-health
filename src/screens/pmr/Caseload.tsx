@@ -6,7 +6,7 @@ import {
   type Tone,
 } from "../../components/clinical";
 import { deriveAttention, BANDS, type Attention, type Band } from "./attention-model";
-import { activityStatusLabel, buildCareActivity, type CareActivity, type ProgrammeActivity } from "../../domain/careActivity";
+import { activityStateTag, activityStatusLabel, buildCareActivity, type CareActivity, type ProgrammeActivity } from "../../domain/careActivity";
 import {
   listPatients,
   getPendingApprovalCounts,
@@ -378,6 +378,11 @@ function AttentionRow({ e, onOpen }: { e: Enriched; onOpen: () => void }) {
             <span className="truncate font-display text-[16px] font-semibold tracking-[-0.01em] text-ink">{p.full_name}</span>
             {urgent && <StatusTag tone="escalation">Urgent</StatusTag>}
             {isNew && <StatusTag tone="calm">New</StatusTag>}
+            {/* A programme patient says what is known operationally, rather than
+                being read as clinically "Stable" on no evidence. */}
+            {activityStateTag(e.activity) && (
+              <StatusTag tone="calm">{activityStateTag(e.activity)}</StatusTag>
+            )}
             <span className="text-[12.5px] text-sage-500">
               {/* A programme patient is placed by their own programme and day;
                   a recovery patient reads exactly as before. */}

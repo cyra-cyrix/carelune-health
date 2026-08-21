@@ -162,3 +162,20 @@ export function activityStatusLabel(a: CareActivity): string {
   if (a.displayState === "checkin_expected") return `Check-in expected today · ${a.latestUpdateLabel.toLowerCase()}`;
   return `Check-in available · ${a.latestUpdateLabel.toLowerCase()}`;
 }
+
+/**
+ * The neutral tag a programme patient's card carries.
+ *
+ * They are grouped by what is waiting on the clinician, and the quiet group is
+ * called "Stable" — a word that reads as a clinical assessment. For a recovery
+ * patient it is one: it rests on recorded vitals the attention model can see.
+ * For a programme patient it would rest on nothing, because Phase 5 reads no
+ * answer. So their card says what is actually known — an update arrived, or
+ * nothing is waiting — and never claims their condition is stable.
+ *
+ * Returns null for a recovery patient: their card is unchanged.
+ */
+export function activityStateTag(a: CareActivity): string | null {
+  if (a.source === "legacy_recovery") return null;
+  return a.displayState === "checkin_received" ? "Update received" : "No action pending";
+}

@@ -84,7 +84,7 @@ export function PackageCard({
       </div>
       {pkg.positioning && <p className="mt-2 text-[14px] leading-relaxed text-sage-600">{pkg.positioning}</p>}
 
-      <dl className="mt-5 space-y-4 border-t border-line/70 pt-5">
+      <dl className="mt-5 flex-1 space-y-4 border-t border-line/70 pt-5">
         <Detail label="Check-ins">{pkg.checkin_frequency}</Detail>
         <Detail label="Professional review">{pkg.review_frequency}</Detail>
         {pkg.support_level && <Detail label="Support">{pkg.support_level}</Detail>}

@@ -109,7 +109,8 @@ function manualDraft(brief: Brief): ServiceDraft {
 
 const lines = (v: string): string[] => v.split("\n").map((s) => s.trim()).filter(Boolean);
 const toLines = (v: string[]): string => v.join("\n");
-const areaCls = `${inputCls} min-h-[112px] leading-relaxed`;
+const areaCls = `${inputCls} leading-relaxed`;
+const areaTall = `${areaCls} min-h-[112px]`;
 
 /* --------------------------------- screen --------------------------------- */
 
@@ -456,7 +457,7 @@ function ProviderStep({
             value={brief.description}
             onChange={(e) => set({ description: e.target.value })}
             placeholder="Tell us what this provider does, which patients they usually follow after consultation or discharge, and what they want to keep track of at home."
-            className={`${areaCls} mt-3 min-h-[220px] text-[15px]`}
+            className={`${areaCls} mt-3 min-h-[248px] text-[15px]`}
           />
           <p className="mt-2 text-[12.5px] text-sage-500">
             The more you say about who they follow and for how long, the better the first draft.
@@ -481,7 +482,7 @@ function ProviderStep({
                     value={brief.notes}
                     onChange={(e) => set({ notes: e.target.value })}
                     placeholder="Anything from the conversation that shaped what they want."
-                    className={areaCls}
+                    className={areaTall}
                   />
                 </div>
                 <p className="text-[12px] leading-relaxed text-sage-500">
@@ -851,7 +852,7 @@ function LabelledArea({ label, value, onChange }: { label: string; value: string
   return (
     <label className="block">
       <span className="mb-1.5 block text-[12.5px] font-semibold text-sage-600">{label}</span>
-      <textarea value={value} onChange={(e) => onChange(e.target.value)} className={areaCls} />
+      <textarea value={value} onChange={(e) => onChange(e.target.value)} className={areaTall} />
     </label>
   );
 }

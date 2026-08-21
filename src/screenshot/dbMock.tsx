@@ -372,3 +372,50 @@ export async function addCaregiver(): Promise<void> {}
 export async function generatePlan(): Promise<{ plan: PlanDraft; validation: { ok: boolean; errors: string[] } }> {
   return { plan: draftPlan, validation: { ok: true, errors: [] } };
 }
+
+/* --------------------- Super Admin service builder ------------------------ */
+// Synthetic replies for the visual-QA pass. `?draft=lactation` renders the
+// second fixture through the very same components, which is the whole point of
+// the architecture — see src/domain/serviceDraft.fixtures.ts.
+
+export type { ProviderAnalysis, ProviderAnalysisInput, ProviderTypeKey, NewProviderService, CreatedProviderService } from "../lib/db";
+
+import { LACTATION_DRAFT, SPINE_DRAFT } from "../domain/serviceDraft.fixtures";
+
+export async function analyseProviderService(): Promise<import("../lib/db").ProviderAnalysis> {
+  await new Promise((r) => setTimeout(r, params.get("slow") ? 6000 : 250));
+  if (params.get("fail")) throw new Error("OpenAI error (429): rate limit reached.");
+  return {
+    draft: params.get("draft") === "lactation" ? LACTATION_DRAFT : SPINE_DRAFT,
+    provenance: { source: "ai_drafted", ai_model: "gpt-4o", drafted_at: iso(0) },
+  };
+}
+
+export async function createProviderService(
+  input: import("../lib/db").NewProviderService,
+): Promise<import("../lib/db").CreatedProviderService> {
+  await new Promise((r) => setTimeout(r, 400));
+  return {
+    org: { id: "c-new", name: input.org_name },
+    admin: { email: input.admin_email, full_name: input.admin_name },
+    service: {
+      id: "svc-new",
+      name: input.service.name,
+      status: "pending_provider_confirmation",
+      packages: input.service.suggested_packages.length,
+      approver_name: input.admin_name,
+    },
+  };
+}
+
+/* ------------------------- document stubs (harness) ------------------------
+ * PatientSetup and PlanStudio started importing these when the onboarding
+ * journey was rebuilt around the discharge document; the harness was never
+ * updated, so every screen it serves failed to load on a missing export. These
+ * are inert: the harness never uploads anything.
+ * -------------------------------------------------------------------------- */
+export async function uploadPatientDocument(): Promise<void> {}
+export async function deletePatientDocument(): Promise<void> {}
+export async function getDocumentUrl(): Promise<string> {
+  return "about:blank";
+}

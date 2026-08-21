@@ -1,6 +1,6 @@
 // Screenshot-harness entry. Renders one REAL production doctor screen with
 // synthetic data (db aliased to dbMock) for the mandatory visual-QA pass. Which
-// screen is chosen by ?screen=login|command|cockpit|studio-prepare|studio-review.
+// screen is chosen by ?screen=login|command|cockpit|studio-prepare|studio-review|builder.
 // Never part of the production build.
 import React from "react";
 import { createRoot } from "react-dom/client";
@@ -16,6 +16,7 @@ import CaregiverHome from "../screens/caregiver/CaregiverHome";
 import FamilyOverview from "../screens/family/FamilyOverview";
 import HomeCare, { type HcTab } from "../screens/home/HomeCare";
 import DutyPatient from "../screens/duty/DutyPatient";
+import ServiceBuilder from "../screens/platform/ServiceBuilder";
 import "../index.css";
 
 const screen = new URLSearchParams(location.search).get("screen") ?? "command";
@@ -46,6 +47,8 @@ function Harness() {
       const tab = (p.get("tab") as HcTab | null) ?? "today";
       return <HomeCare role={role} initialTab={tab} />;
     }
+    case "builder":
+      return <ServiceBuilder onExit={noop} />;
     case "duty":
       return <DutyPatient patientId="p1" onBack={noop} />;
     case "studio-prepare":

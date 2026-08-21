@@ -7,6 +7,7 @@ import { isSessionExpired, SESSION_EXPIRED_MESSAGE } from "./authFetch";
 import type { PlanDraft } from "./pathwayValidation";
 import { validateServiceDraft } from "../domain/serviceDraft";
 import type { ProgrammePeriod, ServiceDraft, SuggestedService } from "../domain/serviceDraft";
+import type { DraftAnswer } from "../domain/checkin";
 
 export { SESSION_EXPIRED_MESSAGE, isSessionExpired };
 
@@ -1952,4 +1953,99 @@ export async function setServicePackagePrice(
     p_currency: currency,
   });
   if (error) throw new Error(error.message);
+}
+
+/* ============================================================================
+   Programme check-ins (0030).
+
+   Writes go through submit_programme_checkin(), which derives the patient and
+   the programme day from the subscription and refuses any question that is not
+   in that patient's own frozen programme. Reads are plain RLS-scoped selects:
+   can_see_patient() already means "same-centre staff, or this patient's own
+   household", so nobody gains a new kind of access here.
+   ========================================================================== */
+
+export type CheckinSubmissionRow = {
+  id: string;
+  patient_id: string;
+  subscription_id: string;
+  submitted_at: string;
+  local_date: string;
+  programme_day: number | null;
+  programme_period_label: string | null;
+  status: string;
+};
+
+export type CheckinResponseRow = {
+  id: string;
+  submission_id: string;
+  question_key: string;
+  question_label_snapshot: string;
+  response_type: "yes_no" | "choice" | "text" | "scale";
+  value_text: string | null;
+  value_number: number | null;
+  value_boolean: boolean | null;
+};
+
+/** Today's check-in for this subscription, if one has been submitted. */
+export async function getCheckinForToday(subscriptionId: string): Promise<CheckinSubmissionRow | null> {
+  const { data, error } = await supabase
+    .from("checkin_submissions")
+    .select("id, patient_id, subscription_id, submitted_at, local_date, programme_day, programme_period_label, status")
+    .eq("subscription_id", subscriptionId)
+    .eq("local_date", new Date().toLocaleDateString("en-CA"))
+    .maybeSingle();
+  if (error) throw error;
+  return (data as CheckinSubmissionRow) ?? null;
+}
+
+/** The most recent check-in for a patient — what a professional opens. */
+export async function getLatestCheckin(patientId: string): Promise<CheckinSubmissionRow | null> {
+  const { data, error } = await supabase
+    .from("checkin_submissions")
+    .select("id, patient_id, subscription_id, submitted_at, local_date, programme_day, programme_period_label, status")
+    .eq("patient_id", patientId)
+    .order("local_date", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as CheckinSubmissionRow) ?? null;
+}
+
+/** The answers in one check-in, in the order they were asked. */
+export async function getCheckinResponses(submissionId: string): Promise<CheckinResponseRow[]> {
+  const { data, error } = await supabase
+    .from("checkin_responses")
+    .select("id, submission_id, question_key, question_label_snapshot, response_type, value_text, value_number, value_boolean")
+    .eq("submission_id", submissionId)
+    .order("question_key", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as CheckinResponseRow[];
+}
+
+/**
+ * Submit today's check-in. The browser sends the subscription, the answers
+ * (each carrying the wording it displayed) and the stage it showed; everything
+ * else — patient, centre, programme day, question identity — is the server's.
+ */
+export async function submitProgrammeCheckin(input: {
+  subscriptionId: string;
+  answers: DraftAnswer[];
+  periodLabel?: string | null;
+  note?: string | null;
+}): Promise<CheckinSubmissionRow> {
+  const { data, error } = await supabase.rpc("submit_programme_checkin", {
+    p_subscription: input.subscriptionId,
+    p_answers: input.answers.map((a) => ({
+      label: a.label,
+      type: a.type,
+      text: a.text ?? null,
+      number: a.number ?? null,
+      boolean: a.boolean ?? null,
+    })),
+    p_period_label: input.periodLabel ?? null,
+    p_note: input.note?.trim() ? input.note.trim() : null,
+  });
+  if (error) throw new Error(error.message);
+  return data as CheckinSubmissionRow;
 }

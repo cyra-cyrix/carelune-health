@@ -31,6 +31,7 @@ import {
   type CareTaskRow,
   type PatientPlanRow,
 } from "../../lib/db";
+import LatestCheckin from "../provider/LatestCheckin";
 
 /**
  * Patient Recovery Cockpit — Carelune's signature screen. A clinical hero lets
@@ -117,6 +118,10 @@ export default function PatientProgress({ patientId, onBack }: { patientId: stri
         {view === "overview" && (
           <div className="grid gap-5 lg:grid-cols-[1.55fr_1fr]">
             <div className="space-y-5">
+              {/* Renders nothing unless this patient is on a Carelune programme
+                  and has sent a check-in, so a recovery patient's cockpit is
+                  exactly what it was. */}
+              <LatestCheckin patientId={patientId} />
               <Reveal index={0}><ChangedSinceYesterday readings={readings} approvals={approvals} updates={updates} doneToday={doneToday} tasks={tasks} /></Reveal>
               <Reveal index={1}><VitalsPanel readings={readings} /></Reveal>
             </div>

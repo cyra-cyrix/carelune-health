@@ -12,6 +12,7 @@ import {
   Skeleton, ErrorNote, SectionHeader,
 } from "../../components/system";
 import AssignProgramme from "../provider/AssignProgramme";
+import LatestCheckin from "../provider/LatestCheckin";
 
 const DOC_TYPES: { key: DocumentRow["doc_type"]; label: string }[] = [
   { key: "discharge_summary", label: "Discharge summary" },
@@ -106,6 +107,8 @@ export default function PatientSetup({
           {/* Renders nothing for an organisation with no confirmed service, so a
               legacy recovery centre's setup page is exactly what it was. */}
           <AssignProgramme patientId={patientId} patientName={patient?.full_name} />
+          {/* Renders nothing until the patient has actually sent a check-in. */}
+          <LatestCheckin patientId={patientId} />
           <DocumentsSection patientId={patientId} extras={extras} onExtras={setExtras} />
 
           {continueErr && <ErrorNote>{continueErr}</ErrorNote>}

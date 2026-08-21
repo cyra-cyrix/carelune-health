@@ -59,11 +59,14 @@ export function PackageCard({
   selected = false,
   onPreview,
   onEdit,
+  pricing,
 }: {
   pkg: SuggestedPackage;
   selected?: boolean;
   onPreview: () => void;
   onEdit: () => void;
+  /** What families pay, where the viewer is allowed to set it. */
+  pricing?: ReactNode;
 }) {
   const weeks = pkg.duration_days % 7 === 0 ? `${pkg.duration_days / 7} weeks` : `${pkg.duration_days} days`;
   // An id may not contain whitespace, and aria-labelledby is a space-separated
@@ -119,6 +122,8 @@ export function PackageCard({
           </Detail>
         )}
       </dl>
+
+      {pricing && <div className="mt-5 border-t border-line/70 pt-4">{pricing}</div>}
 
       <div className="mt-6 flex items-center gap-2 pt-1">
         <button

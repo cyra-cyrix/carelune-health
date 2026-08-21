@@ -8,11 +8,12 @@ vi.mock("../../lib/db", () => ({
   getCentreServices: vi.fn(),
   getCentreStaff: vi.fn(),
   confirmCentreService: vi.fn(),
+  setServicePackagePrice: vi.fn(),
 }));
 const branding = { profile: { id: "u-approver" } as { id: string } | null };
 vi.mock("../../branding/BrandingProvider", () => ({ useBranding: () => branding }));
 
-import { confirmCentreService, getCentreServices, getCentreStaff } from "../../lib/db";
+import { confirmCentreService, getCentreServices, getCentreStaff, setServicePackagePrice } from "../../lib/db";
 import ServiceProgramme from "./ServiceProgramme";
 import { ServiceAwaitingBanner } from "./ServiceAwaitingBanner";
 
@@ -183,5 +184,85 @@ describe("caseload prompt", () => {
       <ServiceAwaitingBanner services={[service({ status: "published" })]} myId="u-approver" onOpen={() => {}} />,
     );
     expect(container.firstChild).toBeNull();
+  });
+});
+
+describe("pricing a package", () => {
+  const published = () =>
+    service({ status: "published", confirmed_by_provider_at: "2026-08-21T00:00:00.000Z", published_at: "2026-08-21T00:00:00.000Z" });
+
+  it("shows what families pay, formatted in rupees", async () => {
+    vi.mocked(getCentreServices).mockResolvedValue([published()]);
+    render(<ServiceProgramme onBack={() => {}} />);
+
+    const card = await screen.findByRole("article", { name: "Basic Recovery" });
+    expect(within(card).getByText("₹12,000")).toBeTruthy();
+  });
+
+  it("invites the owner to set a price that has never been set", async () => {
+    const s = published();
+    s.packages[0] = { ...s.packages[0], price: null };
+    vi.mocked(getCentreServices).mockResolvedValue([s]);
+    render(<ServiceProgramme onBack={() => {}} />);
+
+    const card = await screen.findByRole("article", { name: "Basic Recovery" });
+    expect(within(card).getByText("Price not set")).toBeTruthy();
+    expect(within(card).getByRole("button", { name: "Set price" })).toBeTruthy();
+  });
+
+  it("sends only the package and the amount, and reloads afterwards", async () => {
+    vi.mocked(getCentreServices).mockResolvedValue([published()]);
+    vi.mocked(setServicePackagePrice).mockResolvedValue(undefined);
+    render(<ServiceProgramme onBack={() => {}} />);
+
+    const card = await screen.findByRole("article", { name: "Standard Recovery" });
+    fireEvent.click(within(card).getByRole("button", { name: "Edit price" }));
+    fireEvent.change(within(card).getByPlaceholderText("18000"), { target: { value: "20,000" } });
+    fireEvent.click(within(card).getByRole("button", { name: "Save price" }));
+
+    await vi.waitFor(() => expect(setServicePackagePrice).toHaveBeenCalled());
+    expect(vi.mocked(setServicePackagePrice).mock.calls[0]).toEqual(["p2", 20000, "INR"]);
+    // No platform fee is ever sent from the browser.
+    expect(vi.mocked(setServicePackagePrice).mock.calls[0]).toHaveLength(3);
+  });
+
+  it("says the fee is 20% and that enrolled patients do not move", async () => {
+    vi.mocked(getCentreServices).mockResolvedValue([published()]);
+    render(<ServiceProgramme onBack={() => {}} />);
+
+    const card = await screen.findByRole("article", { name: "Basic Recovery" });
+    fireEvent.click(within(card).getByRole("button", { name: "Edit price" }));
+    expect(within(card).getByText(/platform fee is 20%/)).toBeTruthy();
+    expect(within(card).getByText(/keep the price they joined at/)).toBeTruthy();
+  });
+
+  it("surfaces a server refusal rather than pretending the price saved", async () => {
+    vi.mocked(getCentreServices).mockResolvedValue([published()]);
+    vi.mocked(setServicePackagePrice).mockRejectedValue(new Error("Only the clinician this service is assigned to may set its price"));
+    render(<ServiceProgramme onBack={() => {}} />);
+
+    const card = await screen.findByRole("article", { name: "Basic Recovery" });
+    fireEvent.click(within(card).getByRole("button", { name: "Edit price" }));
+    fireEvent.click(within(card).getByRole("button", { name: "Save price" }));
+
+    expect(await within(card).findByText(/Only the clinician this service is assigned to/)).toBeTruthy();
+  });
+
+  it("offers no price control to a colleague who does not own the service", async () => {
+    branding.profile = { id: "u-someone-else" };
+    vi.mocked(getCentreServices).mockResolvedValue([published()]);
+    render(<ServiceProgramme onBack={() => {}} />);
+
+    const card = await screen.findByRole("article", { name: "Basic Recovery" });
+    expect(within(card).getByText("₹12,000")).toBeTruthy();
+    expect(within(card).queryByRole("button", { name: /price/i })).toBeNull();
+  });
+
+  it("offers no price control before the service is confirmed", async () => {
+    vi.mocked(getCentreServices).mockResolvedValue([service()]);   // pending confirmation
+    render(<ServiceProgramme onBack={() => {}} />);
+
+    const card = await screen.findByRole("article", { name: "Basic Recovery" });
+    expect(within(card).queryByRole("button", { name: /price/i })).toBeNull();
   });
 });

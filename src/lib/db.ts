@@ -1932,3 +1932,24 @@ export async function assignServicePackage(patientId: string, packageId: string)
   if (error) throw new Error(error.message);
   return data as SubscriptionRow;
 }
+
+/**
+ * The provider sets what families pay for one of their own packages (0029).
+ *
+ * Price and currency only. The platform fee is never sent — it stays 20% and is
+ * pinned server-side — and no clinical field can be reached through this path.
+ * Patients already enrolled keep the price they enrolled at; the next patient
+ * gets this one.
+ */
+export async function setServicePackagePrice(
+  packageId: string,
+  price: number,
+  currency = "INR",
+): Promise<void> {
+  const { error } = await supabase.rpc("set_service_package_price", {
+    p_package: packageId,
+    p_price: price,
+    p_currency: currency,
+  });
+  if (error) throw new Error(error.message);
+}

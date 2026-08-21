@@ -15,6 +15,7 @@ import {
   confirmCentreService,
   getCentreServices,
   getCentreStaff,
+  setServicePackagePrice,
   type CentreServiceRow,
   type ServicePackageRow,
   type StaffMember,
@@ -61,6 +62,97 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
   pending_provider_confirmation: { label: "Waiting for your confirmation", cls: "bg-warn-100 text-warn-600" },
   published: { label: "Confirmed and available", cls: "bg-good-100 text-good-600" },
 };
+
+
+/** What families pay. Rendered only for the clinician who owns the service. */
+export function PriceControl({
+  pkg, editable, onSaved,
+}: { pkg: ServicePackageRow; editable: boolean; onSaved: () => void | Promise<void> }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const shown = pkg.price == null
+    ? null
+    : pkg.currency === "INR" || !pkg.currency
+      ? `₹${pkg.price.toLocaleString("en-IN")}`
+      : `${pkg.currency} ${pkg.price.toLocaleString()}`;
+
+  const save = async () => {
+    const n = Number(value.replace(/[,\s]/g, ""));
+    if (!Number.isFinite(n) || n < 0) { setError("Enter a whole amount."); return; }
+    setBusy(true);
+    setError(null);
+    try {
+      await setServicePackagePrice(pkg.id, Math.round(n), pkg.currency || "INR");
+      await onSaved();
+      setEditing(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save the price.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <div>
+        <label className="block">
+          <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.13em] text-sage-400">
+            What families pay
+          </span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[15px] font-semibold text-sage-500">₹</span>
+            <input
+              autoFocus
+              inputMode="numeric"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") void save(); if (e.key === "Escape") setEditing(false); }}
+              placeholder="18000"
+              className="w-full min-h-[40px] rounded-lg bg-white px-3 py-2 text-[15px] text-ink ring-1 ring-line focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+            />
+          </div>
+        </label>
+        {error && <p className="mt-2 text-[12.5px] text-coral-600">{error}</p>}
+        <div className="mt-2.5 flex items-center gap-2">
+          <button type="button" onClick={() => void save()} disabled={busy}
+            className="tap rounded-lg bg-ink px-3 py-1.5 text-[13px] font-semibold text-white hover:bg-midnight-800 disabled:opacity-60">
+            {busy ? "Saving…" : "Save price"}
+          </button>
+          <button type="button" onClick={() => { setEditing(false); setError(null); }}
+            className="tap rounded-lg px-2.5 py-1.5 text-[13px] font-semibold text-sage-600 hover:text-ink">
+            Cancel
+          </button>
+        </div>
+        <p className="mt-2 text-[11.5px] leading-relaxed text-sage-500">
+          Carelune&apos;s platform fee is 20%. Patients already enrolled keep the price they joined at.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-baseline justify-between gap-2">
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.13em] text-sage-400">What families pay</p>
+        <p className={`mt-1 text-[17px] font-semibold ${shown ? "text-ink" : "text-sage-400"}`}>
+          {shown ?? "Price not set"}
+        </p>
+      </div>
+      {editable && (
+        <button
+          type="button"
+          onClick={() => { setValue(pkg.price == null ? "" : String(pkg.price)); setEditing(true); }}
+          className="tap rounded-lg px-2.5 py-1.5 text-[13px] font-semibold text-sky-700 hover:text-sky-800"
+        >
+          {shown ? "Edit price" : "Set price"}
+        </button>
+      )}
+    </div>
+  );
+}
 
 export default function ServiceProgramme({ onBack }: { onBack: () => void }) {
   const { profile } = useBranding();
@@ -237,11 +329,23 @@ export default function ServiceProgramme({ onBack }: { onBack: () => void }) {
         <h2 className="mt-9 font-display text-[20px] font-semibold tracking-tight text-ink">Patient programmes</h2>
         <p className="mt-1.5 text-[14px] text-sage-600">
           What a patient can be enrolled into. You set the price families pay — Carelune&apos;s platform fee is{" "}
-          {service.packages[0]?.platform_fee_pct ?? 20}%.
+          {service.packages[0]?.platform_fee_pct ?? 20}%. Repricing never moves a patient already enrolled.
         </p>
         <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
           {packages.map((p, i) => (
-            <PackageCard key={p.name} pkg={p} onPreview={() => setPreview(i)} onEdit={() => setPreview(i)} />
+            <PackageCard
+              key={p.name}
+              pkg={p}
+              onPreview={() => setPreview(i)}
+              onEdit={() => setPreview(i)}
+              pricing={
+                <PriceControl
+                  pkg={service.packages[i]}
+                  editable={iAmApprover && service.status === "published"}
+                  onSaved={reload}
+                />
+              }
+            />
           ))}
         </div>
         {packages.length === 0 && (

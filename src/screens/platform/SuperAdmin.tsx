@@ -15,6 +15,7 @@ import {
   Card, Field, inputCls, PrimaryButton, Chip,
   EmptyState, Skeleton, ErrorNote, Kpi, SectionHeader,
 } from "../../components/system";
+import ServiceBuilder from "./ServiceBuilder";
 
 const TYPES: { key: InstitutionType; label: string }[] = [
   { key: "hospital", label: "Hospital" },
@@ -37,6 +38,7 @@ const freshDraft = (): NewOrg => ({
  */
 export default function SuperAdmin() {
   const { signOut } = useAuth();
+  const [building, setBuilding] = useState(false);
   const [orgs, setOrgs] = useState<OrgSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -108,6 +110,12 @@ export default function SuperAdmin() {
 
   const activeCount = orgs.filter((o) => o.setup_complete).length;
 
+  // The guided setup takes the whole screen: it is its own task, not a panel
+  // inside the console. Closing it reloads the list so a new provider appears.
+  if (building) {
+    return <ServiceBuilder onExit={() => { setBuilding(false); void load(); }} />;
+  }
+
   return (
     <div className="min-h-screen bg-mist">
       <header className="sticky top-0 z-50 flex min-h-[3.25rem] items-center justify-between gap-3 border-b border-line bg-white/90 px-4 py-2 backdrop-blur sm:px-6">
@@ -127,10 +135,21 @@ export default function SuperAdmin() {
       </header>
 
       <main className="mx-auto max-w-[1140px] px-5 py-7 lg:px-8">
-        <h1 className="font-display text-[26px] font-semibold tracking-tight text-ink">Institutions</h1>
-        <p className="mt-1 text-[14px] text-sage-500">
-          Create an institution and hand its admin a secure first-login.
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="font-display text-[26px] font-semibold tracking-tight text-ink">Care providers</h1>
+            <p className="mt-1 text-[14px] text-sage-500">
+              Set a provider up with Carelune, or hand an existing one a secure first-login.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setBuilding(true)}
+            className="tap inline-flex items-center gap-2 rounded-xl bg-sky-600 px-4 py-2.5 text-[14px] font-semibold text-white shadow-card transition-colors hover:bg-sky-700"
+          >
+            <span aria-hidden className="text-[16px] leading-none">+</span> New care provider
+          </button>
+        </div>
 
         <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
           <Kpi label="Institutions" value={loading ? "—" : orgs.length} />
@@ -141,7 +160,7 @@ export default function SuperAdmin() {
         <div className="mt-6 grid gap-6 lg:grid-cols-[1.05fr_1fr]">
           {/* Create */}
           <Card>
-            <SectionHeader title="New institution" sub="Type and admin account." />
+            <SectionHeader title="Add without setup" sub="Creates the organisation and its admin account only." />
             <div className="mt-4 space-y-4">
               <Field label="Institution name">
                 <input value={draft.org_name} onChange={(e) => setDraft({ ...draft, org_name: e.target.value })} placeholder="e.g. Sunrise Spine & Rehab" className={inputCls} />

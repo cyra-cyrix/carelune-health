@@ -5,6 +5,8 @@
 import { supabase } from "./supabase";
 import { isSessionExpired, SESSION_EXPIRED_MESSAGE } from "./authFetch";
 import type { PlanDraft } from "./pathwayValidation";
+import { validateServiceDraft } from "../domain/serviceDraft";
+import type { ServiceDraft, SuggestedService } from "../domain/serviceDraft";
 
 export { SESSION_EXPIRED_MESSAGE, isSessionExpired };
 
@@ -1709,4 +1711,83 @@ export async function getFamilyQueryCounts(patientIds: string[]): Promise<Record
     counts[row.patient_id] = c;
   }
   return counts;
+}
+
+/* ============================================================================
+   Super Admin — the AI service builder (D-003 Level 1).
+
+   Both calls go through Edge Functions: the analysis needs the OpenAI key, and
+   configuration writes are service_role-only by design, so the browser never
+   touches `centre_services` / `service_packages` directly.
+   ========================================================================== */
+
+/** The provider types the Super Admin chooses from, in product language. */
+export type ProviderTypeKey =
+  | "solo_professional"
+  | "clinic"
+  | "hospital"
+  | "rehab_centre"
+  | "allied_health"
+  | "other";
+
+export type ProviderAnalysisInput = {
+  provider_name: string;
+  provider_type: string;
+  description: string;
+  website: string;
+  social: string;
+  notes: string;
+  /** Text the operator pasted. Carelune never fetches the website itself. */
+  source_text?: string;
+};
+
+export type ProviderAnalysis = {
+  draft: ServiceDraft;
+  provenance: { source: string; ai_model: string; drafted_at: string };
+};
+
+/** Ask Carelune to structure a provider's service. Returns an AI DRAFT. */
+export async function analyseProviderService(input: ProviderAnalysisInput): Promise<ProviderAnalysis> {
+  const { data, error } = await supabase.functions.invoke("analyse-provider-service", { body: input });
+  if (error) throw new Error(await edgeError(error));
+  if (data?.error) throw new Error(data.error);
+  const checked = validateServiceDraft(data?.draft);
+  if (!checked.ok) throw new Error("Carelune could not read the structured reply. Try again.");
+  return { draft: checked.draft, provenance: data.provenance };
+}
+
+export type NewProviderService = {
+  org_name: string;
+  provider_type: ProviderTypeKey | "";
+  admin_name: string;
+  admin_email: string;
+  admin_password: string;
+  description: string;
+  website: string;
+  social: string;
+  notes: string;
+  provider_summary: string;
+  service: SuggestedService;
+  source_provenance: "ai_drafted" | "super_admin";
+  ai_model: string | null;
+};
+
+export type CreatedProviderService = {
+  org: { id: string; name: string };
+  admin: { email: string; full_name: string | null };
+  service: { id: string; name: string; status: string; packages: number; approver_name: string | null };
+};
+
+/**
+ * Level 1. Creates the provider, its primary professional (who becomes the
+ * designated Level-2 approver) and the confirmed service configuration, leaving
+ * the service at `pending_provider_confirmation`.
+ */
+export async function createProviderService(input: NewProviderService): Promise<CreatedProviderService> {
+  const { data, error } = await supabase.functions.invoke("platform-admin", {
+    body: { action: "create-provider-service", ...input },
+  });
+  if (error) throw new Error(await edgeError(error));
+  if (data?.error) throw new Error(data.error);
+  return data as CreatedProviderService;
 }

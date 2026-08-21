@@ -179,3 +179,43 @@ export function activityStateTag(a: CareActivity): string | null {
   if (a.source === "legacy_recovery") return null;
   return a.displayState === "checkin_received" ? "Update received" : "No action pending";
 }
+
+/**
+ * The explanatory copy a programme patient's card shows.
+ *
+ * The attention model writes for the recovery product, in its language: a newly
+ * registered patient is told to "Build and activate the recovery plan", and a
+ * quiet one has "No trend recorded yet". Read on a dermatology or a
+ * mother-and-baby patient, that is simply the wrong product talking — there is
+ * no recovery plan to build and no vitals trend to record.
+ *
+ * So a programme patient's lines are derived here instead, from what is
+ * genuinely known: work actually waiting on the clinician, and whether an
+ * update arrived. `changed` is null because "what changed" in the recovery
+ * sense — a moving vitals trend — has no counterpart yet, and inventing one
+ * would be exactly the clinical inference this phase refuses to make.
+ *
+ * Returns null for a recovery patient: their card keeps the model's own words,
+ * unchanged.
+ */
+export function activityCopy(a: CareActivity): { reason: string; changed: string | null; action: string } | null {
+  if (a.source === "legacy_recovery") return null;
+
+  const decisions = a.attention.decisions;
+  const concerns = a.attention.concerns;
+  const plural = (n: number) => (n === 1 ? "" : "s");
+
+  const reason =
+    decisions > 0 ? `${decisions} item${plural(decisions)} awaiting your decision`
+    : concerns > 0 ? `${concerns} concern${plural(concerns)} raised from home`
+    : a.displayState === "checkin_received" ? "Latest programme update received"
+    : a.displayState === "checkin_expected" ? "Check-in expected today"
+    : "No action pending";
+
+  const action =
+    decisions > 0 ? "Review and decide"
+    : concerns > 0 ? "Answer the concern"
+    : "No action pending";
+
+  return { reason, changed: null, action };
+}

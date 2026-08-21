@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activityStateTag, activityStatusLabel, buildCareActivity, localDateOf, type ProgrammeActivity } from "./careActivity";
+import { activityCopy, activityStateTag, activityStatusLabel, buildCareActivity, localDateOf, type ProgrammeActivity } from "./careActivity";
 import type { Attention } from "../screens/pmr/attention-model";
 
 /** A recovery patient's attention, exactly as the existing model produces it. */
@@ -188,5 +188,71 @@ describe("a programme patient is never labelled clinically stable", () => {
     // And the model that decides their band is untouched.
     expect(legacy.attention.band).toBe("stable");
     expect(legacy.latestUpdateLabel).toBe("Last recorded today");
+  });
+});
+
+describe("a programme card never speaks the recovery product's language", () => {
+  /** The wording that belongs to the recovery product and nowhere else. */
+  const LEGACY_COPY = /recovery plan|home recovery|build and activate|no trend recorded/i;
+
+  /** The attention model's own words for a newly registered patient. */
+  const registered = attention({
+    band: "decision",
+    reason: "Registered and has no recovery plan yet",
+    changed: "New registration",
+    action: "Build and activate the recovery plan",
+  });
+
+  const cardCopy = (a: ReturnType<typeof buildCareActivity>) => {
+    const c = activityCopy(a);
+    return c ? [c.reason, c.changed ?? "", c.action].join(" | ") : null;
+  };
+
+  it("a dermatology patient is not told to build a recovery plan", () => {
+    const a = buildCareActivity({
+      patientId: "p", attention: registered, explicitConcerns: 0, now: FRIDAY,
+      programme: { programmeName: "Standard Follow-Up Package", checkinFrequency: "Twice a week",
+        latest: { submitted_at: "2026-08-21T16:32:00Z", local_date: localDateOf(FRIDAY), programme_day: 1, programme_period_label: "Weeks 1-4", responses: 7 } },
+    });
+    expect(cardCopy(a)).toBe("Latest programme update received |  | No action pending");
+    expect(cardCopy(a)).not.toMatch(LEGACY_COPY);
+  });
+
+  it("a mother-and-baby patient is not given recovery wording either", () => {
+    const a = buildCareActivity({
+      patientId: "p", attention: registered, explicitConcerns: 0, now: FRIDAY,
+      programme: { programmeName: "Essential Feeding Support", checkinFrequency: "Daily", latest: null },
+    });
+    expect(cardCopy(a)).toMatch(/Check-in expected today/);
+    expect(cardCopy(a)).not.toMatch(LEGACY_COPY);
+  });
+
+  it("a spine patient's lines come from their programme, not from the model's copy", () => {
+    const a = buildCareActivity({ patientId: "p", attention: registered, programme: programme(), explicitConcerns: 0, now: FRIDAY });
+    expect(cardCopy(a)).not.toMatch(LEGACY_COPY);
+    // The model's own strings are still there untouched — they are simply not shown.
+    expect(a.attention.reason).toBe("Registered and has no recovery plan yet");
+    expect(a.attention.action).toBe("Build and activate the recovery plan");
+  });
+
+  it("real work waiting on the clinician still leads, in neutral words", () => {
+    const busy = attention({ band: "decision", decisions: 2, reason: "2 items awaiting your decision", action: "Review and decide" });
+    const a = buildCareActivity({ patientId: "p", attention: busy, programme: programme(), explicitConcerns: 0, now: FRIDAY });
+    expect(activityCopy(a)?.reason).toBe("2 items awaiting your decision");
+    expect(activityCopy(a)?.action).toBe("Review and decide");
+
+    const raised = attention({ band: "concern", concerns: 1 });
+    const b = buildCareActivity({ patientId: "p", attention: raised, programme: programme(), explicitConcerns: 1, now: FRIDAY });
+    expect(activityCopy(b)?.reason).toBe("1 concern raised from home");
+    expect(activityCopy(b)?.action).toBe("Answer the concern");
+  });
+
+  it("a recovery patient keeps the model's wording, exactly", () => {
+    const a = buildCareActivity({ patientId: "p", attention: registered, programme: null, explicitConcerns: 0, now: FRIDAY });
+    // No override at all — the card renders the model's own strings.
+    expect(activityCopy(a)).toBeNull();
+    expect(a.attention.reason).toBe("Registered and has no recovery plan yet");
+    expect(a.attention.changed).toBe("New registration");
+    expect(a.attention.action).toBe("Build and activate the recovery plan");
   });
 });

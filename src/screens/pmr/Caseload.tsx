@@ -6,7 +6,7 @@ import {
   type Tone,
 } from "../../components/clinical";
 import { deriveAttention, BANDS, type Attention, type Band } from "./attention-model";
-import { activityStateTag, activityStatusLabel, buildCareActivity, type CareActivity, type ProgrammeActivity } from "../../domain/careActivity";
+import { activityCopy, activityStateTag, activityStatusLabel, buildCareActivity, type CareActivity, type ProgrammeActivity } from "../../domain/careActivity";
 import {
   listPatients,
   getPendingApprovalCounts,
@@ -361,6 +361,11 @@ function AttentionRow({ e, onOpen }: { e: Enriched; onOpen: () => void }) {
   const { p, sig, isNew, band, urgent } = e;
   const avatarTone: Tone = isNew ? "calm" : urgent ? "escalation" : band === "stable" ? "recovery" : "attention";
   const reasonTone: Tone = urgent ? "escalation" : band === "stable" ? "recovery" : band === "concern" ? "calm" : "attention";
+  /* Null for a recovery patient — their card keeps the attention model's own
+     words. A programme patient gets lines derived from what is actually known,
+     and a null `changed` means the field is omitted, not defaulted. */
+  const copy = activityCopy(e.activity);
+  const changed = copy ? copy.changed : e.changed;
 
   return (
     <li>
@@ -398,7 +403,7 @@ function AttentionRow({ e, onOpen }: { e: Enriched; onOpen: () => void }) {
             urgent ? "text-coral-600" : band === "stable" ? "text-brand-700" : band === "concern" ? "text-sky-700" : "text-warn-600"
           }`}>
             <SignalDot tone={reasonTone} pulse={urgent} />
-            {e.reason}
+            {copy ? copy.reason : e.reason}
           </div>
 
           {/* Listed elsewhere, but a recorded trend is still moving the wrong way. */}
@@ -411,8 +416,18 @@ function AttentionRow({ e, onOpen }: { e: Enriched; onOpen: () => void }) {
 
           {/* what changed · pending action · last update */}
           <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[12.5px] text-sage-600">
-            <div className="flex gap-1.5"><dt className="font-semibold text-sage-500">Changed</dt><dd>{e.changed}</dd></div>
-            <div className="flex gap-1.5"><dt className="font-semibold text-sage-500">Pending</dt><dd>{e.action}</dd></div>
+            {/* A programme patient has no vitals trend, so "Changed" is omitted
+                rather than filled with the recovery model's wording. */}
+            {changed !== null && (
+              <div className="flex gap-1.5">
+                <dt className="font-semibold text-sage-500">Changed</dt>
+                <dd>{changed}</dd>
+              </div>
+            )}
+            <div className="flex gap-1.5">
+              <dt className="font-semibold text-sage-500">Pending</dt>
+              <dd>{copy ? copy.action : e.action}</dd>
+            </div>
             <div className="flex gap-1.5">
               <dt className="font-semibold text-sage-500">Updated</dt>
               <dd>{activityStatusLabel(e.activity)}</dd>

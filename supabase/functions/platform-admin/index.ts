@@ -236,8 +236,13 @@ Deno.serve(async (req) => {
       const ai_model = body.ai_model ? String(body.ai_model).slice(0, 120) : null;
 
       // 1. the organisation
+      // setup_complete: the Super Admin has just done the setup on the provider's
+      // behalf — identity, service and packages are all configured here. Without
+      // this the provider's first sign-in is routed into the legacy first-run
+      // wizard (App.tsx), which asks them to name the institution and pick a
+      // package all over again.
       const { data: centre, error: cErr } = await admin
-        .from("centres").insert({ name: org_name, institution_type }).select("id").single();
+        .from("centres").insert({ name: org_name, institution_type, setup_complete: true }).select("id").single();
       if (cErr || !centre) return json({ error: cErr?.message ?? "Could not create the provider." }, 400);
 
       const rollback = async (created_user_id?: string) => {

@@ -20,10 +20,11 @@ const Programme = lazy(() => import("./screens/admin/Programme"));
 const ServiceProgramme = lazy(() => import("./screens/provider/ServiceProgramme"));
 const SuperAdmin = lazy(() => import("./screens/platform/SuperAdmin"));
 const ForcePasswordReset = lazy(() => import("./screens/auth/ForcePasswordReset"));
-// Family + Caregiver share one mobile Home Care surface (role decides record
-// permissions + household-only actions). The legacy CaregiverHome/FamilyOverview
-// screens are retired from routing but kept on disk until this redesign is approved.
-const HomeCare = lazy(() => import("./screens/home/HomeCare"));
+// Family + Caregiver share one mobile surface. PatientSurface is the single
+// decision point between the legacy recovery app and the universal programme
+// app: a patient enrolled into a service package (0028) gets the programme
+// experience, everyone else gets exactly the recovery app they had before.
+const PatientSurface = lazy(() => import("./screens/patient/PatientSurface"));
 const NursePatient = lazy(() => import("./screens/nurse/NursePatient"));
 const DutyPatient = lazy(() => import("./screens/duty/DutyPatient"));
 const Caseload = lazy(() => import("./screens/pmr/Caseload"));
@@ -109,13 +110,13 @@ function RoleSurface({ role }: { role: AppRole }) {
     case "caregiver":
       return (
         <Suspense fallback={<PanelLoader />}>
-          <HomeCare role="caregiver" />
+          <PatientSurface role="caregiver" />
         </Suspense>
       );
     case "family":
       return (
         <Suspense fallback={<PanelLoader />}>
-          <HomeCare role="family" />
+          <PatientSurface role="family" />
         </Suspense>
       );
     case "nurse":

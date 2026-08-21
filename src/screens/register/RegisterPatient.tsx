@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { registerPatient, getPublicOrgInfo, type PublicOrgInfo } from "../../lib/db";
 import { loginUrl } from "../../config/urls";
-import { CARE_PACKAGE } from "../../domain/carePackage";
+import { registrationCopy } from "../../domain/registrationCopy";
 
 const inr = (n: number | null | undefined) => (n == null ? null : `₹${n.toLocaleString("en-IN")}`);
 
@@ -41,6 +41,9 @@ export default function RegisterPatient({ token }: { token: string }) {
   }, [token]);
 
   const institution = org?.institution_name?.trim() || "Your care team";
+  // Everything the screen says about the programme comes from whatever the
+  // invitation resolved to — the same renderer for every specialty.
+  const copy = registrationCopy(org);
   const priceLabel = inr(org?.package_price);
   const trialLabel = org && org.trial_days > 0 ? `${org.trial_days}-day free trial` : null;
 
@@ -82,7 +85,7 @@ export default function RegisterPatient({ token }: { token: string }) {
           </span>
           <div>
             <div className="font-display text-lg font-semibold tracking-tight text-ink">{institution}</div>
-            <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-sage-500">Recovery programme</div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-sage-500">{copy.eyebrow}</div>
           </div>
         </div>
 
@@ -91,8 +94,8 @@ export default function RegisterPatient({ token }: { token: string }) {
             <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-good-500 text-white">✓</div>
             <h1 className="mt-4 text-center font-display text-xl font-semibold text-ink">You&rsquo;re registered</h1>
             <p className="mt-2 text-center text-[14px] leading-relaxed text-sage-600">
-              Sign in with <span className="font-semibold text-ink">{done}</span> and the password you chose. Your
-              care team will prepare the recovery plan.
+              Sign in with <span className="font-semibold text-ink">{done}</span> and the password you chose.{" "}
+              {copy.successNote}
             </p>
             <button
               type="button"
@@ -107,8 +110,7 @@ export default function RegisterPatient({ token }: { token: string }) {
             <div>
               <h1 className="font-display text-2xl font-semibold text-ink">Register the patient</h1>
               <p className="mt-1 text-[14px] leading-relaxed text-sage-600">
-                Enter the patient&rsquo;s details and create your own login. You&rsquo;ll follow their recovery from
-                here.
+                {copy.intro}
               </p>
             </div>
 
@@ -116,10 +118,12 @@ export default function RegisterPatient({ token }: { token: string }) {
             <section className="rounded-2xl bg-white p-4 shadow-lift ring-1 ring-ink/[0.05]">
               <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-sage-500">{institution}</div>
               <div className="mt-1 font-display text-[19px] font-semibold tracking-tight text-ink">
-                {CARE_PACKAGE.name}
+                {copy.programmeName}
               </div>
               <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                <span className="text-[12.5px] font-medium text-sage-500">{CARE_PACKAGE.durationLabel}</span>
+                {copy.durationLabel && (
+                  <span className="text-[12.5px] font-medium text-sage-500">{copy.durationLabel}</span>
+                )}
                 {priceLabel && (
                   <span className="text-[16px] font-semibold text-brand-700">
                     {priceLabel}<span className="text-[12px] font-medium text-sage-500">/month</span>
@@ -131,8 +135,23 @@ export default function RegisterPatient({ token }: { token: string }) {
                   </span>
                 )}
               </div>
+              {copy.positioning && (
+                <p className="mt-2 text-[13px] leading-relaxed text-sage-600">{copy.positioning}</p>
+              )}
+
+              {copy.facts.length > 0 && (
+                <dl className="mt-3 grid gap-2">
+                  {copy.facts.map((f) => (
+                    <div key={f.label}>
+                      <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-sage-500">{f.label}</dt>
+                      <dd className="text-[13.5px] leading-relaxed text-ink">{f.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
+
               <ul className="mt-3 grid gap-1.5">
-                {CARE_PACKAGE.includes.map((b) => (
+                {copy.includes.map((b) => (
                   <li key={b} className="flex items-start gap-2 text-[13px] text-sage-700">
                     <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-good-500 text-[9px] font-bold text-white">✓</span>
                     {b}
@@ -211,9 +230,8 @@ export default function RegisterPatient({ token }: { token: string }) {
             <label className="flex items-start gap-3 rounded-2xl bg-white p-4 shadow-lift ring-1 ring-ink/[0.05]">
               <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-brand-600" />
               <span className="text-[13px] leading-relaxed text-sage-700">
-                I consent, on behalf of the patient, to {institution} and its care team processing the patient&rsquo;s
-                health information — including AI-assisted structuring of the discharge summary — to support their
-                recovery.
+                I consent, on behalf of the patient, to {institution} and its care team processing the
+                patient&rsquo;s {copy.consentTail}
               </span>
             </label>
 

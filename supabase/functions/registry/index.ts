@@ -53,6 +53,31 @@ Deno.serve(async (req) => {
       const token = str(body.token);
       if (!token) return json({ error: "Missing registration token." }, 400);
 
+      // A universal service invitation (0031) is tried FIRST. The token alone
+      // decides which kind of link this is — the browser never says. Only the
+      // fields listed here are returned: no centre/service/package ids, and
+      // never the platform fee.
+      const { data: invite } = await admin.rpc("service_invite_for_token", { t: token });
+      if (invite) {
+        return json({
+          ok: true,
+          kind: "service",
+          institution_name: invite.institution_name ?? null,
+          service_name: invite.service_name ?? null,
+          package_name: invite.package_name ?? null,
+          positioning: invite.positioning ?? null,
+          duration_days: invite.duration_days ?? null,
+          checkin_frequency: invite.checkin_frequency ?? null,
+          review_frequency: invite.review_frequency ?? null,
+          support_level: invite.support_level ?? null,
+          includes: Array.isArray(invite.includes) ? invite.includes : [],
+          monitoring_domains: Array.isArray(invite.monitoring_domains) ? invite.monitoring_domains : [],
+          package_price: invite.price ?? null,
+          currency: invite.currency ?? "INR",
+          trial_days: invite.trial_days ?? 0,
+        });
+      }
+
       const { data: centreId, error: tErr } = await admin.rpc("centre_id_for_token", { t: token });
       if (tErr) return json({ error: `Token lookup failed: ${tErr.message}` }, 500);
       if (!centreId) return json({ error: "This registration link is invalid or has expired." }, 403);
@@ -65,6 +90,7 @@ Deno.serve(async (req) => {
 
       return json({
         ok: true,
+        kind: "legacy",
         institution_name: c?.display_name ?? null,
         package_price: c?.package_price ?? null,
         trial_days: c?.trial_days ?? 0,
@@ -80,9 +106,19 @@ Deno.serve(async (req) => {
 
       if (!token) return json({ error: "Missing registration token." }, 400);
 
-      // Resolve the org from the token (SECURITY DEFINER fn — no centre exposure).
-      const { data: centreId, error: tErr } = await admin.rpc("centre_id_for_token", { t: token });
-      if (tErr) return json({ error: `Token lookup failed: ${tErr.message}` }, 500);
+      // Which kind of invitation is this? Resolved from the token server-side.
+      // A universal invite carries its own centre, and the package is re-read
+      // from the token again inside the transaction — the request body never
+      // names a package, so there is nothing for a client to swap.
+      const { data: invite } = await admin.rpc("service_invite_for_token", { t: token });
+      const inviteToken = invite ? token : null;
+
+      let centreId: string | null = invite?.centre_id ?? null;
+      if (!centreId) {
+        const { data: legacyCentre, error: tErr } = await admin.rpc("centre_id_for_token", { t: token });
+        if (tErr) return json({ error: `Token lookup failed: ${tErr.message}` }, 500);
+        centreId = legacyCentre ?? null;
+      }
       if (!centreId) return json({ error: "This registration link is invalid or has expired." }, 403);
 
       const patientName = str(patient.full_name);
@@ -125,6 +161,9 @@ Deno.serve(async (req) => {
           subject_name: str(consent.subject_name) || familyName,
           relation_to_patient: str(consent.relation_to_patient) || str(family.relation),
         },
+        // NULL for a legacy invitation -> the transaction takes exactly the
+        // path it always did and creates no subscription.
+        p_invite_token: inviteToken,
       });
       if (txErr) {
         await admin.auth.admin.deleteUser(familyId).catch(() => {});

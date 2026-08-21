@@ -241,24 +241,78 @@ export async function registerPatient(
   return data as { patient_name: string; family_email: string };
 }
 
-export type PublicOrgInfo = {
+/**
+ * What a registration link resolves to. The KIND is decided by the server from
+ * the token alone — the browser never asks for one or the other, and never
+ * learns the centre/service/package ids or the platform fee.
+ */
+type PublicInfoBase = {
   institution_name: string | null;
   package_price: number | null;
   trial_days: number;
 };
 
-/** Public: white-label institution + price for the token-linked onboarding page. */
+/** The original per-organisation recovery invitation (0007). */
+export type PublicLegacyOrgInfo = PublicInfoBase & { kind: "legacy" };
+
+/** A universal service-package invitation (0031). */
+export type PublicServiceInfo = PublicInfoBase & {
+  kind: "service";
+  service_name: string | null;
+  package_name: string | null;
+  positioning: string | null;
+  duration_days: number | null;
+  checkin_frequency: string | null;
+  review_frequency: string | null;
+  support_level: string | null;
+  includes: string[];
+  monitoring_domains: string[];
+  currency: string;
+};
+
+export type PublicOrgInfo = PublicLegacyOrgInfo | PublicServiceInfo;
+
+const strList = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim().length > 0) : [];
+
+/** Public: what this registration link is for. Authorised by the token itself. */
 export async function getPublicOrgInfo(token: string): Promise<PublicOrgInfo> {
   const { data, error } = await supabase.functions.invoke("registry", {
     body: { action: "org-info", token },
   });
   if (error) throw new Error(await edgeError(error));
   if (data?.error) throw new Error(data.error);
-  return {
+
+  const base = {
     institution_name: data?.institution_name ?? null,
     package_price: data?.package_price ?? null,
     trial_days: data?.trial_days ?? 0,
   };
+
+  if (data?.kind === "service") {
+    return {
+      ...base,
+      kind: "service",
+      service_name: data?.service_name ?? null,
+      package_name: data?.package_name ?? null,
+      positioning: data?.positioning ?? null,
+      duration_days: typeof data?.duration_days === "number" ? data.duration_days : null,
+      checkin_frequency: data?.checkin_frequency ?? null,
+      review_frequency: data?.review_frequency ?? null,
+      support_level: data?.support_level ?? null,
+      includes: strList(data?.includes),
+      monitoring_domains: strList(data?.monitoring_domains),
+      currency: data?.currency ?? "INR",
+    };
+  }
+  return { ...base, kind: "legacy" };
+}
+
+/** Staff: mint (or re-use) the registration link for one service package. */
+export async function createServiceInvite(packageId: string): Promise<string> {
+  const { data, error } = await supabase.rpc("create_service_invite", { p_package: packageId });
+  if (error) throw error;
+  return data as string;
 }
 
 export type NewCaregiver = { patient_id: string; full_name: string; email: string; password: string; phone?: string };

@@ -43,7 +43,7 @@ export async function getMyOrg(): Promise<OrgRow> {
 }
 
 export async function getPublicOrgInfo(): Promise<import("../lib/db").PublicOrgInfo> {
-  return { institution_name: "Sunrise Spine & Neuro Institute", package_price: 5999, trial_days: 7 };
+  return { kind: "legacy", institution_name: "Sunrise Spine & Neuro Institute", package_price: 5999, trial_days: 7 };
 }
 export async function registerPatient(): Promise<{ patient_name: string; family_email: string }> {
   return { patient_name: "Demo", family_email: "demo@example.com" };

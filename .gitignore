@@ -54,3 +54,5 @@ Thumbs.db
 
 # --- Local session/scratch state ---
 .claude/settings.local.json
+
+.vercel/

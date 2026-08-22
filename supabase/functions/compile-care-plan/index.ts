@@ -41,6 +41,7 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import {
   findMedicationSpecifics, toStoredActivity, validateCareActivities,
+  type CareActivity,
 } from "../_shared/careActivity.ts";
 
 const cors = {
@@ -208,6 +209,45 @@ function buildUserPrompt(input: {
   }
 
   return parts.join("\n\n");
+}
+
+/*
+ * Every programme keeps one way to record something nobody planned for.
+ *
+ * A plan made only of clock times cannot hold the thing that actually happened
+ * at 3pm. WHICH CLINICAL things a family should be able to record ad hoc is a
+ * judgement for the patient's own programme — the provider's configuration and
+ * the knowledge pack decide that, and Carelune must not invent "pain" or
+ * "bowel" for a specialty it knows nothing about. But the plain channel of
+ * "here is what happened, in my words" belongs to no specialty at all, and a
+ * programme without it leaves the centre "+" with Speak, Type and nowhere for
+ * either of them to land: the words route needs a text activity to record into,
+ * and one approved programme reached a real household with none.
+ *
+ * So this is appended when, and only when, nothing already serves the purpose.
+ */
+const FREE_TEXT_CAPTURE = {
+  key: "something_noticed",
+  activity_type: "observation",
+  domain: "general",
+  title: "Something I noticed",
+  instructions: "Anything you want your care team to know, in your own words.",
+  basis: "provider_default",
+  rationale: "Every programme keeps a way to record something that was not planned for.",
+  recorded_by: [],
+  capture_mode: "unscheduled",
+  schedule: { kind: "on_demand" },
+  input_schema: [{ key: "note", label: "What happened", type: "text", required: true }],
+};
+
+/** Does this activity already give the household somewhere to put plain words? */
+function isFreeTextCapture(a: CareActivity): boolean {
+  return (
+    a.captureMode !== "scheduled" &&
+    a.inputSchema.length === 1 &&
+    a.inputSchema[0].type === "text" &&
+    a.inputSchema[0].required
+  );
 }
 
 /** The provider's defaults, relabelled as what they are. The always-safe answer. */
@@ -429,6 +469,13 @@ Deno.serve(async (req) => {
         },
       }, 422);
     }
+    /* Guarantee the household somewhere to put plain words. See FREE_TEXT_CAPTURE. */
+    let storedActivities = finalCheck.activities.map(toStoredActivity);
+    if (finalCheck.activities.length > 0 && !finalCheck.activities.some(isFreeTextCapture)) {
+      const withCapture = validateCareActivities([...storedActivities, FREE_TEXT_CAPTURE]);
+      if (withCapture.ok) storedActivities = withCapture.activities.map(toStoredActivity);
+    }
+
     if (finalCheck.activities.length === 0) {
       return json({
         error: "There is nothing to compile: this service has no approved care activities and no patient facts to work from.",
@@ -463,7 +510,7 @@ Deno.serve(async (req) => {
          * and every recording sheet in that programme then came up with nothing
          * to record but the time of day.
          */
-        activities: finalCheck.activities.map(toStoredActivity),
+        activities: storedActivities,
         quick_records: compiled.quick_records,
         compiled_from: {
           compiler_version: COMPILER_VERSION,

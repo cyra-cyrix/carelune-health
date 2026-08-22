@@ -77,7 +77,16 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
       profile,
       loading,
       orgError,
-      platformName: org?.display_name?.trim() || "Carelune",
+      /*
+       * The institution's own name, never the platform's, wherever it has one.
+       *
+       * This used to read `display_name || "Carelune"`, so an organisation that
+       * had only set `name` showed its own identity on the public invite page
+       * (where the registry function already falls back) and "Carelune" in the
+       * top bar of the signed-in patient app. Same organisation, two answers.
+       * "Carelune" is the last resort, not the second one.
+       */
+      platformName: org?.display_name?.trim() || org?.name?.trim() || "Carelune",
       refresh: load,
     }),
     [org, profile, orgError, loading],

@@ -13,11 +13,16 @@
 --
 -- WHAT THIS DOES
 -- --------------
--- On approval, the superseded version's PENDING occurrences become 'cancelled'.
--- Nothing is deleted: an occurrence that was recorded, partly recorded, refused
--- or missed is untouched, because each of those is a fact about what happened.
--- A cancelled row says "this was expected, then the plan changed", which is
--- also a fact, and one a clinician may want to see.
+-- On approval, the superseded version's UNRESOLVED occurrences become
+-- 'cancelled' — the ones nobody ever acted on, whether they were still pending
+-- or had already lapsed into missed. Neither was answered, and both belong to a
+-- plan that no longer applies.
+--
+-- Nothing is deleted, and anything with a recorded outcome is untouched: an
+-- occurrence someone answered — done, partly, unable, skipped — is a fact about
+-- what happened and survives its programme version. A cancelled row says "this
+-- was expected, then the plan changed", which is also a fact a clinician may
+-- want to see.
 --
 -- HOW TO APPLY (once approved): Supabase dashboard -> SQL Editor -> paste -> Run.
 -- Re-runs safely (idempotent).
@@ -55,16 +60,16 @@ begin
    where subscription_id = v_row.subscription_id
      and status = 'approved';
 
-  -- Its unmet expectations stop being expected. Anything that was actually
-  -- recorded — done, partial, unable, skipped — or that was missed is left
-  -- exactly as it is, because each of those is a fact about what happened.
+  -- Its unanswered expectations stop being expected. Anything somebody actually
+  -- recorded against is left exactly as it is.
   update care_occurrences o
      set status = 'cancelled'
     from patient_programmes p
    where p.id = o.programme_id
      and p.subscription_id = v_row.subscription_id
      and p.id <> v_row.id
-     and o.status = 'pending';
+     and o.resolved_by_event_id is null
+     and o.status in ('pending', 'missed');
 
   update patient_programmes
      set status = 'approved', approved_by = auth.uid(), approved_at = now(),

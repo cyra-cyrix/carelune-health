@@ -109,3 +109,43 @@ describe("BrandingProvider resilience", () => {
     expect(screen.queryByRole("button", { name: "Team" })).toBeNull();
   });
 });
+
+describe("white-label naming", () => {
+  const org = (over: Record<string, unknown>) =>
+    ({ id: "c1", name: "Punarvas Hospital", display_name: null, status: "active", ...over }) as never;
+
+  const brandOf = async () => {
+    render(
+      <BrandingProvider>
+        <AdminNavProbe />
+      </BrandingProvider>,
+    );
+    return (await screen.findByTestId("brand")).textContent;
+  };
+
+  it("prefers the organisation's chosen display name", async () => {
+    vi.mocked(getMyProfile).mockResolvedValue(pmrAdmin);
+    vi.mocked(getMyOrg).mockResolvedValue(org({ display_name: "Punarvas Neuro" }));
+    expect(await brandOf()).toBe("Punarvas Neuro");
+  });
+
+  it("falls back to the organisation's name before the platform's", async () => {
+    // Found on staging: an organisation with only `name` set showed its own
+    // identity on the public invite page and "Carelune" in the patient app.
+    vi.mocked(getMyProfile).mockResolvedValue(pmrAdmin);
+    vi.mocked(getMyOrg).mockResolvedValue(org({ display_name: null }));
+    expect(await brandOf()).toBe("Punarvas Hospital");
+  });
+
+  it("ignores a blank display name rather than rendering an empty brand", async () => {
+    vi.mocked(getMyProfile).mockResolvedValue(pmrAdmin);
+    vi.mocked(getMyOrg).mockResolvedValue(org({ display_name: "   " }));
+    expect(await brandOf()).toBe("Punarvas Hospital");
+  });
+
+  it("uses the platform name only when there is no organisation at all", async () => {
+    vi.mocked(getMyProfile).mockResolvedValue(pmrAdmin);
+    vi.mocked(getMyOrg).mockResolvedValue(null);
+    expect(await brandOf()).toBe("Carelune");
+  });
+});

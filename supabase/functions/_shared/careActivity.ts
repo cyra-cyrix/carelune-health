@@ -12,6 +12,7 @@
 // accepts is a shape that can reach a patient unvalidated.
 // ===========================================================================
 
+/*
  * The universal care activity — the one shape every patient programme is made of.
  *
  * WHY THIS FILE EXISTS

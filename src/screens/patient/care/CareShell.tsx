@@ -30,7 +30,8 @@ import {
   type PatientProgrammeRow, type PatientRow, type SubscriptionRow,
 } from "../../../lib/db";
 import {
-  validateCareActivities, type CareActivity, type DisplayGroup,
+  quickRecordActivities, validateCareActivities,
+  type CareActivity, type DisplayGroup, type QuickRecord,
 } from "../../../domain/careActivityModel";
 import {
   acknowledgementFor, buildCareDay, summariseDays,
@@ -92,12 +93,14 @@ export default function CareShell({
 
   const byKey = useMemo(() => new Map(activities.map((a) => [a.key, a])), [activities]);
 
-  /* The quick actions this programme offers, in the order it names them. A
-     quick record may be a scheduled activity: recording one from the centre +
-     is an extra, unscheduled event. */
-  const quickRecords: CareActivity[] = useMemo(
-    () => live.quick_records.map((k) => byKey.get(k)).filter((a): a is CareActivity => !!a),
-    [live.quick_records, byKey],
+  /* What the centre "+" offers, derived from the approved programme itself:
+     every activity a clinician approved as capturable ad hoc, ordered and
+     labelled by the programme's own quick-record configuration where it states
+     one. Recording a scheduled activity this way is an extra, unscheduled
+     event, which is exactly what an unplanned blood pressure is. */
+  const quickRecords: QuickRecord[] = useMemo(
+    () => quickRecordActivities(activities, live.quick_records),
+    [activities, live.quick_records],
   );
 
   const reload = useCallback(async () => {

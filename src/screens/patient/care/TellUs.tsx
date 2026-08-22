@@ -17,7 +17,7 @@
  * specialty-aware: the programme decides what is offered.
  */
 import { useState } from "react";
-import type { CareActivity } from "../../../domain/careActivityModel";
+import type { CareActivity, QuickRecord } from "../../../domain/careActivityModel";
 import { structureCareNote, type StructuredNote } from "../../../lib/db";
 import { ActivityRecorder, CareIcon, SectionLabel, Sheet, type RecordSubmission } from "./careKit";
 import MedicineSheet from "./MedicineSheet";
@@ -28,7 +28,7 @@ const QUICK_VISIBLE = 6;
 export default function TellUsSheet({
   quickRecords, patientId, subscriptionId, onClose, onRecord, onRecordMedicines, onMessage,
 }: {
-  quickRecords: CareActivity[];
+  quickRecords: QuickRecord[];
   patientId: string;
   subscriptionId: string;
   onClose: () => void;
@@ -44,9 +44,11 @@ export default function TellUsSheet({
 
   /* The programme's own free-text activity, if it configures one: a single
      required text field. That is what "Something else" records into. */
-  const openTextActivity = quickRecords.find(
-    (a) => a.inputSchema.length === 1 && a.inputSchema[0].type === "text" && a.inputSchema[0].required,
-  );
+  const openTextActivity = quickRecords
+    .map((q) => q.activity)
+    .find(
+      (a) => a.inputSchema.length === 1 && a.inputSchema[0].type === "text" && a.inputSchema[0].required,
+    );
 
   /* ---- one chosen activity, recorded through the ordinary recorder ---- */
   if (chosen) {
@@ -116,14 +118,14 @@ export default function TellUsSheet({
         <>
           <div className="mt-7"><SectionLabel>Quick record</SectionLabel></div>
           <div className="mt-2 flex flex-wrap gap-2">
-            {visible.map((a) => (
+            {visible.map((q) => (
               <button
-                key={a.key}
+                key={q.activity.key}
                 type="button"
-                onClick={() => setChosen(a)}
+                onClick={() => setChosen(q.activity)}
                 className="tap min-h-[46px] rounded-xl bg-white px-4 text-[15px] font-medium text-ink ring-1 ring-ink/10 hover:bg-mist-100"
               >
-                {a.title}
+                {q.label}
               </button>
             ))}
             {hidden > 0 && (
@@ -174,7 +176,7 @@ function WordsEntry({
 }: {
   initial: string;
   subscriptionId: string;
-  quickRecords: CareActivity[];
+  quickRecords: QuickRecord[];
   openTextActivity: CareActivity | null;
   onPick: (a: CareActivity) => void;
   onCancel: () => void;
@@ -187,7 +189,7 @@ function WordsEntry({
   const [error, setError] = useState<string | null>(null);
 
   const candidateActivity = candidate
-    ? quickRecords.find((a) => a.key === candidate.activity_key) ?? null
+    ? quickRecords.find((q) => q.activity.key === candidate.activity_key)?.activity ?? null
     : null;
 
   const saveAsWords = async () => {

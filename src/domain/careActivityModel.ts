@@ -102,6 +102,53 @@ export type ActivitySchedule = {
 };
 
 /**
+ * When a person may record this activity.
+ *
+ * `schedule` says when an activity is EXPECTED. This says when it may be
+ * CAPTURED, and they are not the same question. A blood pressure is expected at
+ * 08:00 and may also be taken at 3pm because someone was worried; a bowel
+ * movement is expected never and is recorded whenever it happens; a medicine
+ * slot is expected at 08:00 and is recorded against that slot, because "morning
+ * medicines, again, at 3pm" is not a thing that happened.
+ *
+ *   `scheduled`    recorded only against its own occurrences
+ *   `unscheduled`  recorded whenever it happens; offered in the centre "+"
+ *   `both`         either
+ *
+ * This is DECLARED per activity so the centre "+" can be derived from the
+ * approved programme itself. Before it existed the "+" read one hand-written
+ * list of keys, and a programme that arrived with that list empty offered a
+ * caregiver no way to record anything at all.
+ */
+export const CAPTURE_MODES = ["scheduled", "unscheduled", "both"] as const;
+export type CaptureMode = (typeof CAPTURE_MODES)[number];
+
+/** How a capture mode reads to the clinician approving it. */
+export const CAPTURE_LABEL: Record<CaptureMode, string> = {
+  scheduled: "At its scheduled times only",
+  unscheduled: "Recorded whenever it happens",
+  both: "At its scheduled times, and whenever it happens",
+};
+
+/**
+ * What an activity's capture mode is when it does not declare one.
+ *
+ * Only ever a fallback — for programmes compiled before capture modes existed,
+ * and for a reply that omitted the field. The reasoning is structural, never
+ * clinical, and never looks at the domain: something with no clock can only be
+ * captured ad hoc; a medicine slot belongs to its slot; everything else can
+ * legitimately also happen off-schedule.
+ */
+export function defaultCaptureMode(
+  activityType: ActivityType,
+  schedule: ActivitySchedule | null,
+): CaptureMode {
+  if (!schedule || schedule.kind === "on_demand") return "unscheduled";
+  if (activityType === "dose") return "scheduled";
+  return "both";
+}
+
+/**
  * Where an activity came from, and therefore who is answerable for it.
  * Every proposed activity must state this — it is what makes a clinician's
  * review meaningful rather than ceremonial.
@@ -124,6 +171,8 @@ export type CareActivity = {
   title: string;
   instructions: string;
   schedule: ActivitySchedule | null;
+  /** When this may be recorded. See `CAPTURE_MODES`. */
+  captureMode: CaptureMode;
   inputSchema: ActivityField[];
   basis: ActivityBasis;
   /** Why this was proposed, in words a clinician reviewing it would recognise. */
@@ -399,6 +448,22 @@ export function validateCareActivities(raw: unknown): ActivityValidation {
     if (!key || !activityType || !title || !basis || seen.has(key)) return;
     seen.add(key);
 
+    /*
+     * Capture mode: declared where the compiler stated one, derived where it
+     * did not, and coerced where the two facts contradict each other.
+     *
+     * "scheduled" with no clock would make an activity unrecordable — nothing
+     * would ever expect it and the "+" would not offer it — so an activity
+     * without a clock is always capturable ad hoc, whatever it claimed.
+     */
+    const rawMode = entry.capture_mode ?? entry.captureMode;
+    let captureMode: CaptureMode = (CAPTURE_MODES as readonly string[]).includes(String(rawMode))
+      ? (rawMode as CaptureMode)
+      : defaultCaptureMode(activityType, schedule);
+    if (captureMode === "scheduled" && (!schedule || schedule.kind === "on_demand")) {
+      captureMode = "unscheduled";
+    }
+
     activities.push({
       key,
       activityType,
@@ -406,6 +471,7 @@ export function validateCareActivities(raw: unknown): ActivityValidation {
       title,
       instructions: str(entry.instructions, ACTIVITY_LIMITS.longText) ?? "",
       schedule,
+      captureMode,
       inputSchema,
       basis,
       rationale: str(entry.rationale, ACTIVITY_LIMITS.mediumText) ?? "",
@@ -446,6 +512,7 @@ export function toStoredActivity(a: CareActivity): Record<string, unknown> {
     basis: a.basis,
     rationale: a.rationale,
     recorded_by: a.recordedBy,
+    capture_mode: a.captureMode,
     input_schema: a.inputSchema.map((f) => ({
       key: f.key,
       label: f.label,
@@ -473,9 +540,74 @@ export function toStoredActivity(a: CareActivity): Record<string, unknown> {
   };
 }
 
-/** Is this activity recorded whenever it happens, rather than at a set time? */
+/** May this activity be recorded ad hoc, outside any expectation? */
 export function isQuickRecord(a: CareActivity): boolean {
-  return a.schedule === null || a.schedule.kind === "on_demand";
+  return a.captureMode !== "scheduled";
+}
+
+/* ----------------------------- the centre "+" ------------------------------ */
+
+/**
+ * One entry in a programme's quick-record configuration.
+ *
+ * A bare key is the ordinary form. The object form additionally overrides the
+ * wording on the button — for the case where the clinical title ("Monitor vital
+ * signs") is not what a family should be asked to tap ("Vitals").
+ */
+export type QuickRecordConfig = { key: string; label?: string };
+
+/** Read the stored `quick_records` array, which may hold keys or `{key,label}`. */
+export function parseQuickRecordConfig(raw: unknown): QuickRecordConfig[] {
+  if (!Array.isArray(raw)) return [];
+  const out: QuickRecordConfig[] = [];
+  const seen = new Set<string>();
+  for (const entry of raw) {
+    const key = typeof entry === "string" ? str(entry, 64) : isObj(entry) ? str(entry.key, 64) : null;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    const label = isObj(entry) ? str(entry.label, ACTIVITY_LIMITS.shortText) : null;
+    out.push(label ? { key, label } : { key });
+  }
+  return out;
+}
+
+/** An activity as the centre "+" offers it, with the wording to put on it. */
+export type QuickRecord = { activity: CareActivity; label: string };
+
+/**
+ * What the centre "+" offers, derived from the approved programme itself.
+ *
+ * THE PROGRAMME IS THE SOURCE, NOT THE LIST. Every activity a clinician
+ * approved as capturable ad hoc is offered. The configured `quick_records` no
+ * longer decides *whether* something appears — only the order it appears in and
+ * what the button says. That inversion is deliberate: a compiler that returns
+ * no configuration now costs a caregiver their preferred ordering, where before
+ * it cost them the ability to record anything at all.
+ *
+ * Nothing here knows a specialty. A neuro programme surfaces pain and bowel
+ * because it declared them capturable; a lactation programme surfaces nappies
+ * and feeds for exactly the same reason.
+ */
+export function quickRecordActivities(
+  activities: CareActivity[],
+  configured: unknown,
+): QuickRecord[] {
+  const config = parseQuickRecordConfig(configured);
+  const rank = new Map(config.map((c, i) => [c.key, i]));
+  const labels = new Map(config.filter((c) => c.label).map((c) => [c.key, c.label as string]));
+
+  const eligible = activities.filter(isQuickRecord);
+  // Configured first, in the order named. Then everything else the clinician
+  // approved as capturable, in programme order.
+  const named = eligible
+    .filter((a) => rank.has(a.key))
+    .sort((a, b) => (rank.get(a.key) as number) - (rank.get(b.key) as number));
+  const rest = eligible.filter((a) => !rank.has(a.key));
+
+  return [...named, ...rest].map((activity) => ({
+    activity,
+    label: labels.get(activity.key) ?? activity.title,
+  }));
 }
 
 /* --------------------------- medication integrity -------------------------- */

@@ -17,7 +17,7 @@ import {
   type MedicationRow, type PatientProgrammeRow, type SubscriptionRow,
 } from "../../lib/db";
 import {
-  BASIS_LABEL, validateCareActivities,
+  BASIS_LABEL, CAPTURE_LABEL, validateCareActivities,
   type ActivityBasis, type CareActivity,
 } from "../../domain/careActivityModel";
 import { countByBasis, evidenceFor, type CompiledFrom } from "../../domain/programmeEvidence";
@@ -374,8 +374,16 @@ function ReviewRow({
             <span className="mt-1 block text-[13px] leading-relaxed text-sage-600">{activity.instructions}</span>
           )}
 
-          {/* schedule */}
+          {/* schedule — when it is expected */}
           <span className="mt-1.5 block text-[12.5px] font-medium text-ink">{scheduleLabel(activity)}</span>
+
+          {/* capture — when the family may record it. Only worth saying next to a
+              clock; for an on-demand activity the schedule line already says it. */}
+          {activity.schedule?.kind === "clock" && (
+            <span className="mt-0.5 block text-[12.5px] text-sage-600">
+              {CAPTURE_LABEL[activity.captureMode]}
+            </span>
+          )}
 
           {/* source / evidence — omitted where it would only restate the
               basis chip above it */}

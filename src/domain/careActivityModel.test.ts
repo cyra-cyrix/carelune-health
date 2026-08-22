@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ACTIVITY_TYPES, displayGroupForHour, findMedicationSpecifics, isQuickRecord, parseClockTime,
+  quickRecordActivities,
   toStoredActivity, validateCareActivities,
 } from "./careActivityModel";
 import {
@@ -329,5 +330,129 @@ describe("the link to verified medication records", () => {
     const [a] = ok(one({ activity_type: "dose", medication_ids: ["med-1"] }));
     const [b] = ok([toStoredActivity(a)]);
     expect(b.medicationIds).toEqual(["med-1"]);
+  });
+});
+
+describe("capture mode — when a person may record something", () => {
+  it("derives a mode for a programme compiled before capture modes existed", () => {
+    // Nothing in the wild declares one yet, so the fallback has to be right.
+    const onDemand = ok(one({ schedule: { kind: "on_demand" } }))[0];
+    expect(onDemand.captureMode).toBe("unscheduled");
+
+    const medicines = ok(one({ activity_type: "dose" }))[0];
+    expect(medicines.captureMode).toBe("scheduled");
+
+    const bp = ok(one({ activity_type: "measurement", input_schema: [A_FIELD] }))[0];
+    expect(bp.captureMode).toBe("both");
+  });
+
+  it("keeps the mode the compiler declared", () => {
+    for (const mode of ["scheduled", "unscheduled", "both"]) {
+      const [a] = ok(one({ capture_mode: mode, activity_type: "task" }));
+      expect(a.captureMode, mode).toBe(mode);
+    }
+  });
+
+  it("refuses to leave an activity unrecordable", () => {
+    // "scheduled" means "only against its own occurrences". With no clock there
+    // are no occurrences, so that combination would hide the activity from the
+    // day AND from the centre "+", and nobody could ever record it.
+    const [a] = ok(one({ capture_mode: "scheduled", schedule: { kind: "on_demand" } }));
+    expect(a.captureMode).toBe("unscheduled");
+  });
+
+  it("carries the mode into and back out of storage", () => {
+    const [a] = ok(one({ capture_mode: "both", activity_type: "task" }));
+    const stored = toStoredActivity(a);
+    expect(stored.capture_mode).toBe("both");
+    expect(ok([stored])[0].captureMode).toBe("both");
+  });
+});
+
+describe("what the centre + offers", () => {
+  const programme = () => ok([
+    { ...one({ key: "morning_meds", activity_type: "dose" })[0] },
+    { ...one({ key: "blood_pressure", activity_type: "measurement", input_schema: [A_FIELD] })[0] },
+    { ...one({ key: "pain", activity_type: "symptom", input_schema: [A_FIELD], schedule: { kind: "on_demand" } })[0] },
+    { ...one({ key: "bowel", activity_type: "observation", input_schema: [A_FIELD], schedule: { kind: "on_demand" } })[0] },
+  ]);
+
+  it("offers every activity the clinician approved as recordable ad hoc", () => {
+    const offered = quickRecordActivities(programme(), []).map((q) => q.activity.key);
+    expect(offered).toContain("pain");
+    expect(offered).toContain("bowel");
+    expect(offered).toContain("blood_pressure");
+  });
+
+  it("never offers a medicine slot, which belongs to its own time", () => {
+    const offered = quickRecordActivities(programme(), []).map((q) => q.activity.key);
+    expect(offered).not.toContain("morning_meds");
+  });
+
+  it("still offers actions when the programme configured none", () => {
+    /*
+     * THE REGRESSION. A real approved programme arrived with quick_records: [],
+     * and the centre "+" — which read only that list — offered a caregiver
+     * Speak, Type and nothing else. No way to record a pain, a bowel movement
+     * or an unplanned blood pressure for a patient whose programme defined all
+     * three. The list may now decide order; it may not decide existence.
+     */
+    expect(quickRecordActivities(programme(), []).length).toBe(3);
+  });
+
+  it("puts the configured ones first, in the order configured", () => {
+    const offered = quickRecordActivities(programme(), ["bowel", "blood_pressure"]);
+    expect(offered.map((q) => q.activity.key)).toEqual(["bowel", "blood_pressure", "pain"]);
+  });
+
+  it("ignores a configured key the programme does not define", () => {
+    const offered = quickRecordActivities(programme(), ["nappy", "pain"]);
+    expect(offered.map((q) => q.activity.key)).toEqual(["pain", "blood_pressure", "bowel"]);
+  });
+
+  it("lets the configuration reword a button without touching the activity", () => {
+    // "Monitor vital signs" is what a clinician calls it. "Vitals" is what a
+    // family taps. The record still belongs to the activity's own title.
+    const offered = quickRecordActivities(programme(), [{ key: "blood_pressure", label: "Vitals" }]);
+    expect(offered[0].label).toBe("Vitals");
+    expect(offered[0].activity.title).toBe("Morning medicines");
+  });
+});
+
+describe("the shape that actually reached a patient", () => {
+  /*
+   * A real approved programme on staging stored input_schema as a map of name
+   * to type instead of an array of fields, because the compiler wrote the
+   * model's own JSON to the database rather than the validated rebuild of it.
+   * Every measurement, observation and intake in that programme then had zero
+   * fields, and the recording sheets came up with nothing but a timestamp.
+   */
+  const asStoredOnStaging = [{
+    key: "vital_signs_monitoring",
+    activity_type: "measurement",
+    domain: "monitoring",
+    title: "Monitor vital signs",
+    basis: "document",
+    input_schema: { heart_rate: "integer", temperature: "number", blood_pressure: "text" },
+    schedule: { kind: "clock", times: ["08:00"], days: "all", from_day: 1 },
+  }];
+
+  it("is refused rather than drawn as an empty form", () => {
+    expect(errorsOf(asStoredOnStaging)[0]).toMatch(/must state at least one field/);
+  });
+
+  it("survives the round trip once the fields are an array", () => {
+    const fixed = [{
+      ...asStoredOnStaging[0],
+      input_schema: [
+        { key: "systolic", label: "Systolic", type: "integer", required: true, unit: "mmHg", min: 50, max: 260 },
+        { key: "pulse", label: "Pulse", type: "integer", required: false, unit: "bpm" },
+      ],
+    }];
+    const stored = ok(fixed).map(toStoredActivity);
+    const reread = ok(stored);
+    expect(reread[0].inputSchema.map((f) => f.key)).toEqual(["systolic", "pulse"]);
+    expect(reread[0].inputSchema[0].unit).toBe("mmHg");
+    expect(reread[0].captureMode).toBe("both");
   });
 });

@@ -39,7 +39,9 @@
 // ---------------------------------------------------------------------------
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { findMedicationSpecifics, validateCareActivities } from "../_shared/careActivity.ts";
+import {
+  findMedicationSpecifics, toStoredActivity, validateCareActivities,
+} from "../_shared/careActivity.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -68,9 +70,25 @@ Each activity is one thing that happens at home. It declares:
   basis          document | provider_default | ai_suggested   (see below - this is mandatory)
   rationale      one short line a clinician would recognise, saying why it is proposed
   recorded_by    which household roles may record it, e.g. ["caregiver","family"]
-  input_schema   what is captured. Field types: number, integer, duration, time, choice, multi_choice, boolean, scale, text
+  input_schema   what is captured. ALWAYS AN ARRAY OF FIELD OBJECTS - never an object, never a map
+                 of name to type. Each field is:
+                   {"key":"systolic","label":"Systolic","type":"integer","required":true,"unit":"mmHg","min":50,"max":260}
+                 Field types: number, integer, duration, time, choice, multi_choice, boolean, scale, text
+                 A choice or multi_choice field must carry "options" with at least two entries.
+                 A scale field must carry "min" and "max".
+                 An activity of type measurement, observation, symptom or intake MUST declare at
+                 least one field. A recording activity with no fields asks a family for nothing but
+                 the time of day, which is useless to everyone.
   schedule       {"kind":"clock","times":["09:00"],"days":"all" or [1..7],"from_day":1,"through_day":null,"grace_minutes":120}
                  or {"kind":"on_demand"} for something recorded whenever it happens
+  capture_mode   WHEN A PERSON MAY RECORD IT - one of: scheduled | unscheduled | both. Mandatory.
+                   scheduled    only against its own scheduled times. Use for medicine slots: a
+                                morning dose is given in the morning, not "again, at 3pm".
+                   unscheduled  whenever it happens. Every on_demand activity is this.
+                   both         expected at set times AND legitimately recordable off-schedule -
+                                an extra blood pressure, an unplanned repositioning, a therapy
+                                session the family fitted in later. Most scheduled activities
+                                other than medicines are "both".
 
 CHOOSING THE TYPE
 The type is the INTERACTION, never the body system.
@@ -112,11 +130,19 @@ actually calls for. Fewer, well-chosen activities that will be done beat a compl
 will not. Prefer the provider's own configured activities where they fit; add suggestions only where
 the patient's recorded situation clearly calls for something the provider's defaults do not cover.
 
+WHAT HAPPENS BETWEEN THE SCHEDULED THINGS
+A plan made only of clock times cannot record the things that do not arrive on a clock. Whatever the
+programme is for, propose the on_demand activities that let this family record what actually happens
+between the scheduled items - the events, the observations and the symptoms that this patient's own
+situation makes likely. Which ones those are is a clinical judgement about THIS patient: read the
+records and the provider's programme and choose. A programme with no way at all to record an
+unscheduled event is not finished.
+
 QUICK RECORDS
-Also return "quick_records": the keys of the activities a family should be able to record at any
-moment, most useful first. Include your on_demand activities - pain, output, observations - and also
-any SCHEDULED activity a family might reasonably do off-schedule, such as an extra repositioning or
-an unplanned blood pressure. Six to ten is a good number.
+Also return "quick_records": the keys of the activities a family reaches for most, most useful first.
+This is an ORDERING, not a permission - every activity whose capture_mode is unscheduled or both can
+already be recorded at any moment. Put the handful that belong on the first screen at the front.
+Six to ten is a good number.
 
 Return ONLY valid JSON in exactly this shape:
 {"activities":[ ... ],"quick_records":["key","key"],"notes_for_clinician":["short line","short line"]}`;
@@ -357,11 +383,10 @@ Deno.serve(async (req) => {
         const keys = new Set(check.activities.map((a) => a.key));
         compiled = {
           activities: raw.activities,
-          // A quick record must be an activity that actually exists in this
-          // programme. It need NOT be on-demand: recording a scheduled activity
-          // from the centre "+" is an extra, unscheduled event, which is what a
-          // caregiver repositioning off-schedule or taking an unplanned blood
-          // pressure actually needs.
+          // An ORDERING of activities that exist in this programme. It is no
+          // longer what decides whether the centre "+" offers something —
+          // capture_mode is — so a model that returns none costs a caregiver
+          // their preferred order, not their ability to record anything.
           quick_records: (Array.isArray(raw.quick_records) ? raw.quick_records : [])
             .map((k: unknown) => String(k))
             .filter((k: string) => keys.has(k)),
@@ -426,7 +451,19 @@ Deno.serve(async (req) => {
         subscription_id: sub.id,
         centre_id: patient.centre_id,
         version: nextVersion,
-        activities: compiled.activities,
+        /*
+         * THE VALIDATED, REBUILT ACTIVITIES — never the model's own JSON.
+         *
+         * The validator's whole purpose is to rebuild each activity from known
+         * keys only, so nothing outside the vocabulary survives. Storing
+         * `compiled.activities` here instead threw that away at the last step
+         * and let whatever shape the reply happened to have reach the database.
+         * It wrote one programme's `input_schema` as {"heart_rate":"integer"}
+         * rather than an array of fields; the row still validated at the time,
+         * and every recording sheet in that programme then came up with nothing
+         * to record but the time of day.
+         */
+        activities: finalCheck.activities.map(toStoredActivity),
         quick_records: compiled.quick_records,
         compiled_from: {
           compiler_version: COMPILER_VERSION,

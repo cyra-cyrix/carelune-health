@@ -33,6 +33,7 @@ import {
   type PatientPlanRow,
   type SubscriptionRow,
 } from "../../lib/db";
+import HomeCareActivity from "../provider/HomeCareActivity";
 import LatestCheckin from "../provider/LatestCheckin";
 import ProgrammeReview from "../provider/ProgrammeReview";
 
@@ -134,6 +135,10 @@ export default function PatientProgress({ patientId, onBack }: { patientId: stri
                   affordance only for a patient enrolled in a service; a legacy
                   recovery patient sees the same cockpit they always did. */}
               <ProgrammeReview patientId={patientId} />
+              {/* What the household recorded against that programme. Renders
+                  nothing for a patient with no care events, so a legacy
+                  recovery patient's cockpit is unchanged. */}
+              <HomeCareActivity patientId={patientId} />
               <Reveal index={0}><ChangedSinceYesterday readings={readings} approvals={approvals} updates={updates} doneToday={doneToday} tasks={tasks} /></Reveal>
               <Reveal index={1}><VitalsPanel readings={readings} /></Reveal>
             </div>

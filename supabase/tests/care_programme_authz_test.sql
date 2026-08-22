@@ -21,7 +21,7 @@
 --   * a legacy recovery subscription is unaffected throughout.
 -- ============================================================================
 begin;
-select plan(39);
+select plan(45);
 
 create or replace function _as(uid text, urole text default 'authenticated') returns void
 language plpgsql as $$ begin
@@ -305,6 +305,34 @@ select throws_ok(
       'pain', '{}'::jsonb, null, 'recorded', now() + interval '2 days')$$,
   'An event cannot be recorded in the future',
   'an event cannot be dated into the future');
+
+-- ==========================================================================
+-- 7b. Capture mode is enforced, not merely observed by the UI.
+-- ==========================================================================
+select is(
+  effective_capture_mode('{"activity_type":"dose","schedule":{"kind":"clock","times":["08:00"]}}'::jsonb),
+  'scheduled', 'a medicine round with a clock defaults to its scheduled times only');
+select is(
+  effective_capture_mode('{"activity_type":"measurement","schedule":{"kind":"clock","times":["08:00"]}}'::jsonb),
+  'both', 'a scheduled measurement may also be recorded off-schedule');
+select is(
+  effective_capture_mode('{"activity_type":"symptom","schedule":null}'::jsonb),
+  'unscheduled', 'something with no clock is recorded whenever it happens');
+select is(
+  effective_capture_mode('{"activity_type":"task","capture_mode":"scheduled","schedule":null}'::jsonb),
+  'unscheduled', 'a scheduled-only activity with no clock would be unrecordable, so it is read as ad hoc');
+select is(
+  effective_capture_mode('{"activity_type":"dose","capture_mode":"both","schedule":{"kind":"clock","times":["08:00"]}}'::jsonb),
+  'both', 'a declared mode wins over the default');
+
+-- The client never offers a medicine round in the centre "+", but the RPC is
+-- reachable without it. Refusing here is what stops a dose being recorded twice.
+select throws_ok(
+  $$select record_care_event(
+      (select id from subscriptions where patient_id='da000000-0000-0000-0000-0000000000a1'),
+      'morning_meds', '{}'::jsonb, null, 'done', null, null, 'quick')$$,
+  'Morning medicines is recorded against its scheduled time, not on its own',
+  'a scheduled-only activity cannot be recorded without an expectation');
 
 -- ==========================================================================
 -- 8. The legacy recovery patient is untouched throughout.

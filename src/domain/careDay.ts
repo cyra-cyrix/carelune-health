@@ -20,7 +20,7 @@
  * disagree about which part of the day something belongs to.
  */
 import {
-  DISPLAY_GROUPS, DISPLAY_GROUP_LABEL, displayGroupForHour,
+  CAPTURE_MODES, DISPLAY_GROUPS, DISPLAY_GROUP_LABEL, defaultCaptureMode, displayGroupForHour,
   type CareActivity, type DisplayGroup,
 } from "./careActivityModel";
 
@@ -166,13 +166,20 @@ function asActivity(snapshot: unknown): CareActivity | null {
   if (typeof s.key !== "string") return null;
   // The snapshot is already validated configuration — it was validated before it
   // was ever stored. Reading it back is a cast, not a second validation pass.
+  const activityType = String(s.activity_type ?? "task") as CareActivity["activityType"];
   return {
     key: s.key,
-    activityType: String(s.activity_type ?? "task") as CareActivity["activityType"],
+    activityType,
     domain: typeof s.domain === "string" ? s.domain : "",
     title: typeof s.title === "string" ? s.title : s.key,
     instructions: typeof s.instructions === "string" ? s.instructions : "",
     schedule: null,
+    // A snapshot is of one occurrence, so no schedule is carried. The capture
+    // mode is read as stored, and derived only for snapshots frozen before
+    // capture modes existed.
+    captureMode: (CAPTURE_MODES as readonly string[]).includes(String(s.capture_mode))
+      ? (s.capture_mode as CareActivity["captureMode"])
+      : defaultCaptureMode(activityType, null),
     inputSchema: Array.isArray(s.input_schema)
       ? (s.input_schema as CareActivity["inputSchema"])
       : [],

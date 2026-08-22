@@ -476,6 +476,51 @@ describe("the measurement recorder", () => {
 });
 
 describe("the centre + reaches the same engine", () => {
+  it("still offers the programme's actions when it configured no quick list", async () => {
+    /*
+     * THE REPORTED DEFECT, at the screen. A real approved programme on staging
+     * carried quick_records: [], and the "+" — which read only that list —
+     * offered Speak, Type and nothing else. The caregiver of a patient whose
+     * programme defined pain, bowel and blood pressure could record none of
+     * them. The configured list may order the buttons; it may not be the only
+     * thing that creates them.
+     */
+    renderShell(NEURO_ACTIVITIES, []);
+    await screen.findByText("Nothing scheduled today");
+    fireEvent.click(screen.getByRole("button", { name: /Tell us/ }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Quick record")).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: /^More \(/ }));
+    for (const label of ["Pain", "Bowel movement", "Blood pressure", "Reposition"]) {
+      expect(within(dialog).getByRole("button", { name: label }), label).toBeTruthy();
+    }
+  });
+
+  it("derives a different programme's actions through the very same code", async () => {
+    // Same component, same derivation, no specialty anywhere in it. Lactation
+    // offers what Lactation configured, and nothing neurological appears.
+    renderShell(LACTATION_ACTIVITIES, []);
+    await screen.findByText("Nothing scheduled today");
+    fireEvent.click(screen.getByRole("button", { name: /Tell us/ }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("button", { name: "Nappy" })).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: /^More \(/ }));
+    expect(await screen.findByRole("button", { name: "How I am feeling" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Bowel movement" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reposition" })).toBeNull();
+  });
+
+  it("never offers a medicine slot as a quick record", async () => {
+    // Medicines are recorded against the round they belong to. "Morning
+    // medicines, again, at 3pm" is not something that happened.
+    renderShell(NEURO_ACTIVITIES, []);
+    await screen.findByText("Nothing scheduled today");
+    fireEvent.click(screen.getByRole("button", { name: /Tell us/ }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: /^More \(/ }));
+    expect(within(dialog).queryByRole("button", { name: /medicines/i })).toBeNull();
+  });
+
   it("opens the proper measurement recorder for a SCHEDULED activity, as an unscheduled event", async () => {
     renderShell(NEURO_ACTIVITIES, NEURO_QUICK_RECORDS);
     await screen.findByText("Nothing scheduled today");

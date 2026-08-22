@@ -34,6 +34,13 @@ export type CompiledFrom = {
 export type ActivityEvidence = {
   /** Where it came from, named. */
   source: string;
+  /**
+   * True when `source` names a PARTICULAR thing — this document, this service,
+   * this pack version. False when the specific source was not recorded and
+   * `source` only restates the kind, which the basis label already says. The UI
+   * uses this to avoid printing the same sentence twice.
+   */
+  specific: boolean;
   /** Why it was proposed, in the compiler's own words. May be empty. */
   rationale: string;
   /** True where a clinician is being asked to accept something proposed. */
@@ -57,6 +64,7 @@ export function evidenceFor(activity: CareActivity, from: CompiledFrom | null | 
     const doc = clean(f.facts_document_label);
     return {
       source: doc ? `This patient's records — ${doc}` : "This patient's own records",
+      specific: !!doc,
       rationale,
       needsDecision: false,
     };
@@ -66,6 +74,7 @@ export function evidenceFor(activity: CareActivity, from: CompiledFrom | null | 
     const svc = clean(f.service_name);
     return {
       source: svc ? `Approved programme — ${svc}` : "The provider's approved programme",
+      specific: !!svc,
       rationale,
       needsDecision: false,
     };
@@ -77,7 +86,10 @@ export function evidenceFor(activity: CareActivity, from: CompiledFrom | null | 
   const domain = clean(f.clinical_domain);
   const base = pack ? `${pack}${version}` : domain ? `${domain} knowledge` : "clinical domain knowledge";
   return {
+    // Always shown, specific or not: "not in this patient's records" is the
+    // fact a reviewer needs, and it is true either way.
     source: `Candidate from ${base} — not in this patient's records`,
+    specific: true,
     rationale,
     needsDecision: true,
   };

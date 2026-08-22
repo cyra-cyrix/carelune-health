@@ -42,6 +42,16 @@ describe("what the clinician is shown as the source", () => {
     expect(evidenceFor(act("provider_default"), from).needsDecision).toBe(false);
   });
 
+  it("marks a named source as specific and a fallback as not", () => {
+    expect(evidenceFor(act("document"), from).specific).toBe(true);
+    expect(evidenceFor(act("provider_default"), from).specific).toBe(true);
+    // Generic fallbacks only restate the basis label, so the UI can drop them.
+    expect(evidenceFor(act("document"), {}).specific).toBe(false);
+    expect(evidenceFor(act("provider_default"), {}).specific).toBe(false);
+    // A candidate always says it is not in the records, specific or not.
+    expect(evidenceFor(act("ai_suggested"), {}).specific).toBe(true);
+  });
+
   it("names the kind of source rather than inventing a specific one", () => {
     expect(evidenceFor(act("document"), {}).source).toBe("This patient's own records");
     expect(evidenceFor(act("provider_default"), {}).source).toBe("The provider's approved programme");

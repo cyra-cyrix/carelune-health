@@ -319,12 +319,19 @@ function ReviewRow({
           {/* schedule */}
           <span className="mt-1.5 block text-[12.5px] font-medium text-ink">{scheduleLabel(activity)}</span>
 
-          {/* source / evidence */}
-          <span className="mt-1 block text-[12px] leading-relaxed text-sage-500">
-            <span className="font-semibold uppercase tracking-[0.08em] text-sage-400">Source </span>
-            {evidence.source}
-            {evidence.rationale ? <span className="block">{evidence.rationale}</span> : null}
-          </span>
+          {/* source / evidence — omitted where it would only restate the
+              basis chip above it */}
+          {(evidence.specific || evidence.rationale) && (
+            <span className="mt-1 block text-[12px] leading-relaxed text-sage-500">
+              {evidence.specific && (
+                <>
+                  <span className="font-semibold uppercase tracking-[0.08em] text-sage-400">Source </span>
+                  {evidence.source}
+                </>
+              )}
+              {evidence.rationale ? <span className="block">{evidence.rationale}</span> : null}
+            </span>
+          )}
         </span>
       </label>
     </li>
@@ -356,7 +363,9 @@ function ApprovedSummary({ programme }: { programme: PatientProgrammeRow }) {
                   {BASIS_LABEL[a.basis]}
                 </span>
               </span>
-              <span className="mt-0.5 block text-[12px] text-sage-500">{evidence.source}</span>
+              {evidence.specific && (
+                <span className="mt-0.5 block text-[12px] text-sage-500">{evidence.source}</span>
+              )}
             </li>
           );
         })}

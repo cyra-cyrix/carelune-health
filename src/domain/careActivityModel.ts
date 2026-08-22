@@ -437,6 +437,64 @@ export function isQuickRecord(a: CareActivity): boolean {
   return a.schedule === null || a.schedule.kind === "on_demand";
 }
 
+/* --------------------------- medication integrity -------------------------- */
+
+/*
+ * A `dose` activity schedules WHEN medicines are given. It never says WHICH.
+ *
+ * Carelune has exactly one medication store — the `medications` records a
+ * clinician maintains — and the universal activity model deliberately has no
+ * field for a drug name, a strength, a route or a frequency. A dose activity is
+ * a timing slot ("Morning medicines") plus administration guidance ("with
+ * water, after breakfast"); the drugs themselves are read from the medication
+ * record, never copied into the programme.
+ *
+ * The compiler is told this in its prompt. A prompt is guidance, not a
+ * guarantee, so this is the guarantee: a quantity written into a dose
+ * activity's patient-facing wording is refused before anything is stored.
+ *
+ * It looks only for QUANTITIES, not for drug names, and that is deliberate.
+ * A quantity is decidable — "500 mg", "2 tablets", "5 ml" — and matching
+ * against a list of drug names would be a guess that fails open on the first
+ * unfamiliar one. Refusing every stated amount removes the whole class:
+ * without an amount, an invented medicine instruction cannot be acted on.
+ */
+const DOSE_QUANTITY =
+  /\b\d+(?:\.\d+)?\s*(?:mg|mcg|µg|ug|g|ml|mL|l|iu|units?|tabs?|tablets?|caps?|capsules?|puffs?|drops?|sachets?|amps?|ampoules?|vials?)\b/i;
+/** "1-0-1", "0-0-1", "1/2 tablet" — the same claim written another way. */
+const DOSE_PATTERN = /\b\d\s*[-–]\s*\d\s*[-–]\s*\d(?:\s*[-–]\s*\d)?\b|\b\d+\s*\/\s*\d+\s*(?:tab|cap)/i;
+
+export type MedicationIntegrityProblem = {
+  key: string;
+  field: "title" | "instructions" | "input_schema";
+  found: string;
+};
+
+/**
+ * Every place a compiled programme states a medication amount.
+ *
+ * Empty means the programme schedules medicine times without prescribing
+ * anything — which is the only shape Carelune stores.
+ */
+export function findMedicationSpecifics(activities: CareActivity[]): MedicationIntegrityProblem[] {
+  const problems: MedicationIntegrityProblem[] = [];
+  for (const a of activities) {
+    if (a.activityType !== "dose") continue;
+    const check = (text: string, field: MedicationIntegrityProblem["field"]) => {
+      const hit = text.match(DOSE_QUANTITY) ?? text.match(DOSE_PATTERN);
+      if (hit) problems.push({ key: a.key, field, found: hit[0].trim() });
+    };
+    check(a.title, "title");
+    check(a.instructions, "instructions");
+    // Field labels and choices are patient-facing too.
+    const fieldText = a.inputSchema
+      .flatMap((f) => [f.label, f.placeholder ?? "", ...(f.options ?? [])])
+      .join(" · ");
+    check(fieldText, "input_schema");
+  }
+  return problems;
+}
+
 /* ------------------------------ display groups ----------------------------- */
 
 /**

@@ -19,6 +19,7 @@ import {
   BASIS_LABEL, validateCareActivities,
   type ActivityBasis, type CareActivity,
 } from "../../domain/careActivityModel";
+import { countByBasis, evidenceFor, type CompiledFrom } from "../../domain/programmeEvidence";
 import { scheduleLabel } from "../patient/care/CareShell";
 import {
   Card, ErrorNote, GhostButton, PrimaryButton, SectionHeader, Skeleton,
@@ -110,9 +111,9 @@ export default function ProgrammeReview({ patientId }: { patientId: string }) {
 
   if (rows === null) return <Card><Skeleton className="h-28" /></Card>;
 
-  const compiledFrom = (draft?.compiled_from ?? {}) as Record<string, unknown>;
-  const notes = Array.isArray(compiledFrom.notes_for_clinician)
-    ? (compiledFrom.notes_for_clinician as string[]) : [];
+  const compiledFrom = (draft?.compiled_from ?? {}) as CompiledFrom;
+  const notes = Array.isArray(compiledFrom.notes_for_clinician) ? compiledFrom.notes_for_clinician : [];
+  const counts = countByBasis(draftActivities);
 
   return (
     <Card>
@@ -150,6 +151,15 @@ export default function ProgrammeReview({ patientId }: { patientId: string }) {
             want; what you approve is what the family will follow.
           </p>
 
+          {/* What kind of thing is being asked for. A draft that is entirely
+              records and provider defaults is a different review from one
+              carrying candidates nobody has agreed to. */}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <BasisCount tone={BASIS_TONE.document} n={counts.document} label="from this patient's records" />
+            <BasisCount tone={BASIS_TONE.provider_default} n={counts.provider_default} label="from the approved programme" />
+            <BasisCount tone={BASIS_TONE.ai_suggested} n={counts.ai_suggested} label="candidates needing your decision" />
+          </div>
+
           {compiledFrom.clinical_domain != null && (
             <p className="mt-2 text-[12px] text-sage-500">
               Compiled from {String(compiledFrom.clinical_domain)}
@@ -177,45 +187,22 @@ export default function ProgrammeReview({ patientId }: { patientId: string }) {
                 <div key={g.title}>
                   <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-sage-500">{g.title}</p>
                   <ul className="mt-1.5 space-y-1.5">
-                    {items.map((a) => {
-                      const on = !dropped.has(a.key);
-                      return (
-                        <li key={a.key} className="rounded-xl bg-white p-3 ring-1 ring-ink/[0.05]">
-                          <label className="flex items-start gap-3">
-                            <input
-                              type="checkbox"
-                              checked={on}
-                              onChange={() =>
-                                setDropped((prev) => {
-                                  const next = new Set(prev);
-                                  if (on) next.add(a.key);
-                                  else next.delete(a.key);
-                                  return next;
-                                })
-                              }
-                              className="mt-1 h-5 w-5 shrink-0 rounded border-line text-sky-600"
-                            />
-                            <span className="min-w-0 flex-1">
-                              <span className="flex flex-wrap items-center gap-2">
-                                <span className={`text-[14.5px] font-semibold ${on ? "text-ink" : "text-sage-400 line-through"}`}>
-                                  {a.title}
-                                </span>
-                                <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${BASIS_TONE[a.basis]}`}>
-                                  {BASIS_LABEL[a.basis]}
-                                </span>
-                              </span>
-                              {a.instructions && (
-                                <span className="mt-1 block text-[13px] leading-relaxed text-sage-600">{a.instructions}</span>
-                              )}
-                              <span className="mt-1 block text-[12px] text-sage-500">
-                                {scheduleLabel(a)}
-                                {a.rationale ? ` · ${a.rationale}` : ""}
-                              </span>
-                            </span>
-                          </label>
-                        </li>
-                      );
-                    })}
+                    {items.map((a) => (
+                      <ReviewRow
+                        key={a.key}
+                        activity={a}
+                        compiledFrom={compiledFrom}
+                        included={!dropped.has(a.key)}
+                        onToggle={() =>
+                          setDropped((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(a.key)) next.delete(a.key);
+                            else next.add(a.key);
+                            return next;
+                          })
+                        }
+                      />
+                    ))}
                   </ul>
                 </div>
               );
@@ -279,6 +266,71 @@ export default function ProgrammeReview({ patientId }: { patientId: string }) {
   );
 }
 
+function BasisCount({ tone, n, label }: { tone: string; n: number; label: string }) {
+  if (n === 0) return null;
+  return (
+    <span className={`rounded-full px-2.5 py-1 text-[12px] font-semibold ${tone}`}>
+      {n} {label}
+    </span>
+  );
+}
+
+/**
+ * One activity, as a clinician reviews it.
+ *
+ * Five things, in the order a reviewer needs them: what it is, when it happens,
+ * what kind of thing it is, where it came from, and whether to keep it.
+ */
+function ReviewRow({
+  activity, compiledFrom, included, onToggle,
+}: {
+  activity: CareActivity;
+  compiledFrom: CompiledFrom;
+  included: boolean;
+  onToggle: () => void;
+}) {
+  const evidence = evidenceFor(activity, compiledFrom);
+  return (
+    <li className={`rounded-xl bg-white p-3 ring-1 ${evidence.needsDecision ? "ring-warn-500/30" : "ring-ink/[0.05]"}`}>
+      <label className="flex items-start gap-3">
+        <input
+          type="checkbox"
+          checked={included}
+          onChange={onToggle}
+          aria-label={`Include ${activity.title}`}
+          className="mt-1 h-5 w-5 shrink-0 rounded border-line text-sky-600"
+        />
+        <span className="min-w-0 flex-1">
+          {/* activity */}
+          <span className="flex flex-wrap items-center gap-2">
+            <span className={`text-[14.5px] font-semibold ${included ? "text-ink" : "text-sage-400 line-through"}`}>
+              {activity.title}
+            </span>
+            {/* basis */}
+            <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${BASIS_TONE[activity.basis]}`}>
+              {BASIS_LABEL[activity.basis]}
+            </span>
+          </span>
+
+          {activity.instructions && (
+            <span className="mt-1 block text-[13px] leading-relaxed text-sage-600">{activity.instructions}</span>
+          )}
+
+          {/* schedule */}
+          <span className="mt-1.5 block text-[12.5px] font-medium text-ink">{scheduleLabel(activity)}</span>
+
+          {/* source / evidence */}
+          <span className="mt-1 block text-[12px] leading-relaxed text-sage-500">
+            <span className="font-semibold uppercase tracking-[0.08em] text-sage-400">Source </span>
+            {evidence.source}
+            {evidence.rationale ? <span className="block">{evidence.rationale}</span> : null}
+          </span>
+        </span>
+      </label>
+    </li>
+  );
+}
+
 function ApprovedSummary({ programme }: { programme: PatientProgrammeRow }) {
   const result = validateCareActivities(programme.activities);
   const activities = result.ok ? result.activities : [];
@@ -292,16 +344,22 @@ function ApprovedSummary({ programme }: { programme: PatientProgrammeRow }) {
       {programme.approval_note && (
         <p className="mt-1 text-[13px] italic text-sage-600">&ldquo;{programme.approval_note}&rdquo;</p>
       )}
-      <ul className="mt-3 space-y-1.5">
-        {activities.map((a) => (
-          <li key={a.key} className="flex flex-wrap items-baseline gap-x-2 text-[13.5px]">
-            <span className="font-medium text-ink">{a.title}</span>
-            <span className="text-[12px] text-sage-500">{scheduleLabel(a)}</span>
-            <span className={`rounded-full px-1.5 py-0.5 text-[10.5px] font-semibold ${BASIS_TONE[a.basis]}`}>
-              {BASIS_LABEL[a.basis]}
-            </span>
-          </li>
-        ))}
+      <ul className="mt-3 space-y-2">
+        {activities.map((a) => {
+          const evidence = evidenceFor(a, programme.compiled_from as CompiledFrom);
+          return (
+            <li key={a.key} className="text-[13.5px]">
+              <span className="flex flex-wrap items-baseline gap-x-2">
+                <span className="font-medium text-ink">{a.title}</span>
+                <span className="text-[12px] text-sage-500">{scheduleLabel(a)}</span>
+                <span className={`rounded-full px-1.5 py-0.5 text-[10.5px] font-semibold ${BASIS_TONE[a.basis]}`}>
+                  {BASIS_LABEL[a.basis]}
+                </span>
+              </span>
+              <span className="mt-0.5 block text-[12px] text-sage-500">{evidence.source}</span>
+            </li>
+          );
+        })}
       </ul>
     </>
   );

@@ -138,7 +138,7 @@ function NurseHero({
       : { tone: "recovery", label: "No open messages" };
 
   const condition = plan?.content?.clinical_summary?.trim()
-    || (patient.diagnosis.length ? patient.diagnosis.join(", ") : "Recovery at home");
+    || (patient.diagnosis.length ? patient.diagnosis.join(", ") : "Continuing care at home");
 
   const bpSys = readings.map((r) => num((r.bp ?? "").split("/")[0])).filter(Number.isFinite);
   const improving = bpSys.length >= 2 ? bpSys[bpSys.length - 1] < bpSys[0] : null;
@@ -323,7 +323,7 @@ function RaiseQuery({ patientId, myName }: { patientId: string; myName: string |
 
 const SRC: Record<UpdateRow["source"], { label: string; tone: Tone }> = {
   caregiver: { label: "From home", tone: "calm" },
-  nurse: { label: "Rehab nurse", tone: "recovery" },
+  nurse: { label: "Nurse", tone: "recovery" },
   duty_doctor: { label: "Duty doctor", tone: "neutral" },
   pmr: { label: "Lead clinician", tone: "attention" },
 };

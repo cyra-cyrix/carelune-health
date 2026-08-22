@@ -39,7 +39,7 @@
 // ---------------------------------------------------------------------------
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { validateCareActivities } from "../_shared/careActivity.ts";
+import { findMedicationSpecifics, validateCareActivities } from "../_shared/careActivity.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -257,6 +257,7 @@ Deno.serve(async (req) => {
     let knowledge: Record<string, unknown> = {};
     let knowledgePackId: string | null = null;
     let knowledgePackVersion: number | null = null;
+    let knowledgePackTitle: string | null = null;
 
     if (sub.centre_service_id) {
       const { data: svc } = await admin
@@ -274,8 +275,8 @@ Deno.serve(async (req) => {
       }
       // The pack the service names, else the domain's newest published one.
       const packQuery = svc?.knowledge_pack_id
-        ? admin.from("knowledge_packs").select("id, version, knowledge").eq("id", svc.knowledge_pack_id)
-        : admin.from("knowledge_packs").select("id, version, knowledge")
+        ? admin.from("knowledge_packs").select("id, version, title, knowledge").eq("id", svc.knowledge_pack_id)
+        : admin.from("knowledge_packs").select("id, version, title, knowledge")
             .eq("clinical_domain_id", svc?.clinical_domain_id ?? "")
             .eq("status", "published").order("version", { ascending: false }).limit(1);
       const { data: packs } = await packQuery;
@@ -283,6 +284,7 @@ Deno.serve(async (req) => {
       if (pack) {
         knowledgePackId = pack.id as string;
         knowledgePackVersion = pack.version as number;
+        knowledgePackTitle = (pack.title as string | null) ?? null;
         knowledge = (pack.knowledge ?? {}) as Record<string, unknown>;
       }
     }
@@ -294,6 +296,16 @@ Deno.serve(async (req) => {
       .eq("patient_id", patientId)
       .maybeSingle();
     const facts = (factsRow?.facts ?? null) as Record<string, unknown> | null;
+
+    // The document those facts were read out of, named so a reviewing clinician
+    // can go and check the source rather than take the compiler's word for it.
+    let factsDocumentLabel: string | null = null;
+    if (factsRow?.source_document_id) {
+      const { data: doc } = await admin
+        .from("patient_documents").select("title, doc_type")
+        .eq("id", factsRow.source_document_id).maybeSingle();
+      factsDocumentLabel = doc ? (doc.title as string) || (doc.doc_type as string) : null;
+    }
 
     const providerActivities = Array.isArray(sub.activity_snapshot) ? sub.activity_snapshot : [];
 
@@ -374,6 +386,21 @@ Deno.serve(async (req) => {
     if (!finalCheck.ok) {
       return json({ error: "The compiled programme did not validate.", validation: { errors: finalCheck.errors } }, 422);
     }
+
+    // MEDICATION INTEGRITY. A dose activity schedules WHEN medicines are given,
+    // never WHICH or HOW MUCH — those live in the medication record a clinician
+    // maintains, and are read from there. The prompt says so; this enforces it,
+    // because a prompt is guidance and this is a guarantee. A stated amount is
+    // refused before anything is stored, whatever produced it.
+    const medProblems = findMedicationSpecifics(finalCheck.activities);
+    if (medProblems.length > 0) {
+      return json({
+        error: "The compiled programme stated a medication amount. Carelune schedules when medicines are given; the medicines themselves come from this patient's medication record.",
+        validation: {
+          errors: medProblems.map((p) => `${p.key}.${p.field} states "${p.found}"`),
+        },
+      }, 422);
+    }
     if (finalCheck.activities.length === 0) {
       return json({
         error: "There is nothing to compile: this service has no approved care activities and no patient facts to work from.",
@@ -404,7 +431,10 @@ Deno.serve(async (req) => {
           care_intent: careIntent || null,
           knowledge_pack_id: knowledgePackId,
           knowledge_pack_version: knowledgePackVersion,
+          knowledge_pack_title: knowledgePackTitle,
+          service_name: serviceName || null,
           facts_document_id: factsRow?.source_document_id ?? null,
+          facts_document_label: factsDocumentLabel,
           had_patient_facts: !!facts,
           provider_default_count: providerActivities.length,
           notes_for_clinician: notes,

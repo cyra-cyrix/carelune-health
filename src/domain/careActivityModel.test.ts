@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  ACTIVITY_TYPES, displayGroupForHour, isQuickRecord, parseClockTime,
+  ACTIVITY_TYPES, displayGroupForHour, findMedicationSpecifics, isQuickRecord, parseClockTime,
   toStoredActivity, validateCareActivities,
 } from "./careActivityModel";
 import {
@@ -207,5 +207,76 @@ describe("universality", () => {
     expect(NEURO_QUICK_RECORDS).not.toEqual(LACTATION_QUICK_RECORDS);
     expect(NEURO_QUICK_RECORDS).toContain("swallow_observation");
     expect(LACTATION_QUICK_RECORDS).toContain("nappy");
+  });
+});
+
+/* ==========================================================================
+ * MEDICATION INTEGRITY.
+ *
+ * A dose activity schedules WHEN medicines are given. It never says WHICH or
+ * HOW MUCH — those come from the medication record a clinician maintains.
+ * The compiler is told this; this is what enforces it.
+ * ======================================================================== */
+describe("medication integrity", () => {
+  const dose = (patch: Record<string, unknown>) => ok(one({ activity_type: "dose", ...patch }));
+
+  it("accepts a dose activity that schedules a time and nothing more", () => {
+    expect(findMedicationSpecifics(dose({
+      title: "Morning medicines",
+      instructions: "Give with water, after breakfast. Sit upright for 30 minutes afterwards.",
+    }))).toEqual([]);
+  });
+
+  it("passes the Neuro and Lactation programmes as configured", () => {
+    expect(findMedicationSpecifics(ok(NEURO_ACTIVITIES))).toEqual([]);
+    expect(findMedicationSpecifics(ok(LACTATION_ACTIVITIES))).toEqual([]);
+  });
+
+  it("refuses a stated amount in the title", () => {
+    const found = findMedicationSpecifics(dose({ title: "Aspirin 75 mg" }));
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({ field: "title", found: "75 mg" });
+  });
+
+  it("refuses a stated amount in the instructions, in any of its usual units", () => {
+    for (const amount of ["500 mg", "5 ml", "2 tablets", "1 capsule", "10 units", "40 mcg", "2 puffs"]) {
+      const found = findMedicationSpecifics(dose({ instructions: `Give ${amount} after food.` }));
+      expect(found, amount).toHaveLength(1);
+      expect(found[0].field).toBe("instructions");
+    }
+  });
+
+  it("refuses the same claim written as a dosing pattern", () => {
+    expect(findMedicationSpecifics(dose({ instructions: "Give 1-0-1 after food." })).length).toBe(1);
+    expect(findMedicationSpecifics(dose({ instructions: "Half tablet: 1/2 tab at night." })).length).toBe(1);
+  });
+
+  it("refuses an amount hidden in a field label or option", () => {
+    const found = findMedicationSpecifics(dose({
+      input_schema: [
+        { key: "status", label: "Did you give both 500 mg tablets", type: "choice", required: true,
+          options: ["Given", "Skipped"] },
+      ],
+    }));
+    expect(found).toHaveLength(1);
+    expect(found[0].field).toBe("input_schema");
+  });
+
+  it("leaves every other activity type alone — an amount is the point of them", () => {
+    // A feed of 200 mL and a 10-minute exercise are measurements of care given,
+    // not prescriptions. Only `dose` is constrained.
+    expect(findMedicationSpecifics(ok(one({
+      activity_type: "intake", title: "Feed", instructions: "Give 200 ml slowly.",
+    })))).toEqual([]);
+    expect(findMedicationSpecifics(ok(one({
+      activity_type: "exercise", title: "Walking", instructions: "10 units of effort, 5 mg is not a thing here.",
+    })))).toEqual([]);
+  });
+
+  it("does not guess at drug names, and says so by letting one through", () => {
+    // Deliberate: matching names would fail open on the first unfamiliar drug.
+    // Removing every stated AMOUNT removes what makes an invented instruction
+    // actionable, which is the property that matters.
+    expect(findMedicationSpecifics(dose({ title: "Aspirin" }))).toEqual([]);
   });
 });

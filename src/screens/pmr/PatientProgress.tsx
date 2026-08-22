@@ -16,6 +16,7 @@ import {
   getCareTasks,
   getTodayTaskLogs,
   getPatientPlan,
+  getSubscription,
   decideApproval,
   addMedication,
   updateMedication,
@@ -30,6 +31,7 @@ import {
   type CareTeamMember,
   type CareTaskRow,
   type PatientPlanRow,
+  type SubscriptionRow,
 } from "../../lib/db";
 import LatestCheckin from "../provider/LatestCheckin";
 import ProgrammeReview from "../provider/ProgrammeReview";
@@ -43,6 +45,10 @@ import ProgrammeReview from "../provider/ProgrammeReview";
  */
 export default function PatientProgress({ patientId, onBack }: { patientId: string; onBack: () => void }) {
   const [patient, setPatient] = useState<PatientRow | null>(null);
+  /* The enrolment, when there is one. It decides how the day is counted: a
+     patient on a programme is on DAY n OF THEIR PACKAGE, not of the 90-day
+     recovery journey the legacy record still carries. */
+  const [sub, setSub] = useState<SubscriptionRow | null>(null);
   const [readings, setReadings] = useState<ReadingRow[]>([]);
   const [meds, setMeds] = useState<MedicationRow[]>([]);
   const [approvals, setApprovals] = useState<ApprovalRow[]>([]);
@@ -72,6 +78,7 @@ export default function PatientProgress({ patientId, onBack }: { patientId: stri
         // Secondary signals load progressively — never block the hero.
         getCareTeam(patientId).then((t) => active && setTeam(t)).catch(() => {});
         getPatientPlan(patientId).then((pl) => active && setPlan(pl)).catch(() => {});
+        getSubscription(patientId).then((sb) => active && setSub(sb)).catch(() => {});
         Promise.all([getCareTasks(patientId), getTodayTaskLogs(patientId)])
           .then(([ts, done]) => { if (active) { setTasks(ts); setDoneToday(done); } })
           .catch(() => {});
@@ -107,7 +114,7 @@ export default function PatientProgress({ patientId, onBack }: { patientId: stri
 
   return (
     <div className="min-h-full bg-mist">
-      <CockpitHero patient={patient} readings={readings} approvals={approvals} plan={plan} onBack={onBack} />
+      <CockpitHero patient={patient} readings={readings} approvals={approvals} plan={plan} sub={sub} onBack={onBack} />
 
       <SectionNav
         value={view}
@@ -293,12 +300,25 @@ function within24h(iso: string): boolean {
 /* --------------------------------- hero ----------------------------------- */
 
 function CockpitHero({
-  patient, readings, approvals, plan, onBack,
+  patient, readings, approvals, plan, sub, onBack,
 }: {
-  patient: PatientRow; readings: ReadingRow[]; approvals: ApprovalRow[]; plan: PatientPlanRow | null; onBack: () => void;
+  patient: PatientRow; readings: ReadingRow[]; approvals: ApprovalRow[];
+  plan: PatientPlanRow | null; sub: SubscriptionRow | null; onBack: () => void;
 }) {
-  const day = dayAtHome(patient);
-  const total = patient.journey_total_days || 30;
+  /*
+   * Which day is it, and of what?
+   *
+   * A patient enrolled in a programme is on day n of THEIR PACKAGE — counted
+   * from when they enrolled, against the duration frozen onto that enrolment.
+   * Reading `journey_total_days` for them shows "Day 7 of 90" when they are on
+   * a 60-day programme, because 90 is the legacy recovery journey's default and
+   * has nothing to do with what they are actually on.
+   *
+   * A legacy recovery patient is counted exactly as before.
+   */
+  const enrolled = programmeDayOf(sub);
+  const day = enrolled?.day ?? dayAtHome(patient);
+  const total = enrolled?.total ?? (patient.journey_total_days || 30);
 
   const urgentOpen = approvals.filter((a) => a.status === "pending" && a.urgency === "urgent").length;
   const pendingOpen = approvals.filter((a) => a.status === "pending").length;
@@ -317,11 +337,11 @@ function CockpitHero({
       : improving === false
         ? { tone: "attention", label: "A vital is trending the wrong way" }
         : patient.status === "active"
-          ? { tone: "recovery", label: "Recovery progressing as expected" }
-          : { tone: "calm", label: "Awaiting recovery plan" };
+          ? { tone: "recovery", label: "Progressing as expected" }
+          : { tone: "calm", label: "Awaiting a care plan" };
 
   const summary = plan?.content?.clinical_summary?.trim();
-  const condition = summary || (patient.diagnosis.length ? patient.diagnosis.join(", ") : "Recovery at home");
+  const condition = summary || (patient.diagnosis.length ? patient.diagnosis.join(", ") : "Continuing care at home");
   // Diagnoses are chips only when the condition line is the clinician's summary —
   // otherwise the line already IS the diagnosis list.
   const showDiagnosisChips = !!summary && patient.diagnosis.length > 0;
@@ -369,7 +389,7 @@ function CockpitHero({
             {/* trajectory + milestone position */}
             <div className="w-full max-w-[300px] rounded-2xl bg-white/[0.06] p-4 ring-1 ring-white/10 backdrop-blur-sm sm:w-[300px]">
               <div className="flex items-center justify-between">
-                <SectionLabel onDark>{traj ? traj.label : "Recovery trajectory"}</SectionLabel>
+                <SectionLabel onDark>{traj ? traj.label : "Recorded trend"}</SectionLabel>
                 {traj && improving != null && (
                   <span className={`text-[11px] font-bold ${improving ? "text-brand-300" : "text-warn-300"}`}>{improving ? "improving" : "watch"}</span>
                 )}
@@ -501,7 +521,7 @@ function DailyCarePanel({ tasks, doneToday }: { tasks: CareTaskRow[]; doneToday:
   if (tasks.length === 0) {
     return (
       <Panel label="Detail" title="Daily care & mobility">
-        <p className="text-[13.5px] text-sage-500">Daily care tasks appear here once the recovery plan is active.</p>
+        <p className="text-[13.5px] text-sage-500">Daily care tasks appear here once the care plan is active.</p>
       </Panel>
     );
   }
@@ -589,9 +609,28 @@ function MilestonesPanel({ plan, day }: { plan: PatientPlanRow; day: number }) {
   );
 }
 
+/**
+ * Day n of the patient's own programme, from their frozen enrolment.
+ * Returns null for a legacy recovery patient, and for an enrolment whose
+ * snapshot does not state a duration — in both cases the caller keeps the
+ * legacy count rather than inventing one.
+ */
+export function programmeDayOf(sub: SubscriptionRow | null): { day: number; total: number } | null {
+  if (!sub?.service_package_id) return null;
+  const snap = (sub.package_snapshot ?? {}) as { duration_days?: number };
+  const total = typeof snap.duration_days === "number" && snap.duration_days > 0 ? Math.floor(snap.duration_days) : null;
+  if (!total) return null;
+  const started = new Date(sub.started_at);
+  if (Number.isNaN(started.getTime())) return null;
+  const a = new Date(started.getFullYear(), started.getMonth(), started.getDate()).getTime();
+  const now = new Date();
+  const b = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  return { day: Math.max(1, Math.round((b - a) / 86_400_000) + 1), total };
+}
+
 /* ------------------------------ care team --------------------------------- */
 
-const TEAM_LABEL: Record<string, string> = { lead_doctor: "Lead clinician", nurse: "Rehab nurse", coordinator: "Recovery coordinator" };
+const TEAM_LABEL: Record<string, string> = { lead_doctor: "Lead clinician", nurse: "Nurse", coordinator: "Care coordinator" };
 
 function CareTeamPanel({ team }: { team: CareTeamMember[] }) {
   return (
@@ -802,7 +841,7 @@ function Medicines({ patientId, rows, onChange }: { patientId: string; rows: Med
 
 const SRC: Record<UpdateRow["source"], { label: string; tone: Tone }> = {
   caregiver: { label: "From home", tone: "calm" },
-  nurse: { label: "Rehab nurse", tone: "recovery" },
+  nurse: { label: "Nurse", tone: "recovery" },
   duty_doctor: { label: "Duty doctor", tone: "neutral" },
   pmr: { label: "Lead clinician", tone: "attention" },
 };

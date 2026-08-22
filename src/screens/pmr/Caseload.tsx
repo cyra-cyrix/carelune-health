@@ -220,7 +220,7 @@ export default function Caseload({
           />
           <div className="relative flex flex-wrap items-end justify-between gap-6">
             <div className="min-w-0">
-              <SectionLabel onDark>{heading ?? "Recovery command centre"}</SectionLabel>
+              <SectionLabel onDark>{heading ?? "Care command centre"}</SectionLabel>
               <h1 className="mt-2 font-display text-[26px] font-semibold tracking-[-0.02em] text-haze-100 sm:text-[30px]">
                 {greeting}{greetName ? `, ${greetName}` : ""}
               </h1>
@@ -234,9 +234,9 @@ export default function Caseload({
                   ) : activeCount > 0 ? (
                     <>All <span className="font-semibold text-haze-100">{activeCount} patient{activeCount === 1 ? "" : "s"}</span> are progressing as expected.</>
                   ) : newCount > 0 ? (
-                    <><span className="font-semibold text-haze-100">{newCount} new registration{newCount === 1 ? "" : "s"}</span> waiting for a recovery plan.</>
+                    <><span className="font-semibold text-haze-100">{newCount} new registration{newCount === 1 ? "" : "s"}</span> waiting for a care plan.</>
                   ) : (
-                    "No patients in recovery yet. Share your registration link to begin."
+                    "No patients yet. Share your registration link to begin."
                   )}
                 </p>
               )}

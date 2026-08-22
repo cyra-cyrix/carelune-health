@@ -32,6 +32,7 @@ import {
   type PatientPlanRow,
 } from "../../lib/db";
 import LatestCheckin from "../provider/LatestCheckin";
+import ProgrammeReview from "../provider/ProgrammeReview";
 
 /**
  * Patient Recovery Cockpit — Carelune's signature screen. A clinical hero lets
@@ -122,6 +123,10 @@ export default function PatientProgress({ patientId, onBack }: { patientId: stri
                   and has sent a check-in, so a recovery patient's cockpit is
                   exactly what it was. */}
               <LatestCheckin patientId={patientId} />
+              {/* The compiled programme and its approval. Renders a compile
+                  affordance only for a patient enrolled in a service; a legacy
+                  recovery patient sees the same cockpit they always did. */}
+              <ProgrammeReview patientId={patientId} />
               <Reveal index={0}><ChangedSinceYesterday readings={readings} approvals={approvals} updates={updates} doneToday={doneToday} tasks={tasks} /></Reveal>
               <Reveal index={1}><VitalsPanel readings={readings} /></Reveal>
             </div>

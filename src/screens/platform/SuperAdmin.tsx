@@ -16,6 +16,7 @@ import {
   EmptyState, Skeleton, ErrorNote, Kpi, SectionHeader,
 } from "../../components/system";
 import ServiceBuilder from "./ServiceBuilder";
+import ClinicalDomains from "./ClinicalDomains";
 
 const TYPES: { key: InstitutionType; label: string }[] = [
   { key: "hospital", label: "Hospital" },
@@ -39,6 +40,7 @@ const freshDraft = (): NewOrg => ({
 export default function SuperAdmin() {
   const { signOut } = useAuth();
   const [building, setBuilding] = useState(false);
+  const [domains, setDomains] = useState(false);
   const [orgs, setOrgs] = useState<OrgSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -116,6 +118,11 @@ export default function SuperAdmin() {
     return <ServiceBuilder onExit={() => { setBuilding(false); void load(); }} />;
   }
 
+  // The clinical-domain catalogue is its own task, not a panel in the console.
+  if (domains) {
+    return <ClinicalDomains onBack={() => setDomains(false)} />;
+  }
+
   return (
     <div className="min-h-screen bg-mist">
       <header className="sticky top-0 z-50 flex min-h-[3.25rem] items-center justify-between gap-3 border-b border-line bg-white/90 px-4 py-2 backdrop-blur sm:px-6">
@@ -142,13 +149,22 @@ export default function SuperAdmin() {
               Set a provider up with Carelune, or hand an existing one a secure first-login.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setBuilding(true)}
-            className="tap inline-flex items-center gap-2 rounded-xl bg-sky-600 px-4 py-2.5 text-[14px] font-semibold text-white shadow-card transition-colors hover:bg-sky-700"
-          >
-            <span aria-hidden className="text-[16px] leading-none">+</span> New care provider
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setDomains(true)}
+              className="tap inline-flex items-center gap-2 rounded-xl border border-line bg-white px-4 py-2.5 text-[14px] font-semibold text-ink transition-colors hover:bg-mist-100"
+            >
+              Clinical domains
+            </button>
+            <button
+              type="button"
+              onClick={() => setBuilding(true)}
+              className="tap inline-flex items-center gap-2 rounded-xl bg-sky-600 px-4 py-2.5 text-[14px] font-semibold text-white shadow-card transition-colors hover:bg-sky-700"
+            >
+              <span aria-hidden className="text-[16px] leading-none">+</span> New care provider
+            </button>
+          </div>
         </div>
 
         <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">

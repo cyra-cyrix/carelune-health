@@ -13,6 +13,7 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { validateServiceDraft } from "../_shared/serviceDraft.ts";
+import { validateCareActivities } from "../_shared/careActivity.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -233,6 +234,33 @@ Deno.serve(async (req) => {
       const provenance = ["ai_drafted", "super_admin", "provider_supplied"].includes(String(body.source_provenance))
         ? String(body.source_provenance)
         : "ai_drafted";
+
+      // Where this service sits in the hierarchy:
+      //   Institution -> Clinical Domain -> Care Intent -> Service -> Package
+      // Both are optional, so an operator who skips the step still gets exactly
+      // the service they would have got before.
+      const CARE_INTENTS = [
+        "rehabilitation", "post_discharge_recovery", "supportive_care",
+        "long_term_management", "monitoring", "maternal_support",
+      ];
+      const clinical_domain_id = String(body.clinical_domain_id ?? "").trim() || null;
+      const rawIntent = String(body.care_intent ?? "").trim();
+      if (rawIntent && !CARE_INTENTS.includes(rawIntent)) {
+        return json({ error: `Unknown care intent "${rawIntent}".` }, 400);
+      }
+      const care_intent = rawIntent || null;
+
+      // The service's default care activities. Validated against the SAME closed
+      // vocabulary the browser and the compiler use — a shape only one of them
+      // accepts is a shape that can reach a patient unvalidated.
+      let programme_activities: unknown[] = [];
+      if (body.programme_activities !== undefined) {
+        const actCheck = validateCareActivities(body.programme_activities);
+        if (!actCheck.ok) {
+          return json({ error: "The care activities are not valid.", details: actCheck.errors.slice(0, 12) }, 400);
+        }
+        programme_activities = body.programme_activities as unknown[];
+      }
       const ai_model = body.ai_model ? String(body.ai_model).slice(0, 120) : null;
 
       // 1. the organisation
@@ -303,6 +331,9 @@ Deno.serve(async (req) => {
           care_team: service.care_team_suggestions,
           programme_outline: service.programme_outline,
         },
+        clinical_domain_id,
+        care_intent,
+        programme_activities,
         status: "draft",
         source_provenance: provenance,
         ai_model,
@@ -355,6 +386,175 @@ Deno.serve(async (req) => {
           approver_name: admin_name,
         },
       });
+    }
+
+    // ---- the clinical domains Carelune offers, with their knowledge packs ----
+    //
+    // Read through service_role because a Super Admin has no centre_id and the
+    // staff-scoped RLS on these tables denies them in the browser — the same
+    // arrangement 0027 uses for the configuration tables.
+    if (action === "list-clinical-domains") {
+      const { data: domains, error: dErr } = await admin
+        .from("clinical_domains")
+        .select("id, key, name, summary, sort_order, status")
+        .order("sort_order");
+      if (dErr) return json({ error: dErr.message }, 500);
+
+      const { data: packs, error: kErr } = await admin
+        .from("knowledge_packs")
+        .select("id, clinical_domain_id, version, title, summary, status, reviewed_at, source_provenance")
+        .order("version", { ascending: false });
+      if (kErr) return json({ error: kErr.message }, 500);
+
+      const { data: sources } = await admin
+        .from("knowledge_sources")
+        .select("id, knowledge_pack_id, title, publisher, kind, url, citation, published_on, sort_order")
+        .order("sort_order");
+
+      const { data: services } = await admin
+        .from("centre_services")
+        .select("id, clinical_domain_id")
+        .not("clinical_domain_id", "is", null);
+
+      const used = new Map<string, number>();
+      for (const row of services ?? []) {
+        const k = String((row as Record<string, unknown>).clinical_domain_id);
+        used.set(k, (used.get(k) ?? 0) + 1);
+      }
+
+      return json({
+        domains: (domains ?? []).map((d) => ({
+          ...d,
+          service_count: used.get(String(d.id)) ?? 0,
+          packs: (packs ?? [])
+            .filter((p) => p.clinical_domain_id === d.id)
+            .map((p) => ({
+              ...p,
+              sources: (sources ?? []).filter((s) => s.knowledge_pack_id === p.id),
+            })),
+        })),
+      });
+    }
+
+    // ---- create or revise a knowledge pack for one domain ----
+    //
+    // A pack is VERSIONED, never edited in place once published: a service can
+    // stay pinned to the version it was configured against, and a compiled
+    // programme records which version it drew on.
+    if (action === "save-knowledge-pack") {
+      const domainId = String(body.clinical_domain_id ?? "").trim();
+      const title = String(body.title ?? "").trim();
+      if (!domainId) return json({ error: "A clinical domain is required." }, 400);
+      if (!title) return json({ error: "A title is required." }, 400);
+
+      const knowledge = body.knowledge ?? {};
+      if (typeof knowledge !== "object" || knowledge === null || Array.isArray(knowledge)) {
+        return json({ error: "Knowledge must be an object." }, 400);
+      }
+      // Where the pack proposes candidate care activities they must satisfy the
+      // same closed vocabulary. Knowledge is not exempt from the schema.
+      const candidates = (knowledge as Record<string, unknown>).candidate_activities;
+      if (candidates !== undefined) {
+        const c = validateCareActivities(candidates);
+        if (!c.ok) {
+          return json({ error: "The pack's candidate activities are not valid.", details: c.errors.slice(0, 12) }, 400);
+        }
+      }
+
+      const status = ["draft", "in_review", "published", "retired"].includes(String(body.status))
+        ? String(body.status) : "draft";
+
+      const { data: existing } = await admin
+        .from("knowledge_packs").select("version")
+        .eq("clinical_domain_id", domainId)
+        .order("version", { ascending: false }).limit(1);
+      const version = ((existing?.[0]?.version as number | undefined) ?? 0) + 1;
+
+      const { data: pack, error: insErr } = await admin.from("knowledge_packs").insert({
+        clinical_domain_id: domainId,
+        version,
+        title,
+        summary: String(body.summary ?? "").slice(0, 2000) || null,
+        knowledge,
+        evidence: body.evidence && typeof body.evidence === "object" ? body.evidence : {},
+        status,
+        reviewed_by: status === "published" ? user.id : null,
+        reviewed_at: status === "published" ? new Date().toISOString() : null,
+        review_note: String(body.review_note ?? "").slice(0, 2000) || null,
+        source_provenance: ["carelune_curated", "ai_drafted", "provider_supplied"].includes(String(body.source_provenance))
+          ? String(body.source_provenance) : "carelune_curated",
+        created_by: user.id,
+      }).select("id, version").single();
+      if (insErr || !pack) return json({ error: insErr?.message ?? "Could not save the pack." }, 400);
+
+      const sources = Array.isArray(body.sources) ? body.sources : [];
+      if (sources.length > 0) {
+        const { error: srcErr } = await admin.from("knowledge_sources").insert(
+          sources.slice(0, 60).map((s: Record<string, unknown>, i: number) => ({
+            knowledge_pack_id: pack.id,
+            title: String(s.title ?? "").slice(0, 400) || "Untitled source",
+            publisher: String(s.publisher ?? "").slice(0, 200) || null,
+            kind: ["guideline", "review", "trial", "textbook", "provider_document", "other"].includes(String(s.kind))
+              ? String(s.kind) : "guideline",
+            url: String(s.url ?? "").slice(0, 1000) || null,
+            storage_path: String(s.storage_path ?? "").slice(0, 500) || null,
+            citation: String(s.citation ?? "").slice(0, 1000) || null,
+            published_on: String(s.published_on ?? "") || null,
+            sort_order: i,
+          })),
+        );
+        if (srcErr) return json({ error: srcErr.message }, 400);
+      }
+
+      return json({ ok: true, pack });
+    }
+
+    // ---- place an existing service in a domain / intent, or set its defaults --
+    //
+    // Deliberately refuses once the service is published: its configuration is
+    // frozen at that point (D-003 amendment 2), and changing it would move
+    // patients who are already enrolled against it.
+    if (action === "set-service-clinical") {
+      const serviceId = String(body.service_id ?? "").trim();
+      if (!serviceId) return json({ error: "A service is required." }, 400);
+
+      const { data: svc } = await admin
+        .from("centre_services").select("id, status").eq("id", serviceId).maybeSingle();
+      if (!svc) return json({ error: "That service does not exist." }, 404);
+      if (svc.status === "published" || svc.status === "retired") {
+        return json({
+          error: "A published service is frozen. Configuring it again requires a new revision, confirmed at both levels.",
+        }, 409);
+      }
+
+      const patch: Record<string, unknown> = {};
+      if (body.clinical_domain_id !== undefined) {
+        patch.clinical_domain_id = String(body.clinical_domain_id ?? "").trim() || null;
+      }
+      if (body.knowledge_pack_id !== undefined) {
+        patch.knowledge_pack_id = String(body.knowledge_pack_id ?? "").trim() || null;
+      }
+      if (body.care_intent !== undefined) {
+        const CARE_INTENTS = [
+          "rehabilitation", "post_discharge_recovery", "supportive_care",
+          "long_term_management", "monitoring", "maternal_support",
+        ];
+        const v = String(body.care_intent ?? "").trim();
+        if (v && !CARE_INTENTS.includes(v)) return json({ error: `Unknown care intent "${v}".` }, 400);
+        patch.care_intent = v || null;
+      }
+      if (body.programme_activities !== undefined) {
+        const check = validateCareActivities(body.programme_activities);
+        if (!check.ok) {
+          return json({ error: "The care activities are not valid.", details: check.errors.slice(0, 12) }, 400);
+        }
+        patch.programme_activities = body.programme_activities;
+      }
+      if (Object.keys(patch).length === 0) return json({ error: "Nothing to change." }, 400);
+
+      const { error: upErr } = await admin.from("centre_services").update(patch).eq("id", serviceId);
+      if (upErr) return json({ error: upErr.message }, 400);
+      return json({ ok: true });
     }
 
     return json({ error: "Unknown action" }, 400);

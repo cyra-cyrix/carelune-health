@@ -10,6 +10,20 @@ vi.mock("../../lib/db", () => ({
   setInstitutionStatus: vi.fn(),
   analyseProviderService: vi.fn(),
   createProviderService: vi.fn(),
+  listClinicalDomains: vi.fn(async () => []),
+  saveKnowledgePack: vi.fn(),
+  CARE_INTENTS: [
+    "rehabilitation", "post_discharge_recovery", "supportive_care",
+    "long_term_management", "monitoring", "maternal_support",
+  ],
+  CARE_INTENT_LABEL: {
+    rehabilitation: "Rehabilitation",
+    post_discharge_recovery: "Post-discharge recovery",
+    supportive_care: "Supportive care",
+    long_term_management: "Long-term management",
+    monitoring: "Monitoring",
+    maternal_support: "Maternal support",
+  },
 }));
 vi.mock("../../auth/AuthProvider", () => ({ useAuth: () => ({ signOut: vi.fn() }) }));
 

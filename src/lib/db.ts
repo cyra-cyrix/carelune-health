@@ -1854,6 +1854,33 @@ export type NewProviderService = {
   service: SuggestedService;
   source_provenance: "ai_drafted" | "super_admin";
   ai_model: string | null;
+  /* Where this service sits: Institution -> Clinical Domain -> Care Intent
+     -> Service -> Package. Both optional — an operator who skips the step gets
+     exactly the service they would have got before. */
+  clinical_domain_id?: string | null;
+  care_intent?: CareIntent | "";
+  /** The service's default care activities, in the stored snake_case shape. */
+  programme_activities?: Record<string, unknown>[];
+};
+
+/** What a service is FOR. The vocabulary is closed and checked in the database. */
+export const CARE_INTENTS = [
+  "rehabilitation",
+  "post_discharge_recovery",
+  "supportive_care",
+  "long_term_management",
+  "monitoring",
+  "maternal_support",
+] as const;
+export type CareIntent = (typeof CARE_INTENTS)[number];
+
+export const CARE_INTENT_LABEL: Record<CareIntent, string> = {
+  rehabilitation: "Rehabilitation",
+  post_discharge_recovery: "Post-discharge recovery",
+  supportive_care: "Supportive care",
+  long_term_management: "Long-term management",
+  monitoring: "Monitoring",
+  maternal_support: "Maternal support",
 };
 
 export type CreatedProviderService = {
@@ -2305,6 +2332,27 @@ export async function compileCarePlan(patientId: string): Promise<PatientProgram
   return data.programme as PatientProgrammeRow;
 }
 
+/**
+ * Change a draft before approving it.
+ *
+ * Approval that can only say yes is not review — the clinician must be able to
+ * drop a suggestion they do not want. A DRAFT only: an approved programme is a
+ * clinical record, and changing care means compiling a new version.
+ */
+export async function reviseProgrammeDraft(
+  programmeId: string,
+  activities: Record<string, unknown>[],
+  quickRecords: string[],
+): Promise<PatientProgrammeRow> {
+  const { data, error } = await supabase.rpc("revise_patient_programme_draft", {
+    p_programme: programmeId,
+    p_activities: activities,
+    p_quick_records: quickRecords,
+  });
+  if (error) throw new Error(error.message);
+  return data as PatientProgrammeRow;
+}
+
 /** The clinician's approval. Treating doctor only, enforced in the database. */
 export async function approvePatientProgramme(programmeId: string, note?: string): Promise<PatientProgrammeRow> {
   const { data, error } = await supabase.rpc("approve_patient_programme", {
@@ -2447,4 +2495,91 @@ export async function getCareSummary(patientId: string, days = 7): Promise<CareS
   });
   if (error) throw new Error(error.message);
   return (data as CareSummary) ?? { has_programme: false };
+}
+
+/* ==========================================================================
+ * The Carelune clinical-domain catalogue (Super Admin).
+ *
+ * Read through the platform-admin function rather than directly: a Super Admin
+ * has no centre_id, so the staff-scoped RLS on these tables denies them in the
+ * browser — the same arrangement 0027 uses for the configuration tables.
+ * ======================================================================== */
+
+export type KnowledgeSourceSummary = {
+  id: string;
+  title: string;
+  publisher: string | null;
+  kind: string;
+  url: string | null;
+  citation: string | null;
+  published_on: string | null;
+};
+
+export type KnowledgePackSummary = {
+  id: string;
+  clinical_domain_id: string;
+  version: number;
+  title: string;
+  summary: string | null;
+  status: "draft" | "in_review" | "published" | "retired";
+  reviewed_at: string | null;
+  source_provenance: string;
+  sources: KnowledgeSourceSummary[];
+};
+
+export type ClinicalDomainSummary = {
+  id: string;
+  key: string;
+  name: string;
+  summary: string | null;
+  sort_order: number;
+  status: "active" | "retired";
+  service_count: number;
+  packs: KnowledgePackSummary[];
+};
+
+export async function listClinicalDomains(): Promise<ClinicalDomainSummary[]> {
+  const { data, error } = await supabase.functions.invoke("platform-admin", {
+    body: { action: "list-clinical-domains" },
+  });
+  if (error) throw new Error(await edgeError(error));
+  if (data?.error) throw new Error(data.error);
+  return (data.domains ?? []) as ClinicalDomainSummary[];
+}
+
+export type NewKnowledgePack = {
+  clinical_domain_id: string;
+  title: string;
+  summary?: string;
+  knowledge: Record<string, unknown>;
+  evidence?: Record<string, unknown>;
+  status?: "draft" | "in_review" | "published";
+  review_note?: string;
+  source_provenance?: "carelune_curated" | "ai_drafted" | "provider_supplied";
+  sources?: Record<string, unknown>[];
+};
+
+/** Create the next VERSION of a domain's knowledge. Packs are never edited in place. */
+export async function saveKnowledgePack(input: NewKnowledgePack): Promise<{ id: string; version: number }> {
+  const { data, error } = await supabase.functions.invoke("platform-admin", {
+    body: { action: "save-knowledge-pack", ...input },
+  });
+  if (error) throw new Error(await edgeError(error));
+  if (data?.error) throw new Error(data.details ? `${data.error} (${(data.details as string[]).join("; ")})` : data.error);
+  return data.pack as { id: string; version: number };
+}
+
+/** Place an unpublished service in a domain / intent, or set its default activities. */
+export async function setServiceClinical(input: {
+  service_id: string;
+  clinical_domain_id?: string | null;
+  knowledge_pack_id?: string | null;
+  care_intent?: CareIntent | "";
+  programme_activities?: Record<string, unknown>[];
+}): Promise<void> {
+  const { data, error } = await supabase.functions.invoke("platform-admin", {
+    body: { action: "set-service-clinical", ...input },
+  });
+  if (error) throw new Error(await edgeError(error));
+  if (data?.error) throw new Error(data.details ? `${data.error} (${(data.details as string[]).join("; ")})` : data.error);
 }

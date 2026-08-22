@@ -10,12 +10,44 @@ import { LACTATION_DRAFT, SPINE_DRAFT } from "../../domain/serviceDraft.fixtures
 vi.mock("../../lib/db", () => ({
   analyseProviderService: vi.fn(),
   createProviderService: vi.fn(),
+  listClinicalDomains: vi.fn(),
+  // The vocabularies are plain constants in db.ts, so the mock restates them
+  // rather than pretending they are functions.
+  CARE_INTENTS: [
+    "rehabilitation", "post_discharge_recovery", "supportive_care",
+    "long_term_management", "monitoring", "maternal_support",
+  ],
+  CARE_INTENT_LABEL: {
+    rehabilitation: "Rehabilitation",
+    post_discharge_recovery: "Post-discharge recovery",
+    supportive_care: "Supportive care",
+    long_term_management: "Long-term management",
+    monitoring: "Monitoring",
+    maternal_support: "Maternal support",
+  },
 }));
-import { analyseProviderService, createProviderService } from "../../lib/db";
+import { analyseProviderService, createProviderService, listClinicalDomains } from "../../lib/db";
 import ServiceBuilder from "./ServiceBuilder";
 
 afterEach(cleanup);
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(listClinicalDomains).mockResolvedValue([
+    {
+      id: "dom-neuro", key: "neuro_rehab_stroke", name: "Neuro Rehabilitation & Stroke",
+      summary: null, sort_order: 1, status: "active", service_count: 0,
+      packs: [{
+        id: "pack-1", clinical_domain_id: "dom-neuro", version: 1, title: "Neuro reference v1",
+        summary: null, status: "published", reviewed_at: null,
+        source_provenance: "carelune_curated", sources: [],
+      }],
+    },
+    {
+      id: "dom-mb", key: "mother_baby", name: "Mother & Baby / Postpartum & Lactation",
+      summary: null, sort_order: 4, status: "active", service_count: 0, packs: [],
+    },
+  ]);
+});
 
 const analysisOf = (draft: ServiceDraft) => ({
   draft,

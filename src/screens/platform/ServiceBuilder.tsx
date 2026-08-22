@@ -19,9 +19,13 @@ import { ErrorNote, inputCls, PrimaryButton } from "../../components/system";
 import {
   analyseProviderService,
   createProviderService,
+  listClinicalDomains,
+  CARE_INTENTS,
+  CARE_INTENT_LABEL,
   type CreatedProviderService,
   type ProviderTypeKey,
 } from "../../lib/db";
+import type { CareIntent, ClinicalDomainSummary } from "../../lib/db";
 import {
   durationLabel,
   periodsForPackage,
@@ -128,6 +132,12 @@ export default function ServiceBuilder({ onExit }: { onExit: () => void }) {
   const [edited, setEdited] = useState(false);
   const [understandingConfirmed, setUnderstandingConfirmed] = useState(false);
   const [editingService, setEditingService] = useState(false);
+  const [domains, setDomains] = useState<ClinicalDomainSummary[]>([]);
+  const [clinicalDomainId, setClinicalDomainId] = useState<string | null>(null);
+  const [careIntent, setCareIntent] = useState<CareIntent | "">("");
+  useEffect(() => {
+    void listClinicalDomains().then(setDomains).catch(() => setDomains([]));
+  }, []);
 
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [editingPackage, setEditingPackage] = useState(false);
@@ -218,6 +228,14 @@ export default function ServiceBuilder({ onExit }: { onExit: () => void }) {
     [service, draft],
   );
 
+  /*
+   * Institution -> Clinical Domain -> Care Intent -> Service -> Package.
+   *
+   * Both are optional. An operator who leaves them unset creates exactly the
+   * service they would have created before this step existed — but without a
+   * domain there is no knowledge pack, so the compiler has only the provider's
+   * own defaults to work from, and the Confirm step says so.
+   */
   const submit = async () => {
     if (!service || !draft) return;
     setSaving(true);
@@ -238,6 +256,8 @@ export default function ServiceBuilder({ onExit }: { onExit: () => void }) {
         service,
         source_provenance: aiModel ? "ai_drafted" : "super_admin",
         ai_model: aiModel,
+        clinical_domain_id: clinicalDomainId,
+        care_intent: careIntent,
       });
       setCreated(result);
     } catch (e) {
@@ -317,6 +337,11 @@ export default function ServiceBuilder({ onExit }: { onExit: () => void }) {
             setEditing={setEditingService}
             onPatch={patchService}
             confirmed={understandingConfirmed}
+            domains={domains}
+            clinicalDomainId={clinicalDomainId}
+            setClinicalDomainId={setClinicalDomainId}
+            careIntent={careIntent}
+            setCareIntent={setCareIntent}
             onBack={() => setStep("Understanding")}
             onConfirm={() => { setUnderstandingConfirmed(true); setStep("Programmes"); }}
             regenerateGuard={edited || understandingConfirmed}
@@ -714,12 +739,18 @@ function UnderstandingStep({
 function ServiceStep({
   service, editing, setEditing, onPatch, confirmed, onBack, onConfirm,
   regenerateGuard, confirmRegenerate, setConfirmRegenerate, onRegenerate,
+  domains, clinicalDomainId, setClinicalDomainId, careIntent, setCareIntent,
 }: {
   service: SuggestedService;
   editing: boolean;
   setEditing: (v: boolean) => void;
   onPatch: (patch: Partial<SuggestedService>) => void;
   confirmed: boolean;
+  domains: ClinicalDomainSummary[];
+  clinicalDomainId: string | null;
+  setClinicalDomainId: (v: string | null) => void;
+  careIntent: CareIntent | "";
+  setCareIntent: (v: CareIntent | "") => void;
   onBack: () => void;
   onConfirm: () => void;
   regenerateGuard: boolean;
@@ -728,6 +759,8 @@ function ServiceStep({
   onRegenerate: () => void;
 }) {
   const dur = durationLabel(service.typical_duration_days);
+  const chosenDomain = domains.find((d) => d.id === clinicalDomainId) ?? null;
+  const publishedPack = chosenDomain?.packs.find((p) => p.status === "published") ?? null;
   return (
     <>
       <PageHead
@@ -735,6 +768,76 @@ function ServiceStep({
         sub={editing ? "Change anything Carelune got wrong. Your words replace the draft." : service.summary}
         aside={<AiDraftMark />}
       />
+
+      {/* Institution -> Clinical Domain -> Care Intent -> Service -> Package.
+          Placing a service in a domain gives the care plan compiler its
+          knowledge; it grants no approval and changes no lifecycle. */}
+      {!editing && (
+        <Panel>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-sage-500">
+            Where this service sits
+          </p>
+
+          <div className="mt-3">
+            <span className="mb-1.5 block text-[12.5px] font-semibold text-sage-600">Clinical domain</span>
+            <div className="flex flex-wrap gap-2">
+              {domains.map((d) => {
+                const on = clinicalDomainId === d.id;
+                return (
+                  <button
+                    key={d.id}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => setClinicalDomainId(on ? null : d.id)}
+                    className={`tap rounded-xl border px-3 py-2 text-[13px] font-semibold transition-colors ${
+                      on
+                        ? "border-sky-500 bg-sky-50 text-sky-700 ring-1 ring-sky-500/30"
+                        : "border-line bg-white text-ink hover:bg-mist-100"
+                    }`}
+                  >
+                    {d.name}
+                  </button>
+                );
+              })}
+              {domains.length === 0 && (
+                <p className="text-[13px] text-sage-500">No clinical domains are available.</p>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <span className="mb-1.5 block text-[12.5px] font-semibold text-sage-600">Care intent</span>
+            <div className="flex flex-wrap gap-2">
+              {CARE_INTENTS.map((i) => {
+                const on = careIntent === i;
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => setCareIntent(on ? "" : i)}
+                    className={`tap rounded-xl border px-3 py-2 text-[13px] font-semibold transition-colors ${
+                      on
+                        ? "border-sky-500 bg-sky-50 text-sky-700 ring-1 ring-sky-500/30"
+                        : "border-line bg-white text-ink hover:bg-mist-100"
+                    }`}
+                  >
+                    {CARE_INTENT_LABEL[i]}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <p className="mt-4 text-[12.5px] leading-relaxed text-sage-500">
+            {chosenDomain
+              ? publishedPack
+                ? `The compiler will read “${publishedPack.title}” (v${publishedPack.version}) when it drafts a patient's programme, alongside this provider's own configuration. A clinician approves every programme before any care is scheduled.`
+                : `${chosenDomain.name} has no published knowledge pack yet, so the compiler will work from this provider's own configuration and the patient's own records only.`
+              : "Optional. Without a domain the compiler works from this provider's own configuration and the patient's own records only."}
+          </p>
+        </Panel>
+      )}
 
       {editing ? (
         <Panel>

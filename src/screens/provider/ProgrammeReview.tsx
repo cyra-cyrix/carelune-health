@@ -12,8 +12,9 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  approvePatientProgramme, compileCarePlan, getPatientProgrammes, reviseProgrammeDraft,
-  type PatientProgrammeRow,
+  approvePatientProgramme, compileCarePlan, getPatientProgrammes, getSubscription,
+  reviseProgrammeDraft,
+  type PatientProgrammeRow, type SubscriptionRow,
 } from "../../lib/db";
 import {
   BASIS_LABEL, validateCareActivities,
@@ -43,6 +44,11 @@ const GROUPS: { title: string; types: string[] }[] = [
 
 export default function ProgrammeReview({ patientId }: { patientId: string }) {
   const [rows, setRows] = useState<PatientProgrammeRow[] | null>(null);
+  /* Whether this patient is on a service programme at all. A legacy recovery
+     patient is not, and the compiler refuses them — so rather than offer an
+     action that cannot work, this renders nothing for them and their cockpit is
+     exactly what it was. */
+  const [sub, setSub] = useState<SubscriptionRow | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<"compile" | "approve" | null>(null);
   const [dropped, setDropped] = useState<Set<string>>(new Set());
@@ -59,6 +65,13 @@ export default function ProgrammeReview({ patientId }: { patientId: string }) {
   }, [patientId]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    let active = true;
+    void getSubscription(patientId)
+      .then((s) => { if (active) setSub(s); })
+      .catch(() => { if (active) setSub(null); });
+    return () => { active = false; };
+  }, [patientId]);
 
   const approved = rows?.find((r) => r.status === "approved") ?? null;
   const draft = rows?.find((r) => r.status === "draft") ?? null;
@@ -109,7 +122,10 @@ export default function ProgrammeReview({ patientId }: { patientId: string }) {
     }
   };
 
-  if (rows === null) return <Card><Skeleton className="h-28" /></Card>;
+  // Not a service enrolment -> not this card's patient. Nothing is rendered,
+  // exactly as AssignProgramme renders nothing for a legacy organisation.
+  if (sub !== undefined && !sub?.service_package_id) return null;
+  if (rows === null || sub === undefined) return <Card><Skeleton className="h-28" /></Card>;
 
   const compiledFrom = (draft?.compiled_from ?? {}) as CompiledFrom;
   const notes = Array.isArray(compiledFrom.notes_for_clinician) ? compiledFrom.notes_for_clinician : [];

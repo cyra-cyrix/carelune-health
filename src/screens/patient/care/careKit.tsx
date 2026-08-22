@@ -27,6 +27,7 @@ export const CareIcon = {
   Journey: ({ size = 22 }: IP) => svg(size, <><path d="M4 20V4M4 20h16" /><path d="M8 16v-4M12 16V8M16 16v-6" /></>),
   Plus: ({ size = 26 }: IP) => svg(size, <path d="M12 5v14M5 12h14" />),
   Connect: ({ size = 22 }: IP) => svg(size, <path d="M21 12a8 8 0 0 1-11.5 7.2L4 21l1.8-5.5A8 8 0 1 1 21 12Z" />),
+  Team: ({ size = 22 }: IP) => svg(size, <><circle cx="9" cy="8" r="3" /><path d="M3 20a6 6 0 0 1 12 0" /><path d="M16 6a3 3 0 0 1 0 5M21 20a5.5 5.5 0 0 0-3.5-5" /></>),
   Plan: ({ size = 22 }: IP) => svg(size, <><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 8h8M8 12h8M8 16h5" /></>),
   Check: ({ size = 18 }: IP) => svg(size, <path d="M20 6 9 17l-5-5" />),
   Alert: ({ size = 18 }: IP) => svg(size, <><circle cx="12" cy="12" r="9" /><path d="M12 8v4M12 16h.01" /></>),
@@ -297,6 +298,7 @@ export function ActivityRecorder({
   const [values, setValues] = useState<FieldValues>({});
   const [outcome, setOutcome] = useState<RecordOutcome>(isCompletion ? "done" : "recorded");
   const [when, setWhen] = useState<string>("");
+  const [whenOpen, setWhenOpen] = useState(false);
 
   // A `note` field is offered by many activities; when one exists it becomes the
   // event's note rather than an ordinary payload value, so the care team reads
@@ -378,18 +380,39 @@ export function ActivityRecorder({
         </div>
       )}
 
-      <div className="mt-5">
-        <label htmlFor="when" className="mb-1.5 block text-[13px] font-medium text-sage-600">
-          When did this happen
-        </label>
-        <input
-          id="when"
-          type="time"
-          value={when}
-          onChange={(e) => setWhen(e.target.value)}
-          className={inputCls}
-        />
-        <p className="mt-1 text-[12px] text-sage-500">Leave blank for now.</p>
+      {/*
+        * WHEN is not the question.
+        *
+        * It used to sit here as a labelled block the same size as the clinical
+        * fields, directly above the action, so a vitals sheet read as "what time
+        * is it?" with some numbers above. The answer is almost always "now", so
+        * that is the default and this is a quiet line the few people who need it
+        * can open.
+        */}
+      <div className="mt-5 text-[12.5px] text-sage-500">
+        {whenOpen ? (
+          <label className="block">
+            <span className="mb-1.5 block font-medium text-sage-600">When did this happen</span>
+            <input
+              type="time"
+              value={when}
+              autoFocus
+              onChange={(e) => setWhen(e.target.value)}
+              className={inputCls}
+            />
+          </label>
+        ) : (
+          <p>
+            Recorded now ·{" "}
+            <button
+              type="button"
+              onClick={() => setWhenOpen(true)}
+              className="tap font-semibold text-sky-700 underline underline-offset-2"
+            >
+              Change
+            </button>
+          </p>
+        )}
       </div>
 
       {error && <p className="mt-4 text-[13.5px] text-coral-600">{error}</p>}
@@ -431,7 +454,7 @@ export function ActivityRecorder({
           }}
           className="tap min-h-[50px] flex-[1.6] rounded-2xl bg-ink text-[15px] font-semibold text-white transition-colors hover:bg-ink/90 disabled:opacity-40"
         >
-          {busy ? "Saving…" : submitLabel ?? "Record"}
+          {busy ? "Saving…" : submitLabel ?? "Save"}
         </button>
       </div>
       {blocked.length > 0 && (

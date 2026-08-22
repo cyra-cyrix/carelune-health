@@ -298,10 +298,51 @@ export const NEURO_ACTIVITIES: Record<string, unknown>[] = [
     ],
     schedule: { kind: "on_demand", times: [], days: "all", from_day: 1, through_day: null, grace_minutes: 0 },
   },
+  {
+    key: "temperature",
+    activity_type: "measurement",
+    domain: "vitals",
+    title: "Temperature",
+    instructions: "",
+    basis: "provider_default",
+    rationale: "Followed at home where fever would matter.",
+    recorded_by: ["caregiver", "family"],
+    input_schema: [
+      { key: "temperature", label: "Temperature", type: "number", required: true, unit: "°C", min: 30, max: 45 },
+      { key: "site", label: "Where measured", type: "choice", required: false, options: ["Forehead", "Underarm", "Mouth", "Ear"] },
+    ],
+    schedule: { kind: "on_demand", times: [], days: "all", from_day: 1, through_day: null, grace_minutes: 0 },
+  },
+  {
+    key: "vomiting",
+    activity_type: "observation",
+    domain: "gastrointestinal",
+    title: "Vomiting",
+    instructions: "",
+    basis: "provider_default",
+    rationale: "Followed where swallowing and feeding are affected.",
+    recorded_by: ["caregiver", "family"],
+    input_schema: [
+      { key: "episodes", label: "How many times", type: "integer", required: true, min: 1, max: 20 },
+      { key: "when", label: "In relation to a feed", type: "choice", required: false, options: ["Before a feed", "During a feed", "Soon after a feed", "Not related to a feed"] },
+      NOTE_FIELD,
+    ],
+    schedule: { kind: "on_demand", times: [], days: "all", from_day: 1, through_day: null, grace_minutes: 0 },
+  },
 ];
 
+/*
+ * The quick actions this programme offers, most useful first. The patient app
+ * shows the first few and puts the rest behind "More" — the list is programme
+ * configuration, and no component knows what is in it.
+ *
+ * A quick record may name a SCHEDULED activity too: recording "Reposition" or
+ * "Blood pressure" from the centre + is an extra, unscheduled event, which is
+ * exactly what a caregiver doing one off-schedule needs.
+ */
 export const NEURO_QUICK_RECORDS = [
-  "pain", "urine", "bowel", "feed", "swallow_observation", "caregiver_observation",
+  "pain", "blood_pressure", "temperature", "vomiting", "urine", "bowel",
+  "positioning", "swallow_observation", "feed", "catheter_care", "caregiver_observation",
 ];
 
 /* --------------------------------------------------------------------------

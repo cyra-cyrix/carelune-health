@@ -354,19 +354,70 @@ function TopBar({ role }: { role: AppRole }) {
         )}
         <span className="truncate text-[14px] font-semibold tracking-tight text-ink">{platformName}</span>
       </div>
-      <div className="flex min-w-0 items-center gap-3">
-        <span className="truncate text-[12px] text-sage-600">
-          {who} · <span className="font-medium text-ink">{roleLabel}</span>
-        </span>
-        <button
-          type="button"
-          onClick={() => void signOut()}
-          className="tap shrink-0 rounded-md border border-line px-2.5 py-1 text-[12px] font-medium text-sage-600 hover:bg-mist-100 hover:text-ink"
-        >
-          Sign out
-        </button>
-      </div>
+      {/* Profile lives behind the avatar, top right — never in the bottom
+          navigation, which belongs to care. Same functions as before, one tap
+          further away. */}
+      <ProfileMenu who={who} roleLabel={roleLabel} onSignOut={() => void signOut()} />
     </header>
+  );
+}
+
+/** The avatar, and what is behind it. */
+function ProfileMenu({
+  who, roleLabel, onSignOut,
+}: { who: string; roleLabel: string; onSignOut: () => void }) {
+  const [open, setOpen] = useState(false);
+  const initials = who
+    .split(/\s+/).filter(Boolean).slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() ?? "").join("") || "•";
+
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    // Any tap elsewhere, or Escape, closes it.
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("click", close);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("click", close);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`${who} — profile and settings`}
+        onClick={() => setOpen((v) => !v)}
+        className="tap grid h-9 w-9 place-items-center rounded-full bg-mist-100 text-[13px] font-semibold text-ink ring-1 ring-ink/10 hover:bg-mist-200"
+      >
+        {initials}
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 top-11 z-50 w-56 rounded-2xl bg-white p-2 shadow-lift ring-1 ring-ink/[0.08]"
+        >
+          <div className="px-3 py-2">
+            <p className="truncate text-[14px] font-semibold text-ink">{who}</p>
+            <p className="text-[12.5px] text-sage-500">{roleLabel}</p>
+          </div>
+          <div className="my-1 h-px bg-line" />
+          <button
+            type="button"
+            role="menuitem"
+            onClick={onSignOut}
+            className="tap w-full rounded-xl px-3 py-2.5 text-left text-[14px] font-medium text-ink hover:bg-mist-100"
+          >
+            Sign out
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 

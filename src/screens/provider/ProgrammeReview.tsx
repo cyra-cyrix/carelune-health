@@ -12,9 +12,9 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  approvePatientProgramme, compileCarePlan, getPatientProgrammes, getSubscription,
-  reviseProgrammeDraft,
-  type PatientProgrammeRow, type SubscriptionRow,
+  approvePatientProgramme, compileCarePlan, getMedications, getPatientProgrammes,
+  getSubscription, reviseProgrammeDraft,
+  type MedicationRow, type PatientProgrammeRow, type SubscriptionRow,
 } from "../../lib/db";
 import {
   BASIS_LABEL, validateCareActivities,
@@ -52,6 +52,10 @@ export default function ProgrammeReview({ patientId }: { patientId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<"compile" | "approve" | null>(null);
   const [dropped, setDropped] = useState<Set<string>>(new Set());
+  /* Which verified medications each dose slot administers. The programme holds
+     only ids; the drugs themselves stay in the medication record. */
+  const [medLinks, setMedLinks] = useState<Record<string, string[]>>({});
+  const [meds, setMeds] = useState<MedicationRow[]>([]);
   const [note, setNote] = useState("");
 
   const load = useCallback(async () => {
@@ -70,6 +74,9 @@ export default function ProgrammeReview({ patientId }: { patientId: string }) {
     void getSubscription(patientId)
       .then((s) => { if (active) setSub(s); })
       .catch(() => { if (active) setSub(null); });
+    void getMedications(patientId)
+      .then((m) => { if (active) setMeds(m.filter((x) => x.active)); })
+      .catch(() => { if (active) setMeds([]); });
     return () => { active = false; };
   }, [patientId]);
 
@@ -83,6 +90,21 @@ export default function ProgrammeReview({ patientId }: { patientId: string }) {
   }, [draft]);
 
   const kept = draftActivities.filter((a) => !dropped.has(a.key));
+
+  const linksFor = (key: string) =>
+    medLinks[key] ?? draftActivities.find((a) => a.key === key)?.medicationIds ?? [];
+  const toggleMedicine = (key: string, medId: string) =>
+    setMedLinks((prev) => {
+      const current = prev[key] ?? draftActivities.find((a) => a.key === key)?.medicationIds ?? [];
+      return {
+        ...prev,
+        [key]: current.includes(medId) ? current.filter((x) => x !== medId) : [...current, medId],
+      };
+    });
+  /* A dose slot with no medicines linked cannot show a family what to give, so
+     the patient app says "needs confirmation" rather than recording it. Surfaced
+     here so a clinician sees it before approving rather than after. */
+  const unlinkedDoses = kept.filter((a) => a.activityType === "dose" && linksFor(a.key).length === 0);
 
   const compile = async () => {
     setBusy("compile"); setError(null);
@@ -102,9 +124,15 @@ export default function ProgrammeReview({ patientId }: { patientId: string }) {
     setBusy("approve"); setError(null);
     try {
       // Save the clinician's edits first, so what is approved is what they read.
-      if (dropped.size > 0) {
-        const keptKeys = new Set(kept.map((a) => a.key));
-        const raw = (draft.activities as Record<string, unknown>[]).filter((a) => keptKeys.has(String(a.key)));
+      const keptKeys = new Set(kept.map((a) => a.key));
+      const linkedAny = Object.keys(medLinks).length > 0;
+      if (dropped.size > 0 || linkedAny) {
+        const raw = (draft.activities as Record<string, unknown>[])
+          .filter((a) => keptKeys.has(String(a.key)))
+          .map((a) => {
+            const key = String(a.key);
+            return a.activity_type === "dose" ? { ...a, medication_ids: linksFor(key) } : a;
+          });
         await reviseProgrammeDraft(
           draft.id,
           raw,
@@ -208,6 +236,9 @@ export default function ProgrammeReview({ patientId }: { patientId: string }) {
                         key={a.key}
                         activity={a}
                         compiledFrom={compiledFrom}
+                        medicines={meds}
+                        linked={linksFor(a.key)}
+                        onToggleMedicine={(id) => toggleMedicine(a.key, id)}
                         included={!dropped.has(a.key)}
                         onToggle={() =>
                           setDropped((prev) => {
@@ -236,6 +267,14 @@ export default function ProgrammeReview({ patientId }: { patientId: string }) {
               className="w-full rounded-xl bg-white px-3.5 py-2.5 text-[14px] text-ink ring-1 ring-ink/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
             />
           </label>
+
+          {unlinkedDoses.length > 0 && (
+            <p className="mt-4 rounded-xl bg-warn-50 p-3 text-[13px] leading-relaxed text-sage-700 ring-1 ring-warn-500/25">
+              {unlinkedDoses.length} medicine {unlinkedDoses.length === 1 ? "time has" : "times have"} no
+              medicines linked. The family will be told the details need confirming rather than being
+              asked to record an unknown medicine as given.
+            </p>
+          )}
 
           <div className="mt-4 flex flex-wrap gap-2">
             <PrimaryButton onClick={approve} disabled={busy !== null || kept.length === 0}>
@@ -298,10 +337,13 @@ function BasisCount({ tone, n, label }: { tone: string; n: number; label: string
  * what kind of thing it is, where it came from, and whether to keep it.
  */
 function ReviewRow({
-  activity, compiledFrom, included, onToggle,
+  activity, compiledFrom, medicines, linked, onToggleMedicine, included, onToggle,
 }: {
   activity: CareActivity;
   compiledFrom: CompiledFrom;
+  medicines: MedicationRow[];
+  linked: string[];
+  onToggleMedicine: (medicationId: string) => void;
   included: boolean;
   onToggle: () => void;
 }) {
@@ -350,6 +392,46 @@ function ReviewRow({
           )}
         </span>
       </label>
+
+      {/* A dose slot administers VERIFIED medications. The clinician says
+          which; nothing about the drug is ever written into the programme. */}
+      {activity.activityType === "dose" && included && (
+        <div className="mt-3 border-t border-line pt-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-sage-500">
+            Which medicines are given at this time
+          </p>
+          {medicines.length === 0 ? (
+            <p className="mt-1.5 text-[13px] text-sage-500">
+              This patient has no active medication records yet. Add them before approving, or the
+              family will be told the details need confirming.
+            </p>
+          ) : (
+            <div className="mt-2 space-y-1.5">
+              {medicines.map((m) => (
+                <label key={m.id} className="flex items-start gap-2.5">
+                  <input
+                    type="checkbox"
+                    checked={linked.includes(m.id)}
+                    onChange={() => onToggleMedicine(m.id)}
+                    aria-label={`${m.name} at ${activity.title}`}
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-line text-sky-600"
+                  />
+                  <span className="min-w-0 text-[13.5px] leading-snug">
+                    <span className="font-medium text-ink">{m.name}</span>
+                    {m.dose ? <span className="text-sage-600"> · {m.dose}</span> : null}
+                    {m.timing ? <span className="text-sage-500"> · {m.timing}</span> : null}
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+          {linked.length === 0 && medicines.length > 0 && (
+            <p className="mt-2 text-[12.5px] text-warn-600">
+              None linked — the family will be told the details need confirming.
+            </p>
+          )}
+        </div>
+      )}
     </li>
   );
 }

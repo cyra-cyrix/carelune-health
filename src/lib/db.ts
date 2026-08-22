@@ -2586,3 +2586,37 @@ export async function setServiceClinical(input: {
   if (error) throw new Error(await edgeError(error));
   if (data?.error) throw new Error(data.details ? `${data.error} (${(data.details as string[]).join("; ")})` : data.error);
 }
+
+/* ==========================================================================
+ * Turning what somebody said into a candidate they confirm.
+ *
+ * Never a record on its own: the reply is a PROPOSAL, matched against the
+ * activities in this patient's own approved programme, which the person edits
+ * or confirms before anything is written. Structuring being unavailable is not
+ * an error — the caller keeps the words instead.
+ * ======================================================================== */
+
+export type StructuredNote = {
+  /** An activity key from this patient's own approved programme, or null. */
+  activity_key: string | null;
+  /** Values for that activity's declared fields, and nothing else. */
+  values: Record<string, unknown>;
+  /** When it happened, if the words said so. ISO timestamp. */
+  occurred_at: string | null;
+  /** How that time was expressed, e.g. "Occurred about 2:30 PM". */
+  occurred_label: string | null;
+  /** Plain lines describing the candidate, for the confirmation card. */
+  summary: string[];
+};
+
+export async function structureCareNote(
+  subscriptionId: string,
+  text: string,
+): Promise<StructuredNote | null> {
+  const { data, error } = await supabase.functions.invoke("structure-care-note", {
+    body: { subscription_id: subscriptionId, text },
+  });
+  if (error) throw new Error(await edgeError(error));
+  if (data?.error) throw new Error(data.error);
+  return (data?.candidate as StructuredNote | null) ?? null;
+}

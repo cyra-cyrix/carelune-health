@@ -30,12 +30,34 @@ const one = (patch: Record<string, unknown> = {}) => [{
   ...patch,
 }];
 
+/** A field, so a record-type activity has something to record. */
+const A_FIELD = { key: "value", label: "Value", type: "text", required: false };
+
 describe("the closed vocabulary", () => {
   it("accepts an activity of every declared type and no other", () => {
     for (const t of ACTIVITY_TYPES) {
-      expect(errorsOf(one({ activity_type: t }))).toEqual([]);
+      expect(errorsOf(one({ activity_type: t, input_schema: [A_FIELD] })), t).toEqual([]);
     }
     expect(errorsOf(one({ activity_type: "triage" }))[0]).toMatch(/activity_type must be one of/);
+  });
+
+  it("refuses a recording activity that records nothing", () => {
+    // This is what left the hosted vitals sheet with only a timestamp to show:
+    // a `measurement` with an empty schema validated, and the recorder had
+    // nothing to draw. An interaction whose whole purpose is to capture a value
+    // must say which value.
+    for (const t of ["measurement", "symptom", "observation", "intake"]) {
+      expect(errorsOf(one({ activity_type: t, input_schema: [] }))[0], t)
+        .toMatch(/must state at least one field/);
+    }
+  });
+
+  it("still allows a completion activity to carry no fields", () => {
+    // "Was it done?" is the whole question for these, and the outcome control
+    // is part of the interaction rather than the schema.
+    for (const t of ["dose", "task", "exercise", "education"]) {
+      expect(errorsOf(one({ activity_type: t, input_schema: [] })), t).toEqual([]);
+    }
   });
 
   it("refuses an input field of an unknown type", () => {
@@ -267,6 +289,7 @@ describe("medication integrity", () => {
     // not prescriptions. Only `dose` is constrained.
     expect(findMedicationSpecifics(ok(one({
       activity_type: "intake", title: "Feed", instructions: "Give 200 ml slowly.",
+      input_schema: [{ key: "amount", label: "Amount", type: "number", required: false }],
     })))).toEqual([]);
     expect(findMedicationSpecifics(ok(one({
       activity_type: "exercise", title: "Walking", instructions: "10 units of effort, 5 mg is not a thing here.",
@@ -278,5 +301,33 @@ describe("medication integrity", () => {
     // Removing every stated AMOUNT removes what makes an invented instruction
     // actionable, which is the property that matters.
     expect(findMedicationSpecifics(dose({ title: "Aspirin" }))).toEqual([]);
+  });
+});
+
+describe("the link to verified medication records", () => {
+  it("carries medication ids on a dose activity, and only ids", () => {
+    const [a] = ok(one({ activity_type: "dose", medication_ids: ["med-1", "med-2"] }));
+    expect(a.medicationIds).toEqual(["med-1", "med-2"]);
+    // Ids reference the one medication store. Nothing about the drug itself is
+    // copied into the programme.
+    expect(JSON.stringify(a)).not.toMatch(/mg|tablet/i);
+  });
+
+  it("drops medication references from anything that is not a dose", () => {
+    const [a] = ok(one({
+      activity_type: "task", title: "Reposition", medication_ids: ["med-1"],
+    }));
+    expect(a.medicationIds).toEqual([]);
+  });
+
+  it("defaults to no link, which the patient app reports rather than guessing", () => {
+    const [a] = ok(one({ activity_type: "dose" }));
+    expect(a.medicationIds).toEqual([]);
+  });
+
+  it("survives the round trip through the stored form", () => {
+    const [a] = ok(one({ activity_type: "dose", medication_ids: ["med-1"] }));
+    const [b] = ok([toStoredActivity(a)]);
+    expect(b.medicationIds).toEqual(["med-1"]);
   });
 });

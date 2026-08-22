@@ -144,6 +144,20 @@ export type CareActivity = {
   rationale: string;
   /** Which household roles may record it. Empty means anyone linked to the patient. */
   recordedBy: string[];
+  /**
+   * For a `dose` activity only: which of the patient's own medication records
+   * this slot administers.
+   *
+   * Carelune has one medication store and this is a REFERENCE into it — ids,
+   * never names, strengths or instructions. The activity says when medicines
+   * are given; the medication record says which. A clinician sets this at
+   * approval, so what a family is shown is verified prescription data rather
+   * than anything a compiler produced.
+   *
+   * Empty means the link has not been made yet, and the patient app says so
+   * rather than presenting an unknown medicine as done.
+   */
+  medicationIds: string[];
 };
 
 export type ActivityValidation =
@@ -381,6 +395,21 @@ export function validateCareActivities(raw: unknown): ActivityValidation {
       inputSchema.push(field);
     });
 
+    /*
+     * A recording interaction must state what it records.
+     *
+     * Without this an activity of type `measurement` validates with an empty
+     * input_schema, and the recorder has nothing to draw but the timestamp —
+     * so "record a blood pressure" becomes "what time is it?". The four types
+     * below exist to capture a value; one that captures nothing is a
+     * configuration error, not a minimal activity.
+     */
+    const NEEDS_FIELDS: ActivityType[] = ["measurement", "symptom", "observation", "intake"];
+    if (activityType && NEEDS_FIELDS.includes(activityType) && inputSchema.length === 0) {
+      errors.push(`${at}.input_schema must state at least one field for an activity of type ${activityType}.`);
+      return;
+    }
+
     if (!key || !activityType || !title || !basis || seen.has(key)) return;
     seen.add(key);
 
@@ -400,6 +429,17 @@ export function validateCareActivities(raw: unknown): ActivityValidation {
       )
         .map((r) => str(r, 32))
         .filter((r): r is string => !!r),
+      // Only a dose activity may reference medication records. Anything else
+      // carrying them is a mistake, and dropping them is the safe reading.
+      medicationIds: activityType !== "dose"
+        ? []
+        : (Array.isArray(entry.medication_ids ?? entry.medicationIds)
+            ? ((entry.medication_ids ?? entry.medicationIds) as unknown[])
+            : []
+          )
+            .map((r) => str(r, 64))
+            .filter((r): r is string => !!r)
+            .slice(0, 40),
     });
   });
 
@@ -433,6 +473,7 @@ export function toStoredActivity(a: CareActivity): Record<string, unknown> {
       ...(f.highLabel ? { high_label: f.highLabel } : {}),
       ...(f.placeholder ? { placeholder: f.placeholder } : {}),
     })),
+    ...(a.activityType === "dose" ? { medication_ids: a.medicationIds } : {}),
     schedule: a.schedule
       ? {
           kind: a.schedule.kind,

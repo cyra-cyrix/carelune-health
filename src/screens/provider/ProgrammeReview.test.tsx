@@ -4,7 +4,7 @@
  * Who the care-programme card is for, and what a clinician reviewing a draft is
  * actually shown.
  */
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const db = vi.hoisted(() => ({
@@ -12,6 +12,7 @@ const db = vi.hoisted(() => ({
   compileCarePlan: vi.fn(),
   getPatientProgrammes: vi.fn(),
   getSubscription: vi.fn(),
+  getMedications: vi.fn(),
   reviseProgrammeDraft: vi.fn(),
 }));
 vi.mock("../../lib/db", () => db);
@@ -49,7 +50,8 @@ const draft = {
     {
       key: "sleep_check", activity_type: "observation", title: "Sleep", basis: "ai_suggested",
       instructions: "", rationale: "Disturbed sleep is common after stroke.",
-      input_schema: [], schedule: { kind: "on_demand" },
+      input_schema: [{ key: "quality", label: "How was the night", type: "choice", required: true, options: ["Settled", "Restless", "Awake a lot"] }],
+      schedule: { kind: "on_demand" },
     },
   ],
 };
@@ -59,6 +61,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   db.getPatientProgrammes.mockResolvedValue([draft]);
   db.getSubscription.mockResolvedValue({ id: "sub-1", service_package_id: "pkg-1" });
+  db.getMedications.mockResolvedValue([
+    { id: "med-1", name: "Pantoprazole", dose: "40 mg", timing: "Before food", note: "For stomach protection", active: true },
+    { id: "med-2", name: "Baclofen", dose: "10 mg", timing: "After food", note: "Helps manage muscle stiffness", active: true },
+  ]);
 });
 
 describe("who the card is for", () => {
@@ -127,5 +133,43 @@ describe("what the clinician review shows for every activity", () => {
   it("passes the compiler's own notes to the reviewer", async () => {
     render(<ProgrammeReview patientId="p1" />);
     expect(await screen.findByText(/Blood pressure frequency was not stated/)).toBeTruthy();
+  });
+});
+
+describe("linking a medicine time to verified medication records", () => {
+  it("offers this patient's own active medicines against a dose activity", async () => {
+    render(<ProgrammeReview patientId="p1" />);
+    const meds = (await screen.findByText("Morning medicines")).closest("li") as HTMLElement;
+    expect(within(meds).getByText("Which medicines are given at this time")).toBeTruthy();
+    expect(within(meds).getByRole("checkbox", { name: "Pantoprazole at Morning medicines" })).toBeTruthy();
+    expect(within(meds).getByRole("checkbox", { name: "Baclofen at Morning medicines" })).toBeTruthy();
+  });
+
+  it("offers no such control on anything that is not a dose", async () => {
+    render(<ProgrammeReview patientId="p1" />);
+    const task = (await screen.findByText("Reposition")).closest("li") as HTMLElement;
+    expect(within(task).queryByText("Which medicines are given at this time")).toBeNull();
+  });
+
+  it("warns before approval when a medicine time has nothing linked", async () => {
+    render(<ProgrammeReview patientId="p1" />);
+    expect(await screen.findByText(/no medicines linked/)).toBeTruthy();
+    const meds = (await screen.findByText("Morning medicines")).closest("li") as HTMLElement;
+    expect(within(meds).getByText(/None linked/)).toBeTruthy();
+  });
+
+  it("saves the link with the clinician's other edits at approval", async () => {
+    db.reviseProgrammeDraft.mockResolvedValue({});
+    db.approvePatientProgramme.mockResolvedValue({});
+    render(<ProgrammeReview patientId="p1" />);
+    const meds = (await screen.findByText("Morning medicines")).closest("li") as HTMLElement;
+    fireEvent.click(within(meds).getByRole("checkbox", { name: "Pantoprazole at Morning medicines" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Approve/ }));
+    await waitFor(() => expect(db.reviseProgrammeDraft).toHaveBeenCalled());
+    const [, activities] = db.reviseProgrammeDraft.mock.calls[0];
+    const dose = activities.find((a: Record<string, unknown>) => a.key === "morning_meds");
+    expect(dose.medication_ids).toEqual(["med-1"]);
+    // Nothing about the drug itself is copied into the programme.
+    expect(JSON.stringify(dose)).not.toMatch(/Pantoprazole|40 mg/);
   });
 });

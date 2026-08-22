@@ -114,8 +114,9 @@ the patient's recorded situation clearly calls for something the provider's defa
 
 QUICK RECORDS
 Also return "quick_records": the keys of the activities a family should be able to record at any
-moment, in the order they should appear. These are your on_demand activities - pain, output,
-observations, anything that happens when it happens.
+moment, most useful first. Include your on_demand activities - pain, output, observations - and also
+any SCHEDULED activity a family might reasonably do off-schedule, such as an extra repositioning or
+an unplanned blood pressure. Six to ten is a good number.
 
 Return ONLY valid JSON in exactly this shape:
 {"activities":[ ... ],"quick_records":["key","key"],"notes_for_clinician":["short line","short line"]}`;
@@ -191,12 +192,15 @@ function providerDefaultsOnly(activities: unknown[]): { activities: unknown[]; q
     if (!row.rationale) row.rationale = "From the provider's approved programme.";
     return row;
   });
-  const quick = out
-    .filter((a) => {
-      const s = a.schedule as Record<string, unknown> | null;
-      return !s || s.kind === "on_demand";
-    })
-    .map((a) => String(a.key));
+  // On-demand activities first, then the scheduled ones a family might do
+  // off-schedule. Same rule as the model path: any activity may be a quick
+  // record, because recording one ad hoc is a legitimate unscheduled event.
+  const onDemand = out.filter((a) => {
+    const s = a.schedule as Record<string, unknown> | null;
+    return !s || s.kind === "on_demand";
+  });
+  const scheduled = out.filter((a) => !onDemand.includes(a));
+  const quick = [...onDemand, ...scheduled].map((a) => String(a.key));
   return { activities: out, quick_records: quick };
 }
 
@@ -354,14 +358,13 @@ Deno.serve(async (req) => {
         compiled = {
           activities: raw.activities,
           // A quick record must be an activity that actually exists in this
-          // programme, and must be one that is recorded whenever it happens.
+          // programme. It need NOT be on-demand: recording a scheduled activity
+          // from the centre "+" is an extra, unscheduled event, which is what a
+          // caregiver repositioning off-schedule or taking an unplanned blood
+          // pressure actually needs.
           quick_records: (Array.isArray(raw.quick_records) ? raw.quick_records : [])
             .map((k: unknown) => String(k))
-            .filter((k: string) => {
-              if (!keys.has(k)) return false;
-              const a = check.activities.find((x) => x.key === k);
-              return !a?.schedule || a.schedule.kind === "on_demand";
-            }),
+            .filter((k: string) => keys.has(k)),
         };
         notes = (Array.isArray(raw.notes_for_clinician) ? raw.notes_for_clinician : [])
           .map((n: unknown) => str(n)).filter(Boolean).slice(0, 10);

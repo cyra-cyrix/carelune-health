@@ -179,6 +179,7 @@ function asActivity(snapshot: unknown): CareActivity | null {
     basis: (typeof s.basis === "string" ? s.basis : "provider_default") as CareActivity["basis"],
     rationale: typeof s.rationale === "string" ? s.rationale : "",
     recordedBy: Array.isArray(s.recorded_by) ? (s.recorded_by as string[]) : [],
+    medicationIds: Array.isArray(s.medication_ids) ? (s.medication_ids as string[]) : [],
   };
 }
 

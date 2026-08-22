@@ -20,9 +20,15 @@ const dbMocks = vi.hoisted(() => ({
   getApprovedProgramme: vi.fn(),
   getCareEvents: vi.fn(),
   getCareTeam: vi.fn(),
+  getMedications: vi.fn(),
+  getMedAdminToday: vi.fn(),
   getOccurrences: vi.fn(),
   materialiseOccurrences: vi.fn(),
+  raiseApproval: vi.fn(),
   recordCareEvent: vi.fn(),
+  setMedAdmin: vi.fn(),
+  clearMedAdmin: vi.fn(),
+  structureCareNote: vi.fn(),
 }));
 
 vi.mock("../../../lib/db", () => dbMocks);
@@ -109,7 +115,26 @@ beforeEach(() => {
   dbMocks.getCareEvents.mockResolvedValue([]);
   dbMocks.getOccurrences.mockResolvedValue([]);
   dbMocks.recordCareEvent.mockResolvedValue({});
+  dbMocks.raiseApproval.mockResolvedValue(undefined);
+  dbMocks.setMedAdmin.mockResolvedValue(undefined);
+  dbMocks.clearMedAdmin.mockResolvedValue(undefined);
+  dbMocks.getMedAdminToday.mockResolvedValue(new Map());
+  dbMocks.structureCareNote.mockResolvedValue(null);
+  // The patient's verified medication record — the one medication store.
+  dbMocks.getMedications.mockResolvedValue([
+    { id: "med-1", name: "Pantoprazole", dose: "40 mg", timing: "Before food", note: "For stomach protection", active: true },
+    { id: "med-2", name: "Baclofen", dose: "10 mg", timing: "After food", note: "Helps manage muscle stiffness", active: true },
+    { id: "med-3", name: "Levetiracetam", dose: "500 mg", timing: "After food", note: null, active: true },
+  ]);
 });
+
+/** As a clinician's approval would leave it: dose slots linked to real medicines. */
+const withMedicineLinks = (activities: Record<string, unknown>[]) =>
+  activities.map((a) =>
+    a.activity_type === "dose"
+      ? { ...a, medication_ids: a.key === "morning_meds" ? ["med-1", "med-2", "med-3"] : ["med-2"] }
+      : a,
+  );
 
 const renderShell = (activities: Record<string, unknown>[], quick: string[]) => {
   const programme = programmeOf(activities, quick);
@@ -172,7 +197,7 @@ describe("the shell, with the Neuro configuration", () => {
     // The remaining fields still come from the activity's own input_schema.
     expect(within(dialog).getByText("Sets completed")).toBeTruthy();
     expect(within(dialog).getByText("How was it tolerated")).toBeTruthy();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Record" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(dbMocks.recordCareEvent).toHaveBeenCalled());
     const call = dbMocks.recordCareEvent.mock.calls[0][0];
     // The client sends a KEY, never a definition.
@@ -189,9 +214,13 @@ describe("the shell, with the Neuro configuration", () => {
     fireEvent.click(screen.getByRole("button", { name: /Tell us/ }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("Quick record")).toBeTruthy();
-    expect(within(dialog).getByRole("button", { name: "Swallowing" })).toBeTruthy();
+    // The most useful few are shown; the rest are behind More.
+    expect(within(dialog).getByRole("button", { name: "Pain" })).toBeTruthy();
     expect(within(dialog).getByRole("button", { name: "Bowel movement" })).toBeTruthy();
     expect(within(dialog).queryByRole("button", { name: "Nappy" })).toBeNull();
+    const more = within(dialog).getByRole("button", { name: /^More \(/ });
+    fireEvent.click(more);
+    expect(within(dialog).getByRole("button", { name: "Swallowing" })).toBeTruthy();
   });
 
   it("records a quick entry with no expectation attached", async () => {
@@ -201,7 +230,7 @@ describe("the shell, with the Neuro configuration", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Pain" }));
     const dialog = await screen.findByRole("dialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "4" }));
-    fireEvent.click(within(dialog).getByRole("button", { name: "Record" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(dbMocks.recordCareEvent).toHaveBeenCalled());
     const call = dbMocks.recordCareEvent.mock.calls[0][0];
     expect(call.activityKey).toBe("pain");
@@ -211,29 +240,33 @@ describe("the shell, with the Neuro configuration", () => {
   });
 
   it("lists the plan grouped by what kind of care it is", async () => {
-    renderShell(NEURO_ACTIVITIES, NEURO_QUICK_RECORDS);
+    renderShell(withMedicineLinks(NEURO_ACTIVITIES), NEURO_QUICK_RECORDS);
     await screen.findByText("Now");
-    openTab(/^Plan$/);
+    openTab(/^My Care$/);
     expect(await screen.findByText("Medicines")).toBeTruthy();
-    expect(screen.getByText("Therapy and exercises")).toBeTruthy();
-    expect(screen.getByText("Feeding and fluids")).toBeTruthy();
-    expect(screen.getByText("Daily care")).toBeTruthy();
-    expect(screen.getAllByText("Every day at 09:00").length).toBeGreaterThan(0);
+    expect(screen.getByText("Therapy")).toBeTruthy();
+    expect(screen.getByText("Feeding and diet")).toBeTruthy();
+    expect(screen.getByText("Nursing and daily care")).toBeTruthy();
+    // Medicines come from the medication record, so the section lists the
+    // regimen rather than the slot's schedule.
+    expect(screen.getByText("Pantoprazole")).toBeTruthy();
+    expect(screen.getAllByText("Every day at 11:00").length).toBeGreaterThan(0);
   });
 
-  it("reports Journey as counts of what was recorded, never a progress percentage", async () => {
+  it("reports Progress as counts of what was recorded, never a percentage", async () => {
     renderShell(NEURO_ACTIVITIES, NEURO_QUICK_RECORDS);
     await screen.findByText("Now");
-    openTab(/^Journey$/);
-    expect(await screen.findByText("Recent days")).toBeTruthy();
-    expect(screen.getByText(/scheduled recorded/)).toBeTruthy();
+    openTab(/^Progress$/);
+    expect(await screen.findByText("Planned care, last 7 days")).toBeTruthy();
+    expect(screen.getAllByText(/recorded as planned/).length).toBeGreaterThan(0);
+    expect(screen.getByText("Day by day")).toBeTruthy();
     expect(screen.queryByText(/%/)).toBeNull();
   });
 
   it("shows the care team on Connect without implying live monitoring", async () => {
     renderShell(NEURO_ACTIVITIES, NEURO_QUICK_RECORDS);
     await screen.findByText("Now");
-    openTab(/^Connect$/);
+    openTab(/^Team$/);
     expect(await screen.findByText("Dr Ravi Kumar")).toBeTruthy();
     expect(screen.getByText("MESSAGES")).toBeTruthy();
     expect(screen.queryByText(/monitor(ing|ed) (you|24)/i)).toBeNull();
@@ -281,7 +314,7 @@ describe("the SAME shell, with the Lactation configuration", () => {
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("What happened")).toBeTruthy();
     expect(within(dialog).getAllByRole("button", { name: "Done" })).toHaveLength(1);
-    fireEvent.click(within(dialog).getByRole("button", { name: "Record" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(dbMocks.recordCareEvent).toHaveBeenCalled());
     const call = dbMocks.recordCareEvent.mock.calls[0][0];
     expect(call.activityKey).toBe("pelvic_floor");
@@ -293,10 +326,10 @@ describe("the SAME shell, with the Lactation configuration", () => {
   it("groups its plan under the same headings, with different content", async () => {
     renderShell(LACTATION_ACTIVITIES, LACTATION_QUICK_RECORDS);
     await screen.findByText("Now");
-    openTab(/^Plan$/);
-    expect(await screen.findByText("Feeding and fluids")).toBeTruthy();
-    expect(screen.getByText("Therapy and exercises")).toBeTruthy();
-    expect(screen.getByText("Things to read")).toBeTruthy();
+    openTab(/^My Care$/);
+    expect(await screen.findByText("Feeding and diet")).toBeTruthy();
+    expect(screen.getByText("Therapy")).toBeTruthy();
+    expect(screen.getByText("Instructions and education")).toBeTruthy();
     expect(screen.getByText("Safer sleep for your baby")).toBeTruthy();
     // No medicines are configured for this programme, so that section is absent
     // rather than empty — the section list is data-driven, not hardcoded.
@@ -306,12 +339,12 @@ describe("the SAME shell, with the Lactation configuration", () => {
   it("uses every one of the five frozen slots, exactly as Neuro does", async () => {
     renderShell(LACTATION_ACTIVITIES, LACTATION_QUICK_RECORDS);
     await screen.findByText("Now");
-    openTab(/^Journey$/);
-    expect(await screen.findByText("Recent days")).toBeTruthy();
-    openTab(/^Connect$/);
+    openTab(/^Progress$/);
+    expect(await screen.findByText("Day by day")).toBeTruthy();
+    openTab(/^Team$/);
     expect(await screen.findByText("Dr Ravi Kumar")).toBeTruthy();
-    openTab(/^Plan$/);
-    expect(await screen.findByText("Your care rhythm")).toBeTruthy();
+    openTab(/^My Care$/);
+    expect(await screen.findByText("Therapy")).toBeTruthy();
     openTab(/^Today$/);
     expect(await screen.findByText("Now")).toBeTruthy();
     expect(screen.getByRole("button", { name: /Tell us/ })).toBeTruthy();
@@ -355,5 +388,149 @@ describe("what the shell refuses to do", () => {
   it("says so plainly when there is nothing scheduled", async () => {
     renderShell(NEURO_ACTIVITIES, NEURO_QUICK_RECORDS);
     expect(await screen.findByText("Nothing scheduled today")).toBeTruthy();
+  });
+});
+
+/* ========================================================================== */
+
+describe("medicines", () => {
+  const find = (k: string) => NEURO_ACTIVITIES.find((a) => a.key === k) as Record<string, unknown>;
+  const linked = withMedicineLinks(NEURO_ACTIVITIES);
+  const linkedFind = (k: string) => linked.find((a) => a.key === k) as Record<string, unknown>;
+
+  it("says how many medicines a slot covers, rather than being a bare task", async () => {
+    dbMocks.getOccurrences.mockResolvedValue([occurrenceFor(linkedFind("morning_meds"), 0.2)]);
+    renderShell(linked, NEURO_QUICK_RECORDS);
+    expect(await screen.findByText("3 medicines · 3 remaining")).toBeTruthy();
+  });
+
+  it("opens the actual verified medicines, grouped by the prescriber's food relation", async () => {
+    dbMocks.getOccurrences.mockResolvedValue([occurrenceFor(linkedFind("morning_meds"), 0.2)]);
+    renderShell(linked, NEURO_QUICK_RECORDS);
+    fireEvent.click(await screen.findByText("Morning medicines"));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Before food")).toBeTruthy();
+    expect(within(dialog).getByText("After food")).toBeTruthy();
+    expect(within(dialog).getByText("Pantoprazole")).toBeTruthy();
+    expect(within(dialog).getByText("40 mg")).toBeTruthy();
+    // Purpose only where the prescriber wrote one.
+    expect(within(dialog).getByText("For stomach protection")).toBeTruthy();
+    expect(within(dialog).getByText("Levetiracetam")).toBeTruthy();
+  });
+
+  it("records each medicine on its own, so one can be taken and another not", async () => {
+    dbMocks.getOccurrences.mockResolvedValue([occurrenceFor(linkedFind("morning_meds"), 0.2)]);
+    renderShell(linked, NEURO_QUICK_RECORDS);
+    fireEvent.click(await screen.findByText("Morning medicines"));
+    const dialog = await screen.findByRole("dialog");
+
+    const rowFor = (name: string) => (within(dialog).getByText(name).closest("li")) as HTMLElement;
+    fireEvent.click(within(rowFor("Pantoprazole")).getByRole("button", { name: "Taken" }));
+    fireEvent.click(within(rowFor("Baclofen")).getByRole("button", { name: "Not taken" }));
+    fireEvent.click(within(rowFor("Levetiracetam")).getByRole("button", { name: "Taken" }));
+
+    await waitFor(() => expect(dbMocks.setMedAdmin).toHaveBeenCalledTimes(3));
+    // Each administration is written against the medication record itself.
+    expect(dbMocks.setMedAdmin.mock.calls.map((c) => [c[1], c[3]])).toEqual([
+      ["med-1", "given"], ["med-2", "missed"], ["med-3", "given"],
+    ]);
+  });
+
+  it("will not record a completion for medicines it cannot name", async () => {
+    // No links: the compiler produced a slot, but no clinician confirmed which
+    // medicines it administers.
+    dbMocks.getOccurrences.mockResolvedValue([occurrenceFor(find("morning_meds"), 0.2)]);
+    renderShell(NEURO_ACTIVITIES, NEURO_QUICK_RECORDS);
+    fireEvent.click(await screen.findByText("Morning medicines"));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Medication details need confirmation from your care team.")).toBeTruthy();
+    expect(within(dialog).queryByRole("button", { name: "Taken" })).toBeNull();
+    expect(dbMocks.recordCareEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe("the measurement recorder", () => {
+  const find = (k: string) => NEURO_ACTIVITIES.find((a) => a.key === k) as Record<string, unknown>;
+
+  it("asks for the configured measurements, not for a time", async () => {
+    dbMocks.getOccurrences.mockResolvedValue([occurrenceFor(find("blood_pressure"), 0.2)]);
+    renderShell(NEURO_ACTIVITIES, NEURO_QUICK_RECORDS);
+    fireEvent.click(await screen.findByText("Blood pressure"));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByLabelText("Systolic (mmHg)")).toBeTruthy();
+    expect(within(dialog).getByLabelText("Diastolic (mmHg)")).toBeTruthy();
+    expect(within(dialog).getByLabelText("Pulse (bpm)")).toBeTruthy();
+    // The time is a quiet footnote, defaulted to now.
+    expect(within(dialog).getByText(/Recorded now/)).toBeTruthy();
+    expect(within(dialog).queryByLabelText("When did this happen")).toBeNull();
+  });
+
+  it("lets the few who need it change the time", async () => {
+    dbMocks.getOccurrences.mockResolvedValue([occurrenceFor(find("blood_pressure"), 0.2)]);
+    renderShell(NEURO_ACTIVITIES, NEURO_QUICK_RECORDS);
+    fireEvent.click(await screen.findByText("Blood pressure"));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Change" }));
+    expect(within(dialog).getByLabelText("When did this happen")).toBeTruthy();
+  });
+});
+
+describe("the centre + reaches the same engine", () => {
+  it("opens the proper measurement recorder for a SCHEDULED activity, as an unscheduled event", async () => {
+    renderShell(NEURO_ACTIVITIES, NEURO_QUICK_RECORDS);
+    await screen.findByText("Nothing scheduled today");
+    fireEvent.click(screen.getByRole("button", { name: /Tell us/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Blood pressure" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByLabelText("Systolic (mmHg)")).toBeTruthy();
+  });
+
+  it("records repositioning done off-schedule with no expectation attached", async () => {
+    renderShell(NEURO_ACTIVITIES, NEURO_QUICK_RECORDS);
+    await screen.findByText("Nothing scheduled today");
+    fireEvent.click(screen.getByRole("button", { name: /Tell us/ }));
+    // Reposition sits behind More — the programme orders its own quick list.
+    fireEvent.click(await screen.findByRole("button", { name: /^More \(/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Reposition" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(dbMocks.recordCareEvent).toHaveBeenCalled());
+    const call = dbMocks.recordCareEvent.mock.calls[0][0];
+    expect(call.activityKey).toBe("positioning");
+    expect(call.occurrenceId).toBeNull();
+    expect(call.entryMode).toBe("quick");
+  });
+
+  it("shows a structured candidate for confirmation before recording words", async () => {
+    dbMocks.structureCareNote.mockResolvedValue({
+      activity_key: "vomiting",
+      values: { episodes: 2, when: "Soon after a feed" },
+      occurred_at: new Date(Date.now() - 3600_000).toISOString(),
+      occurred_label: "Occurred about 2:30 PM",
+      summary: ["2 episodes", "After lunch"],
+    });
+    renderShell(NEURO_ACTIVITIES, NEURO_QUICK_RECORDS);
+    await screen.findByText("Nothing scheduled today");
+    fireEvent.click(screen.getByRole("button", { name: /Tell us/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Something else" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByRole("textbox"), {
+      target: { value: "She vomited twice after lunch." },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Continue" }));
+
+    // Nothing is recorded until the candidate is confirmed.
+    expect(await within(dialog).findByText("Vomiting")).toBeTruthy();
+    expect(within(dialog).getByText("2 episodes")).toBeTruthy();
+    expect(within(dialog).getByText("Occurred about 2:30 PM")).toBeTruthy();
+    expect(dbMocks.recordCareEvent).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(dbMocks.recordCareEvent).toHaveBeenCalled());
+    const call = dbMocks.recordCareEvent.mock.calls[0][0];
+    expect(call.activityKey).toBe("vomiting");
+    expect(call.payload).toEqual({ episodes: 2, when: "Soon after a feed" });
+    // The person's own words are kept with the entry.
+    expect(call.note).toBe("She vomited twice after lunch.");
   });
 });

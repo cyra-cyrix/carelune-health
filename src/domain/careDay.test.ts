@@ -92,6 +92,23 @@ describe("the day", () => {
     expect(day.completed[0].event?.id).toBe("e1");
   });
 
+  it("leaves out an expectation from a replaced programme version", () => {
+    // Found on staging: approving version 2 left version 1's pending items in
+    // place, and the family saw every activity twice.
+    const withCancelled = buildCareDay(
+      [
+        occ({ id: "meds", due_at: at("09:00"), status: "pending" }),
+        occ({ id: "meds_v1", activity_key: "meds", due_at: at("09:00"), status: "cancelled" }),
+      ],
+      [],
+      NOW,
+    );
+    expect(withCancelled.scheduledTotal).toBe(1);
+    expect([...withCancelled.now, ...withCancelled.unresolved, ...withCancelled.next]).toHaveLength(1);
+    // And it is not silently counted as done either.
+    expect(withCancelled.completed).toEqual([]);
+  });
+
   it("reads an empty day without inventing anything", () => {
     const empty = buildCareDay([], [], NOW);
     expect(empty.now).toEqual([]);
@@ -125,6 +142,8 @@ describe("journey continuity", () => {
         occ({ id: "a", due_at: at("09:00"), local_date: "2026-08-22", status: "done" }),
         occ({ id: "b", due_at: at("10:00"), local_date: "2026-08-22", status: "missed" }),
         occ({ id: "c", due_at: at("09:00"), local_date: "2026-08-21", status: "done" }),
+        // A replaced version's unmet expectation counts towards nothing.
+        occ({ id: "d", due_at: at("11:00"), local_date: "2026-08-22", status: "cancelled" }),
       ],
       [ev({ id: "e", local_date: "2026-08-22" })],
     );

@@ -36,7 +36,7 @@ export type OccurrenceRow = {
   window_end: string | null;
   local_date: string;
   display_group: DisplayGroup;
-  status: "pending" | "done" | "partial" | "unable" | "skipped" | "missed";
+  status: "pending" | "done" | "partial" | "unable" | "skipped" | "missed" | "cancelled";
   resolved_by_event_id: string | null;
 };
 
@@ -202,6 +202,8 @@ export function buildCareDay(
   const windowMs = NOW_WINDOW_MINUTES * 60_000;
 
   const items: TimelineItem[] = occurrences
+    // An expectation from a replaced programme version is not part of the day.
+    .filter((o) => o.status !== "cancelled")
     .map((o) => {
       const dueAt = new Date(o.due_at);
       const activity = asActivity(o.definition_snapshot);
@@ -292,6 +294,7 @@ export function summariseDays(
   };
 
   for (const o of occurrences) {
+    if (o.status === "cancelled") continue;
     const row = ensure(o.local_date);
     row.scheduled += 1;
     if (o.status === "done" || o.status === "partial") row.recorded += 1;

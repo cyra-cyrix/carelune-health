@@ -2375,7 +2375,7 @@ export type CareOccurrenceRow = {
   window_end: string | null;
   local_date: string;
   display_group: "morning" | "afternoon" | "evening" | "night";
-  status: "pending" | "done" | "partial" | "unable" | "skipped" | "missed";
+  status: "pending" | "done" | "partial" | "unable" | "skipped" | "missed" | "cancelled";
   resolved_by_event_id: string | null;
 };
 
@@ -2426,6 +2426,9 @@ export async function getOccurrences(patientId: string, from: Date, to: Date): P
     .eq("patient_id", patientId)
     .gte("local_date", iso(from))
     .lte("local_date", iso(to))
+    // A cancelled expectation belonged to a programme version that has been
+    // replaced. It is kept as a record and never shown as something to do.
+    .neq("status", "cancelled")
     .order("due_at");
   if (error) throw new Error(error.message);
   return (data ?? []) as CareOccurrenceRow[];

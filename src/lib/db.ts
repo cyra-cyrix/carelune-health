@@ -2163,3 +2163,288 @@ export async function getProgrammeActivity(patientIds: string[]): Promise<Record
   }
   return out;
 }
+
+/* ==========================================================================
+ * Clinical domain, knowledge packs, and the compiled patient programme (0032/0033).
+ *
+ * The patient app reads its programme through `getApprovedProgramme`, which by
+ * RLS can only ever return an APPROVED one — a draft is professional working
+ * material and a household account cannot read it at all. Every write below goes
+ * through an RPC that re-derives everything from the patient's own row; none of
+ * these helpers is a table write.
+ * ======================================================================== */
+
+export type ClinicalDomainRow = {
+  id: string;
+  key: string;
+  name: string;
+  summary: string | null;
+  sort_order: number;
+  status: "active" | "retired";
+};
+
+/** The Carelune-level clinical domains. Staff-readable reference data. */
+export async function getClinicalDomains(): Promise<ClinicalDomainRow[]> {
+  const { data, error } = await supabase
+    .from("clinical_domains")
+    .select("id, key, name, summary, sort_order, status")
+    .eq("status", "active")
+    .order("sort_order");
+  if (error) throw new Error(error.message);
+  return (data ?? []) as ClinicalDomainRow[];
+}
+
+export type KnowledgePackRow = {
+  id: string;
+  clinical_domain_id: string;
+  version: number;
+  title: string;
+  summary: string | null;
+  status: "draft" | "in_review" | "published" | "retired";
+  reviewed_at: string | null;
+  source_provenance: string;
+  knowledge: Record<string, unknown>;
+  evidence: Record<string, unknown>;
+};
+
+export type KnowledgeSourceRow = {
+  id: string;
+  knowledge_pack_id: string;
+  title: string;
+  publisher: string | null;
+  kind: string;
+  url: string | null;
+  storage_path: string | null;
+  citation: string | null;
+  published_on: string | null;
+};
+
+/** Knowledge packs for one domain, newest version first. Never patient-facing. */
+export async function getKnowledgePacks(domainId: string): Promise<KnowledgePackRow[]> {
+  const { data, error } = await supabase
+    .from("knowledge_packs")
+    .select("id, clinical_domain_id, version, title, summary, status, reviewed_at, source_provenance, knowledge, evidence")
+    .eq("clinical_domain_id", domainId)
+    .order("version", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as KnowledgePackRow[];
+}
+
+/** The citations behind a knowledge pack. */
+export async function getKnowledgeSources(packId: string): Promise<KnowledgeSourceRow[]> {
+  const { data, error } = await supabase
+    .from("knowledge_sources")
+    .select("id, knowledge_pack_id, title, publisher, kind, url, storage_path, citation, published_on")
+    .eq("knowledge_pack_id", packId)
+    .order("sort_order");
+  if (error) throw new Error(error.message);
+  return (data ?? []) as KnowledgeSourceRow[];
+}
+
+/* ------------------------------ the programme ----------------------------- */
+
+export type PatientProgrammeRow = {
+  id: string;
+  patient_id: string;
+  subscription_id: string;
+  version: number;
+  activities: Record<string, unknown>[];
+  quick_records: string[];
+  compiled_from: Record<string, unknown>;
+  status: "draft" | "approved" | "superseded" | "rejected";
+  source_provenance: string;
+  ai_model: string | null;
+  compiled_at: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  approval_note: string | null;
+  created_at: string;
+};
+
+const PROGRAMME_COLS =
+  "id, patient_id, subscription_id, version, activities, quick_records, compiled_from, status, " +
+  "source_provenance, ai_model, compiled_at, approved_by, approved_at, approval_note, created_at";
+
+/**
+ * The patient's live programme. Returns null when nothing has been approved —
+ * which is the honest answer, not an error: a compiled draft is not care.
+ */
+export async function getApprovedProgramme(patientId: string): Promise<PatientProgrammeRow | null> {
+  const { data, error } = await supabase
+    .from("patient_programmes")
+    .select(PROGRAMME_COLS)
+    .eq("patient_id", patientId)
+    .eq("status", "approved")
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data as PatientProgrammeRow | null) ?? null;
+}
+
+/** Every version for this patient, newest first. Staff-only by RLS. */
+export async function getPatientProgrammes(patientId: string): Promise<PatientProgrammeRow[]> {
+  const { data, error } = await supabase
+    .from("patient_programmes")
+    .select(PROGRAMME_COLS)
+    .eq("patient_id", patientId)
+    .order("version", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as unknown as PatientProgrammeRow[];
+}
+
+/** Compile a candidate programme. Server-side; writes a DRAFT and nothing more. */
+export async function compileCarePlan(patientId: string): Promise<PatientProgrammeRow> {
+  const { data, error } = await supabase.functions.invoke("compile-care-plan", {
+    body: { patient_id: patientId },
+  });
+  if (error) throw new Error(await edgeError(error));
+  if (data?.error) {
+    throw new Error(
+      data.validation ? `${data.error} (${(data.validation.errors ?? []).join("; ")})` : data.error,
+    );
+  }
+  return data.programme as PatientProgrammeRow;
+}
+
+/** The clinician's approval. Treating doctor only, enforced in the database. */
+export async function approvePatientProgramme(programmeId: string, note?: string): Promise<PatientProgrammeRow> {
+  const { data, error } = await supabase.rpc("approve_patient_programme", {
+    p_programme: programmeId,
+    p_note: note ?? null,
+  });
+  if (error) throw new Error(error.message);
+  return data as PatientProgrammeRow;
+}
+
+/* --------------------------- scheduled care + events ---------------------- */
+
+export type CareOccurrenceRow = {
+  id: string;
+  patient_id: string;
+  activity_key: string;
+  activity_type: string;
+  definition_snapshot: Record<string, unknown>;
+  due_at: string;
+  window_end: string | null;
+  local_date: string;
+  display_group: "morning" | "afternoon" | "evening" | "night";
+  status: "pending" | "done" | "partial" | "unable" | "skipped" | "missed";
+  resolved_by_event_id: string | null;
+};
+
+export type CareEventDbRow = {
+  id: string;
+  patient_id: string;
+  occurrence_id: string | null;
+  activity_key: string;
+  activity_type: string;
+  label_snapshot: string;
+  occurred_at: string;
+  recorded_at: string;
+  local_date: string;
+  outcome: "done" | "partial" | "unable" | "skipped" | "recorded" | null;
+  payload: Record<string, unknown>;
+  note: string | null;
+  entry_mode: "scheduled" | "quick" | "voice" | "text";
+  acknowledgement_state:
+    | "recorded" | "completed" | "observe_again" | "not_recorded"
+    | "shared_with_care_team" | "care_team_replied";
+  shared_with_care_team: boolean;
+};
+
+const iso = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+/**
+ * Make sure the days we are about to show actually have their expectations.
+ *
+ * Lazy on purpose (see 0033): a rolling window, created on read, rather than
+ * every day of a 90-day programme written at approval time. Idempotent, so
+ * calling it on every open is safe.
+ */
+export async function materialiseOccurrences(patientId: string, from: Date, to: Date): Promise<number> {
+  const { data, error } = await supabase.rpc("materialise_care_occurrences", {
+    p_patient: patientId,
+    p_from: iso(from),
+    p_to: iso(to),
+  });
+  if (error) throw new Error(error.message);
+  return (data as number) ?? 0;
+}
+
+export async function getOccurrences(patientId: string, from: Date, to: Date): Promise<CareOccurrenceRow[]> {
+  const { data, error } = await supabase
+    .from("care_occurrences")
+    .select("id, patient_id, activity_key, activity_type, definition_snapshot, due_at, window_end, local_date, display_group, status, resolved_by_event_id")
+    .eq("patient_id", patientId)
+    .gte("local_date", iso(from))
+    .lte("local_date", iso(to))
+    .order("due_at");
+  if (error) throw new Error(error.message);
+  return (data ?? []) as CareOccurrenceRow[];
+}
+
+export async function getCareEvents(patientId: string, from: Date, to: Date): Promise<CareEventDbRow[]> {
+  const { data, error } = await supabase
+    .from("care_events")
+    .select("id, patient_id, occurrence_id, activity_key, activity_type, label_snapshot, occurred_at, recorded_at, local_date, outcome, payload, note, entry_mode, acknowledgement_state, shared_with_care_team")
+    .eq("patient_id", patientId)
+    .gte("local_date", iso(from))
+    .lte("local_date", iso(to))
+    .order("occurred_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as CareEventDbRow[];
+}
+
+export type RecordEventInput = {
+  subscriptionId: string;
+  activityKey: string;
+  payload?: Record<string, unknown>;
+  note?: string | null;
+  outcome?: "done" | "partial" | "unable" | "skipped" | "recorded" | null;
+  occurredAt?: Date | null;
+  occurrenceId?: string | null;
+  entryMode?: "scheduled" | "quick" | "voice" | "text";
+};
+
+/**
+ * Record what happened.
+ *
+ * The activity KEY is the only thing sent — the server resolves the definition
+ * from the patient's own approved programme and refuses anything else.
+ */
+export async function recordCareEvent(input: RecordEventInput): Promise<CareEventDbRow> {
+  const { data, error } = await supabase.rpc("record_care_event", {
+    p_subscription: input.subscriptionId,
+    p_activity_key: input.activityKey,
+    p_payload: input.payload ?? {},
+    p_note: input.note ?? null,
+    p_outcome: input.outcome ?? null,
+    p_occurred_at: input.occurredAt ? input.occurredAt.toISOString() : null,
+    p_occurrence: input.occurrenceId ?? null,
+    p_entry_mode: input.entryMode ?? "scheduled",
+  });
+  if (error) throw new Error(error.message);
+  return data as CareEventDbRow;
+}
+
+export type CareSummary = {
+  has_programme: boolean;
+  programme_id?: string;
+  approved_at?: string | null;
+  scheduled_total?: number;
+  scheduled_done?: number;
+  scheduled_missed?: number;
+  events_recorded?: number;
+  unscheduled_events?: number;
+  latest_event_at?: string | null;
+};
+
+/** The clinician's factual read. No score, no severity — see 0033 section 8. */
+export async function getCareSummary(patientId: string, days = 7): Promise<CareSummary> {
+  const { data, error } = await supabase.rpc("patient_care_summary", {
+    p_patient: patientId,
+    p_days: days,
+  });
+  if (error) throw new Error(error.message);
+  return (data as CareSummary) ?? { has_programme: false };
+}

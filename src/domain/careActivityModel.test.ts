@@ -1,0 +1,211 @@
+import { describe, expect, it } from "vitest";
+import {
+  ACTIVITY_TYPES, displayGroupForHour, isQuickRecord, parseClockTime,
+  toStoredActivity, validateCareActivities,
+} from "./careActivityModel";
+import {
+  LACTATION_ACTIVITIES, LACTATION_QUICK_RECORDS,
+  NEURO_ACTIVITIES, NEURO_QUICK_RECORDS,
+} from "./careProgramme.fixtures";
+
+const ok = (raw: unknown) => {
+  const r = validateCareActivities(raw);
+  if (!r.ok) throw new Error(`expected valid, got: ${r.errors.join(" | ")}`);
+  return r.activities;
+};
+
+const errorsOf = (raw: unknown) => {
+  const r = validateCareActivities(raw);
+  return r.ok ? [] : r.errors;
+};
+
+const one = (patch: Record<string, unknown> = {}) => [{
+  key: "morning_meds",
+  activity_type: "dose",
+  domain: "medication",
+  title: "Morning medicines",
+  basis: "provider_default",
+  input_schema: [],
+  schedule: { kind: "clock", times: ["09:00"], days: "all", from_day: 1 },
+  ...patch,
+}];
+
+describe("the closed vocabulary", () => {
+  it("accepts an activity of every declared type and no other", () => {
+    for (const t of ACTIVITY_TYPES) {
+      expect(errorsOf(one({ activity_type: t }))).toEqual([]);
+    }
+    expect(errorsOf(one({ activity_type: "triage" }))[0]).toMatch(/activity_type must be one of/);
+  });
+
+  it("refuses an input field of an unknown type", () => {
+    const errors = errorsOf(one({
+      input_schema: [{ key: "risk", label: "Risk band", type: "clinical_score", required: true }],
+    }));
+    expect(errors.join(" ")).toMatch(/type must be one of/);
+  });
+
+  it("drops anything outside the schema rather than storing it", () => {
+    const [a] = ok(one({
+      escalation_rule: "Call the doctor if systolic is under 90",
+      diagnosis: "Left MCA infarct",
+    }));
+    expect(a).not.toHaveProperty("escalation_rule");
+    expect(a).not.toHaveProperty("diagnosis");
+    expect(Object.keys(toStoredActivity(a))).not.toContain("escalation_rule");
+  });
+
+  it("requires every activity to declare its basis", () => {
+    expect(errorsOf(one({ basis: undefined }))[0]).toMatch(/basis must be one of/);
+    expect(errorsOf(one({ basis: "clinician_hunch" }))[0]).toMatch(/basis must be one of/);
+  });
+
+  it("refuses a duplicate activity key", () => {
+    const errors = errorsOf([...one(), ...one()]);
+    expect(errors.join(" ")).toMatch(/used more than once/);
+  });
+
+  it("refuses a key that is not a stable machine key", () => {
+    expect(errorsOf(one({ key: "Morning Meds" }))[0]).toMatch(/lower-case letters/);
+  });
+});
+
+describe("schedules", () => {
+  it("reads only HH:MM and never guesses another format", () => {
+    expect(parseClockTime("09:00")).toBe("09:00");
+    expect(parseClockTime("9:05")).toBe("09:05");
+    expect(parseClockTime("23:59")).toBe("23:59");
+    expect(parseClockTime("9 AM")).toBeNull();
+    expect(parseClockTime("morning")).toBeNull();
+    expect(parseClockTime("25:00")).toBeNull();
+  });
+
+  it("refuses a clock schedule with no readable time", () => {
+    expect(errorsOf(one({ schedule: { kind: "clock", times: ["breakfast"] } }))[0])
+      .toMatch(/must list at least one "HH:MM" time/);
+  });
+
+  it("treats an on-demand activity as a quick record with no times", () => {
+    const [a] = ok(one({ schedule: { kind: "on_demand" } }));
+    expect(a.schedule?.times).toEqual([]);
+    expect(isQuickRecord(a)).toBe(true);
+  });
+
+  it("treats a null schedule as a quick record", () => {
+    const [a] = ok(one({ schedule: null }));
+    expect(a.schedule).toBeNull();
+    expect(isQuickRecord(a)).toBe(true);
+  });
+
+  it("normalises all seven weekdays back to 'all'", () => {
+    const [a] = ok(one({ schedule: { kind: "clock", times: ["09:00"], days: [1, 2, 3, 4, 5, 6, 7] } }));
+    expect(a.schedule?.days).toBe("all");
+  });
+
+  it("refuses a through_day that ends before it starts", () => {
+    expect(errorsOf(one({ schedule: { kind: "clock", times: ["09:00"], from_day: 10, through_day: 3 } }))[0])
+      .toMatch(/cannot be before from_day/);
+  });
+
+  it("survives a round trip through the stored form", () => {
+    const [a] = ok(NEURO_ACTIVITIES.filter((x) => x.key === "physiotherapy"));
+    const [b] = ok([toStoredActivity(a)]);
+    expect(b).toEqual(a);
+  });
+});
+
+describe("fields", () => {
+  it("requires a scale to state its own range", () => {
+    expect(errorsOf(one({
+      input_schema: [{ key: "pain", label: "Pain", type: "scale", required: true }],
+    }))[0]).toMatch(/must state min and max/);
+  });
+
+  it("requires a choice to offer at least two options", () => {
+    expect(errorsOf(one({
+      input_schema: [{ key: "x", label: "X", type: "choice", required: true, options: ["Only one"] }],
+    }))[0]).toMatch(/at least two choices/);
+  });
+
+  it("refuses a duplicate field key within one activity", () => {
+    const errors = errorsOf(one({
+      input_schema: [
+        { key: "note", label: "Note", type: "text", required: false },
+        { key: "note", label: "Another note", type: "text", required: false },
+      ],
+    }));
+    expect(errors.join(" ")).toMatch(/used more than once/);
+  });
+});
+
+describe("display groups", () => {
+  it("places an hour in the same group the database would", () => {
+    expect(displayGroupForHour(6)).toBe("morning");
+    expect(displayGroupForHour(11)).toBe("morning");
+    expect(displayGroupForHour(12)).toBe("afternoon");
+    expect(displayGroupForHour(16)).toBe("afternoon");
+    expect(displayGroupForHour(17)).toBe("evening");
+    expect(displayGroupForHour(20)).toBe("evening");
+    expect(displayGroupForHour(21)).toBe("night");
+    expect(displayGroupForHour(3)).toBe("night");
+  });
+});
+
+/* ==========================================================================
+ * THE UNIVERSALITY CHECK.
+ *
+ * Neuro and Lactation are entirely different care. If either needs anything the
+ * other does not — a type, a field type, a schedule shape — the abstraction has
+ * failed and the fix belongs in the abstraction, not in a specialty branch.
+ * ======================================================================== */
+describe("universality", () => {
+  it("validates the Neuro reference configuration", () => {
+    expect(ok(NEURO_ACTIVITIES)).toHaveLength(NEURO_ACTIVITIES.length);
+  });
+
+  it("validates the Lactation configuration", () => {
+    expect(ok(LACTATION_ACTIVITIES)).toHaveLength(LACTATION_ACTIVITIES.length);
+  });
+
+  it("expresses both specialties using only the eight declared types", () => {
+    for (const set of [NEURO_ACTIVITIES, LACTATION_ACTIVITIES]) {
+      for (const a of ok(set)) {
+        expect(ACTIVITY_TYPES).toContain(a.activityType);
+      }
+    }
+  });
+
+  it("needs no type that is private to one specialty", () => {
+    const neuro = new Set(ok(NEURO_ACTIVITIES).map((a) => a.activityType));
+    const lactation = new Set(ok(LACTATION_ACTIVITIES).map((a) => a.activityType));
+    for (const t of lactation) expect(ACTIVITY_TYPES).toContain(t);
+    for (const t of neuro) expect(ACTIVITY_TYPES).toContain(t);
+    // Each genuinely exercises most of the vocabulary, so this is a real test
+    // rather than two configurations that happen to be trivially similar.
+    expect(neuro.size).toBeGreaterThanOrEqual(6);
+    expect(lactation.size).toBeGreaterThanOrEqual(5);
+  });
+
+  it("covers the Neuro reference clinical areas the brief names", () => {
+    const domains = new Set(ok(NEURO_ACTIVITIES).map((a) => a.domain));
+    for (const d of [
+      "medication", "vitals", "positioning", "physiotherapy", "occupational_therapy",
+      "swallow", "nutrition", "oral_care", "device_care", "skin", "pain", "elimination",
+    ]) {
+      expect(domains).toContain(d);
+    }
+  });
+
+  it("names quick records that exist in the programme they belong to", () => {
+    const neuroKeys = new Set(ok(NEURO_ACTIVITIES).map((a) => a.key));
+    for (const k of NEURO_QUICK_RECORDS) expect(neuroKeys).toContain(k);
+    const lactationKeys = new Set(ok(LACTATION_ACTIVITIES).map((a) => a.key));
+    for (const k of LACTATION_QUICK_RECORDS) expect(lactationKeys).toContain(k);
+  });
+
+  it("gives each specialty its own quick records without changing the model", () => {
+    expect(NEURO_QUICK_RECORDS).not.toEqual(LACTATION_QUICK_RECORDS);
+    expect(NEURO_QUICK_RECORDS).toContain("swallow_observation");
+    expect(LACTATION_QUICK_RECORDS).toContain("nappy");
+  });
+});

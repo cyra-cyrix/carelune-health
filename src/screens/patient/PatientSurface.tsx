@@ -1,23 +1,37 @@
 /*
- * THE ONE DECISION POINT between the legacy recovery experience and the
- * universal programme experience.
+ * THE ONE DECISION POINT between the three patient experiences.
  *
- * A patient enrolled into a service package (0028 wrote service_package_id onto
- * their subscription) gets the programme surface, rendered from their own
- * frozen snapshot. Everyone else — every existing recovery patient — gets
- * exactly the app they had yesterday, unchanged.
+ *   1. An APPROVED care programme (0033) -> the care shell: Today, Journey,
+ *      Tell Us, Connect, Plan, drawn from the activities a clinician approved.
+ *   2. A service-package enrolment with no approved programme yet -> the
+ *      programme surface, unchanged.
+ *   3. Anyone else — every existing recovery patient -> exactly the app they
+ *      had yesterday, unchanged.
+ *
+ * The order matters and is the safety property: a compiled DRAFT is not care,
+ * so a patient whose programme has not been approved falls through to (2) and
+ * sees nothing a clinician has not agreed to. RLS enforces the same thing
+ * independently — a household account cannot read a draft at all.
  *
  * This check lives here and nowhere else. No component below this line asks
  * which kind of patient it is drawing, and none of them branches on specialty.
  */
 import { useEffect, useState } from "react";
-import { getMyPatient, getSubscription, type PatientRow, type SubscriptionRow } from "../../lib/db";
+import {
+  getApprovedProgramme, getMyPatient, getSubscription,
+  type PatientProgrammeRow, type PatientRow, type SubscriptionRow,
+} from "../../lib/db";
 import type { HcRole } from "../home/hc-kit";
 import HomeCare from "../home/HomeCare";
 import ProgrammeHome from "./ProgrammeHome";
+import CareShell from "./care/CareShell";
 import { LoopMark } from "../../components/ui";
 
-type Resolved = { patient: PatientRow | null; subscription: SubscriptionRow | null };
+type Resolved = {
+  patient: PatientRow | null;
+  subscription: SubscriptionRow | null;
+  programme: PatientProgrammeRow | null;
+};
 
 export default function PatientSurface({ role }: { role: HcRole }) {
   const [resolved, setResolved] = useState<Resolved | null>(null);
@@ -27,7 +41,9 @@ export default function PatientSurface({ role }: { role: HcRole }) {
     void (async () => {
       const patient = await getMyPatient().catch(() => null);
       const subscription = patient ? await getSubscription(patient.id).catch(() => null) : null;
-      if (active) setResolved({ patient, subscription });
+      // Only an APPROVED programme is ever returned here; a draft is not care.
+      const programme = patient ? await getApprovedProgramme(patient.id).catch(() => null) : null;
+      if (active) setResolved({ patient, subscription, programme });
     })();
     return () => { active = false; };
   }, []);
@@ -40,7 +56,10 @@ export default function PatientSurface({ role }: { role: HcRole }) {
     );
   }
 
-  const { patient, subscription } = resolved;
+  const { patient, subscription, programme } = resolved;
+  if (patient && subscription && programme) {
+    return <CareShell role={role} patient={patient} subscription={subscription} programme={programme} />;
+  }
   if (patient && subscription?.service_package_id) {
     return <ProgrammeHome role={role} patient={patient} subscription={subscription} />;
   }

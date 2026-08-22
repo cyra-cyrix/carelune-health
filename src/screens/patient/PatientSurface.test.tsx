@@ -5,17 +5,34 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PatientRow } from "../../lib/db";
 import { LACTATION_ENROLMENT, LEGACY_SUBSCRIPTION, SPINE_ENROLMENT } from "../../domain/enrolment.fixtures";
 
-vi.mock("../../lib/db", () => ({ getMyPatient: vi.fn(), getSubscription: vi.fn() }));
-// The two experiences are stubbed: this file is about the routing decision,
-// not about what either surface draws.
+vi.mock("../../lib/db", () => ({
+  getMyPatient: vi.fn(),
+  getSubscription: vi.fn(),
+  getApprovedProgramme: vi.fn(),
+}));
+// The three experiences are stubbed: this file is about the routing decision,
+// not about what any surface draws.
 vi.mock("../home/HomeCare", () => ({ default: () => <div>LEGACY RECOVERY APP</div> }));
 vi.mock("./ProgrammeHome", () => ({ default: () => <div>UNIVERSAL PROGRAMME APP</div> }));
+vi.mock("./care/CareShell", () => ({ default: () => <div>CARE SHELL</div> }));
 
-import { getMyPatient, getSubscription } from "../../lib/db";
+import { getApprovedProgramme, getMyPatient, getSubscription } from "../../lib/db";
 import PatientSurface from "./PatientSurface";
 
 afterEach(cleanup);
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  // Default: no approved programme, so every pre-existing case below routes
+  // exactly as it did before this branch was added.
+  vi.mocked(getApprovedProgramme).mockResolvedValue(null);
+});
+
+const approvedProgramme = {
+  id: "prog-1",
+  activities: [{ key: "morning_meds" }],
+  quick_records: ["pain"],
+  status: "approved",
+} as unknown as Awaited<ReturnType<typeof getApprovedProgramme>>;
 
 const patient = { id: "patient-anand", full_name: "Anand Menon" } as PatientRow;
 
@@ -55,5 +72,45 @@ describe("which patient app a household member gets", () => {
     vi.mocked(getSubscription).mockResolvedValue(LACTATION_ENROLMENT);
     render(<PatientSurface role="family" />);
     expect(await screen.findByText("UNIVERSAL PROGRAMME APP")).toBeTruthy();
+  });
+});
+
+describe("an approved care programme takes precedence", () => {
+  it("gives a patient with an approved programme the care shell", async () => {
+    vi.mocked(getMyPatient).mockResolvedValue(patient);
+    vi.mocked(getSubscription).mockResolvedValue(SPINE_ENROLMENT);
+    vi.mocked(getApprovedProgramme).mockResolvedValue(approvedProgramme);
+    render(<PatientSurface role="caregiver" />);
+    expect(await screen.findByText("CARE SHELL")).toBeTruthy();
+    expect(screen.queryByText("UNIVERSAL PROGRAMME APP")).toBeNull();
+    expect(screen.queryByText("LEGACY RECOVERY APP")).toBeNull();
+  });
+
+  it("routes a lactation enrolment to the same shell — the decision is the programme, not the specialty", async () => {
+    vi.mocked(getMyPatient).mockResolvedValue(patient);
+    vi.mocked(getSubscription).mockResolvedValue(LACTATION_ENROLMENT);
+    vi.mocked(getApprovedProgramme).mockResolvedValue(approvedProgramme);
+    render(<PatientSurface role="family" />);
+    expect(await screen.findByText("CARE SHELL")).toBeTruthy();
+  });
+
+  it("keeps a patient whose programme is only a DRAFT out of the care shell", async () => {
+    // A draft is not care. RLS returns nothing for a household account, so the
+    // patient falls through to the surface they had before approval.
+    vi.mocked(getMyPatient).mockResolvedValue(patient);
+    vi.mocked(getSubscription).mockResolvedValue(SPINE_ENROLMENT);
+    vi.mocked(getApprovedProgramme).mockResolvedValue(null);
+    render(<PatientSurface role="caregiver" />);
+    expect(await screen.findByText("UNIVERSAL PROGRAMME APP")).toBeTruthy();
+    expect(screen.queryByText("CARE SHELL")).toBeNull();
+  });
+
+  it("never shows the care shell to a legacy recovery patient", async () => {
+    vi.mocked(getMyPatient).mockResolvedValue(patient);
+    vi.mocked(getSubscription).mockResolvedValue(LEGACY_SUBSCRIPTION);
+    vi.mocked(getApprovedProgramme).mockResolvedValue(null);
+    render(<PatientSurface role="family" />);
+    expect(await screen.findByText("LEGACY RECOVERY APP")).toBeTruthy();
+    expect(screen.queryByText("CARE SHELL")).toBeNull();
   });
 });

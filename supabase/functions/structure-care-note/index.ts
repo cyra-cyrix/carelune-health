@@ -45,7 +45,7 @@ YOU WILL BE GIVEN
   * what the person said
   * the current local time
 
-RETURN
+RETURN VALID JSON ONLY, in exactly this shape:
 {"activity_key":"...","values":{...},"occurred_at":"ISO timestamp or null","occurred_label":"short phrase or null","summary":["line","line"]}
 
 RULES
